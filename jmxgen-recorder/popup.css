@@ -1,0 +1,47 @@
+body { margin: 0; background: #14161a; color: #e8eaed;
+  font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.wrap { width: 260px; padding: 12px; }
+.head { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+.title { font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #5f6368; }
+.dot.on { background: #ef4444; animation: p 1.4s infinite; }
+@keyframes p { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+.stat { background: #0e1013; border: 1px solid #2c3038; border-radius: 8px;
+  padding: 10px; text-align: center; margin-bottom: 10px; }
+.big { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sub { color: #9aa0a6; font-size: 11px; }
+.l { display: block; color: #9aa0a6; margin-bottom: 4px; }
+.row { display: flex; gap: 6px; margin-bottom: 10px; }
+.in { flex: 1; min-width: 0; background: #0e1013; border: 1px solid #2c3038;
+  color: #e8eaed; border-radius: 6px; padding: 6px 7px; font: inherit; }
+.b { background: #22262e; border: 1px solid #2c3038; color: #e8eaed;
+  border-radius: 6px; padding: 7px 9px; cursor: pointer; font: inherit; }
+.b:hover:not(:disabled) { background: #2c313a; }
+.b:disabled { opacity: .45; cursor: default; }
+.wide { width: 100%; margin-bottom: 6px; }
+.go { background: #1d6f42; border-color: #24894f; font-weight: 600; }
+.go:hover:not(:disabled) { background: #24894f; }
+.warn { color: #f0a3a3; }
+.hint { color: #6b7076; font-size: 10.5px; margin-top: 10px; }
+code { display: block; background: #0e1013; padding: 5px 6px; border-radius: 5px;
+  margin-top: 4px; word-break: break-all; color: #9aa0a6; }
+.msg { margin-top: 8px; font-size: 11px; min-height: 14px; }
+.msg.good { color: #7ee2a8; } .msg.bad { color: #f0a3a3; }
+
+.dim { color: #6b7076; font-weight: 400; }
+.or { text-align: center; color: #6b7076; font-size: 10.5px; margin: 6px 0 8px; }
+
+.svc { font-size: 11px; color: #6b7076; margin: -2px 0 8px; }
+.svc.up { color: #7ee2a8; }
+.svc.down { color: #f0a3a3; }
+.adv { border: 1px solid #2c3038; border-radius: 7px; padding: 7px 9px; margin-top: 10px; }
+.adv summary { color: #9aa0a6; font-size: 11.5px; cursor: pointer; }
+.adv .in { margin: 8px 0 6px; }
+
+/* the other authoring sources - they hand off to the console rather than
+   duplicating its form in a popup that closes on focus loss */
+.sources { margin-top: 12px; border-top: 1px solid #2c3038; padding-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { background: #1a1d23; border: 1px solid #2c3038; color: #c9ced6;
+        border-radius: 99px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; }
+.chip:hover { background: #262a31; color: #e8eaed; border-color: #3a3f49; }

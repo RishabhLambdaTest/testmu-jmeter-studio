@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>jmxgen recorder</title>
+<link rel="stylesheet" href="popup.css" />
+<div class="wrap">
+  <div class="head">
+    <span class="dot" id="dot"></span>
+    <span class="title">jmxgen recorder</span>
+  </div>
+
+  <div class="stat">
+    <div class="big" id="count">0</div>
+    <div class="sub" id="sub">idle</div>
+  </div>
+
+  <label class="l">Transaction <span class="dim">(step name, optional)</span></label>
+  <div class="row">
+    <input id="tx" class="in" placeholder="e.g. Homepage" />
+    <button id="txset" class="b">Set</button>
+  </div>
+
+  <div id="urlblock">
+    <label class="l">Open a URL and record from request #1</label>
+    <div class="row">
+      <input id="url" class="in" placeholder="https://app.example.com" />
+      <button id="open" class="b go">Go</button>
+    </div>
+    <div class="or">or</div>
+  </div>
+  <button id="start" class="b wide">Start recording this tab</button>
+  <button id="stop" class="b wide" hidden>Stop</button>
+  <button id="send" class="b wide go" disabled>Generate test plan</button>
+  <button id="hx" class="b wide">Run on HyperExecute…</button>
+  <div class="svc" id="svc">checking for jmxgen…</div>
+  <button id="export" class="b wide" disabled>Export HAR instead</button>
+  <button id="reset" class="b wide warn" hidden>Discard session</button>
+
+  <div class="sources">
+    <label class="l">Author from something else</label>
+    <div class="chips">
+      <button class="chip" data-mode="openapi">OpenAPI</button>
+      <button class="chip" data-mode="postman">Postman</button>
+      <button class="chip" data-mode="curl">cURL</button>
+      <button class="chip" data-mode="excel">Excel / CSV</button>
+      <button class="chip" data-mode="urls">URL list</button>
+      <button class="chip" data-mode="jmx">Import .jmx</button>
+    </div>
+  </div>
+
+  <details class="adv">
+    <summary>Where jmxgen runs</summary>
+    <input type="text" id="endpoint" class="in" placeholder="http://localhost:8770" />
+    <button id="saveEndpoint" class="b wide">Save</button>
+  </details>
+  <div class="msg" id="msg"></div>
+</div>
+<script src="popup.js"></script>

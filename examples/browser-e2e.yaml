@@ -1,0 +1,39 @@
+name: Browser E2E Flow
+platform: hyperexecute
+variables:
+  BASE_URL: https://example.com/login
+  USERNAME: user
+  PASSWORD: pass
+  TIMEOUT: '30'
+webdriver:
+  headless: true
+thread_groups:
+- name: UI Flow
+  threads: 1
+  ramp_up: 1
+  loops: 1
+  steps:
+  - transaction: Login
+    steps:
+    - type: webdriver
+      name: Open login page
+      actions:
+      - do: open
+        url: ${BASE_URL}
+      - do: wait_for
+        xpath: //input[@name='username']
+      think_time: 500
+    - type: webdriver
+      name: Enter credentials and submit
+      actions:
+      - do: type
+        xpath: //input[@name='username']
+        text: ${USERNAME}
+      - do: type
+        xpath: //input[@name='password']
+        text: ${PASSWORD}
+      - do: click
+        xpath: //button[@type='submit']
+      - do: assert_text
+        text: Dashboard
+      think_time: 1000

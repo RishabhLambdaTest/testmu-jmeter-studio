@@ -1,0 +1,40 @@
+# Build output. The bundles are per-platform and 9 MB+ each - build them with
+# ./build_binary.sh, or attach them to a GitHub release, but do not commit them.
+dist/
+.build/
+build/
+*.spec
+
+# Customer plans. Real recorded journeys with customer names, internal hosts and
+# at least one hardcoded token - fixtures for `optimize`, not for publishing.
+samples/
+
+# A separate project that happens to live in this folder.
+slack-assistant-bot/
+
+# JMeter run output
+*.jtl
+results.csv
+report/
+jmeter.log
+*.har
+
+# Scratch
+new.txt
+*.png.import
+Screenshot*.png
+run-page.png
+.playwright-mcp/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Local editor/agent config (references customer filenames)
+.claude/

@@ -1,0 +1,524 @@
+<title>Same JMX, Two Runners</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --sunk:#EDEFF3;
+  --ink:#141920;
+  --ink-2:#4A5563;
+  --ink-3:#77828F;
+  --rule:#DCE0E7;
+  --rule-strong:#C3C9D3;
+  --bm:#D9531E;
+  --bm-soft:#FBEDE7;
+  --he:#1F5FD6;
+  --he-soft:#E7EEFC;
+  --good:#1B7A4F;
+  --gap:#A8471C;
+  --warn:#8A6A16;
+  --shadow:0 1px 2px rgba(20,25,32,.05), 0 8px 24px -16px rgba(20,25,32,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F1319;
+    --surface:#161C24;
+    --sunk:#1D242E;
+    --ink:#E8ECF2;
+    --ink-2:#AEB8C6;
+    --ink-3:#7E8898;
+    --rule:#28313D;
+    --rule-strong:#3A4553;
+    --bm:#F08557;
+    --bm-soft:#2A1C15;
+    --he:#7EA9F5;
+    --he-soft:#141F33;
+    --good:#5FC58F;
+    --gap:#E39466;
+    --warn:#D9B65B;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F1319;
+  --surface:#161C24;
+  --sunk:#1D242E;
+  --ink:#E8ECF2;
+  --ink-2:#AEB8C6;
+  --ink-3:#7E8898;
+  --rule:#28313D;
+  --rule-strong:#3A4553;
+  --bm:#F08557;
+  --bm-soft:#2A1C15;
+  --he:#7EA9F5;
+  --he-soft:#141F33;
+  --good:#5FC58F;
+  --gap:#E39466;
+  --warn:#D9B65B;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- masthead ---------- */
+.masthead{padding:56px 0 28px;border-bottom:2px solid var(--ink);margin-bottom:0}
+.kicker{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 14px;
+}
+h1{
+  font-family:Archivo,-apple-system,sans-serif;
+  font-weight:700;font-size:clamp(34px,5.4vw,52px);line-height:1.04;
+  letter-spacing:-.028em;margin:0 0 16px;text-wrap:balance;
+}
+.standfirst{font-size:18px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin:0 0 22px}
+.scope{
+  display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px;
+}
+.tag{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.04em;
+  padding:5px 10px;border:1px solid var(--rule-strong);border-radius:2px;color:var(--ink-2);
+  background:var(--surface);
+}
+.tag.out{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--rule-strong)}
+
+/* ---------- sections ---------- */
+section{padding-top:52px}
+h2{
+  font-family:Archivo,sans-serif;font-weight:600;font-size:24px;letter-spacing:-.018em;
+  margin:0 0 6px;text-wrap:balance;
+}
+h2 .num{
+  font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:400;
+  color:var(--ink-3);margin-right:12px;letter-spacing:0;
+}
+.dek{color:var(--ink-2);margin:0 0 22px;max-width:68ch;font-size:15.5px}
+h3{font-family:Archivo,sans-serif;font-weight:600;font-size:16px;letter-spacing:-.01em;margin:28px 0 10px}
+p{margin:0 0 14px;max-width:70ch}
+
+/* ---------- comparison table ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--surface);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14.5px}
+thead th{
+  text-align:left;padding:13px 16px;vertical-align:bottom;
+  font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.02em;
+  border-bottom:1px solid var(--rule-strong);
+  background:var(--sunk);
+}
+thead th.dim{width:24%;color:var(--ink-3);font-weight:500;text-transform:uppercase;font-size:11px;letter-spacing:.12em;font-family:"IBM Plex Mono",monospace}
+thead th.bm{color:var(--bm);border-top:3px solid var(--bm)}
+thead th.he{color:var(--he);border-top:3px solid var(--he)}
+tbody td{padding:13px 16px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2)}
+tbody tr:last-child td{border-bottom:none}
+tbody th{
+  text-align:left;padding:13px 16px;border-bottom:1px solid var(--rule);
+  font-weight:500;color:var(--ink);font-size:14px;vertical-align:top;
+}
+tbody tr:last-child th{border-bottom:none}
+tbody tr:hover td,tbody tr:hover th{background:color-mix(in srgb,var(--sunk) 55%,transparent)}
+code,kbd{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em;
+  background:var(--sunk);padding:1.5px 5px;border-radius:3px;color:var(--ink);
+  white-space:nowrap;
+}
+.num-cell{font-variant-numeric:tabular-nums}
+
+/* ---------- verdict pills ---------- */
+.pill{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:2px;
+  border:1px solid currentColor;margin-right:6px;vertical-align:1px;
+}
+.p-even{color:var(--ink-3)}
+.p-bm{color:var(--bm)}
+.p-he{color:var(--he)}
+
+/* ---------- two-up cards ---------- */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0 0 8px}
+@media (max-width:720px){.duo{grid-template-columns:1fr}}
+.card{
+  background:var(--surface);border:1px solid var(--rule);border-radius:6px;
+  padding:20px 22px;box-shadow:var(--shadow);
+}
+.card.bm{border-top:3px solid var(--bm)}
+.card.he{border-top:3px solid var(--he)}
+.card h3{margin:0 0 4px;font-size:15px}
+.card.bm h3{color:var(--bm)}
+.card.he h3{color:var(--he)}
+.card .sub{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+.card ol,.card ul{margin:0;padding-left:1.15em;color:var(--ink-2);font-size:14.5px}
+.card li{margin-bottom:7px}
+.card li:last-child{margin-bottom:0}
+.card li::marker{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.9em}
+
+/* ---------- callout ---------- */
+.note{
+  border-left:3px solid var(--warn);background:var(--surface);
+  padding:14px 18px;border-radius:0 5px 5px 0;margin:22px 0;
+  font-size:14.5px;color:var(--ink-2);border-top:1px solid var(--rule);
+  border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);
+}
+.note strong{color:var(--ink)}
+
+/* ---------- ledger (gap list) ---------- */
+.ledger{display:grid;gap:0;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.row{display:grid;grid-template-columns:150px 1fr;gap:18px;padding:15px 18px;border-bottom:1px solid var(--rule);align-items:start}
+.row:last-child{border-bottom:none}
+@media (max-width:640px){.row{grid-template-columns:1fr;gap:6px}}
+.row .side{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  padding-top:3px;
+}
+.side.bm{color:var(--bm)}
+.side.he{color:var(--he)}
+.row .what{color:var(--ink-2);font-size:14.5px}
+.row .what b{color:var(--ink);font-weight:600}
+
+/* ---------- footer ---------- */
+footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:13px}
+footer a{color:var(--ink-2)}
+footer ul{padding-left:1.1em;margin:8px 0 0}
+a:focus-visible,td:focus-visible{outline:2px solid var(--he);outline-offset:2px}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Execution comparison · JMeter on cloud runners</p>
+  <h1>Same JMX, Two Runners</h1>
+  <p class="standfirst">What actually differs between BlazeMeter and LambdaTest HyperExecute once the script is written and you press run — provisioning, load shaping, geography, live control, artifacts, and what each one costs you in operational effort.</p>
+  <div class="scope">
+    <span class="tag">In scope: run configuration</span>
+    <span class="tag">In scope: scaling &amp; geography</span>
+    <span class="tag">In scope: live run control</span>
+    <span class="tag">In scope: results &amp; artifacts</span>
+    <span class="tag out">Script authoring</span>
+    <span class="tag out">Recorders / correlation</span>
+    <span class="tag out">Assertion design</span>
+  </div>
+</header>
+
+<section id="verdict">
+  <h2><span class="num">01</span>The short version</h2>
+  <p class="dek">Both take an unmodified <code>.jmx</code> and run it on managed infrastructure. The divergence is in how much of the run they let you shape, and how much of the run they show you while it is happening.</p>
+
+  <div class="duo">
+    <div class="card bm">
+      <h3>BlazeMeter</h3>
+      <p class="sub">A performance product</p>
+      <ul>
+        <li>Deep run-time controls: change users and RPS mid-test, calibrate engine sizing before scaling, gate the run on pass/fail criteria.</li>
+        <li>Engine-level observability — per-engine health, CPU/memory, logs, and errors while the test runs.</li>
+        <li>Trend and comparison reporting across historical runs is first-class.</li>
+        <li>Private Locations put load generators inside your own network.</li>
+      </ul>
+    </div>
+    <div class="card he">
+      <h3>HyperExecute</h3>
+      <p class="sub">An execution grid that also runs JMeter</p>
+      <ul>
+        <li>Very fast, very scriptable trigger path: create project → upload files → POST a job. Everything is a flag.</li>
+        <li>Region-level load distribution by percentage, with machine count and per-VM user caps you set directly.</li>
+        <li>Runs sit alongside your functional automation in one grid, one account, one billing surface.</li>
+        <li>Reporting is deliberately lean: Summary, Timeline, Request Statistics, plus raw artifacts.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>The one-line call:</strong> if the run needs to be steered while it is happening, or the results need to be compared against a hundred previous runs, BlazeMeter is doing more work for you. If the run needs to be triggered by a pipeline, parameterised per-invocation, and land next to the rest of your test execution, HyperExecute is less machinery in the way.
+  </div>
+</section>
+
+<section id="model">
+  <h2><span class="num">02</span>How a run gets started</h2>
+  <p class="dek">The unit of work differs. BlazeMeter's is a saved <em>test</em> you edit and re-run; HyperExecute's is a <em>job</em> you throw parameters at.</p>
+
+  <div class="duo">
+    <div class="card bm">
+      <h3>BlazeMeter run path</h3>
+      <p class="sub">Test object → execution</p>
+      <ol>
+        <li>Create a Performance test, attach the <code>.jmx</code> plus data and property files.</li>
+        <li>Set load: total users, ramp-up (linear or stepped), duration <em>or</em> iterations.</li>
+        <li>Pick locations and split load across them; engines are derived from users.</li>
+        <li>Optionally calibrate — a low-scale run that tells you users-per-engine before you scale.</li>
+        <li>Run, or schedule, or trigger from CI / the public API.</li>
+      </ol>
+    </div>
+    <div class="card he">
+      <h3>HyperExecute run path</h3>
+      <p class="sub">Project → job trigger</p>
+      <ol>
+        <li>Create a project of type <code>jmeter</code>; upload the <code>.jmx</code> and its data files to it once.</li>
+        <li>Trigger a job naming the JMX, the regions, and any overrides.</li>
+        <li>Load knobs go in the trigger payload — omit one and the JMX's own value stands.</li>
+        <li>Poll job status, then artifact status; download the result zips.</li>
+        <li>Same job triggerable from UI, HyperExecute CLI, or REST.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Practical consequence.</strong> On HyperExecute, load parameters are per-invocation, so one uploaded JMX serves a smoke run, a soak, and a spike without editing anything or cloning the test. On BlazeMeter, the load config lives on the test object, so multiple shapes usually means multiple tests — unless you drive overrides through the API or Taurus config.
+  </div>
+</section>
+
+<section id="load">
+  <h2><span class="num">03</span>Load configuration</h2>
+  <p class="dek">Both override the thread group at run time. They expose the dial from opposite ends: BlazeMeter asks for a total and derives the fleet, HyperExecute asks for the fleet and the per-machine cap.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">Knob</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Concurrency model</th>
+        <td>Set <b>total users at peak</b>; the platform divides them across engines and preserves thread-group ratios for multi-group scripts.</td>
+        <td>Set <b>users</b>, <b>machine count per region</b>, and <b>max virtual users per VM</b>. The fleet is explicit; you own the arithmetic.</td></tr>
+      <tr><th>Ramp-up</th>
+        <td>Elapsed time to full load, linear by default, with a configurable number of steps for a stepped ramp.</td>
+        <td><code>rampup</code> in seconds, per region entry. Omit it and the JMX ramp stands.</td></tr>
+      <tr><th>Duration vs iterations</th>
+        <td>Either — duration in minutes (infinite iterations until time is met) or a fixed iteration count. Not both when overriding.</td>
+        <td><code>duration</code> in seconds/minutes only; iteration-count shaping stays in the JMX.</td></tr>
+      <tr><th>Hard stop</th>
+        <td>Duration is the stop; a default safeguard caps very long iteration-driven tests.</td>
+        <td><code>globalTimeout</code> and <code>testSuiteTimeout</code> kill the job independently of the load shape.</td></tr>
+      <tr><th>Throughput shaping</th>
+        <td>RPS limit settable, and changeable <b>during</b> the run from the live report.</td>
+        <td>Whatever the JMX defines (timers, throughput controllers). No live RPS dial.</td></tr>
+      <tr><th>Right-sizing help</th>
+        <td><b>Calibration</b> is a documented, supported step: run small, read engine health, learn the safe users-per-engine, then scale.</td>
+        <td>Guidance is documented rather than tooled — per-VM cap is yours to set, informed by task CPU/memory metrics from previous runs.</td></tr>
+      <tr><th>Realistic ceiling</th>
+        <td class="num-cell">Scales with engines and plan; enterprise tests routinely run in the tens of thousands of VUs.</td>
+        <td class="num-cell">Documented around <b>2,000 VUs</b> under favourable conditions, and explicitly dependent on what each VU does.</td></tr>
+      <tr><th>JVM / properties</th>
+        <td>Java args, JMeter properties files, and JMeter version selectable per test.</td>
+        <td><code>user.properties</code> overrides supported; Java version selectable (11 default, 25 available). Heap set via environment, not baked into properties.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <strong>Read this one carefully before a demo.</strong> On HyperExecute the total load for a region is replicated across the machines allocated to it — three machines at 250 users each is 750 users hitting the target from that region, not 250. Miscount this and your VU-hour estimate and your target's actual load both come out wrong.
+  </div>
+</section>
+
+<section id="geo">
+  <h2><span class="num">04</span>Geographic distribution</h2>
+  <p class="dek">Both fire traffic from multiple places. The difference is footprint size and whether "somewhere inside your own network" is one of the choices.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">Dimension</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Public footprint</th>
+        <td>Large multi-cloud location list across AWS and GCP regions worldwide.</td>
+        <td>Six regions: West US 2, East US (default), Central India, Southeast Asia, Brazil South, Mexico Central.</td></tr>
+      <tr><th>Splitting load</th>
+        <td>Assign engines per location; the split is by engine allocation.</td>
+        <td>Assign a <b>percentage of load per data centre</b>, or give each region its own duration/ramp-up entry in the trigger payload.</td></tr>
+      <tr><th>Load from inside your network</th>
+        <td><b>Private Locations</b> — you run BlazeMeter agents (Docker/Kubernetes) on your own infrastructure and target internal apps with no tunnel.</td>
+        <td>Load generators are LambdaTest-side; internal targets are reached through the LambdaTest tunnel rather than by relocating the generator.</td></tr>
+      <tr><th>Fixed egress IPs</th>
+        <td>Published IP ranges per location; Private Locations give you your own.</td>
+        <td>Fixed-IP support exists on the grid; confirm coverage for JMeter jobs with your account team before promising it to a security reviewer.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><span class="pill p-bm">BlazeMeter edge</span> Private Locations are the clearest structural gap. If the system under test is not reachable from the public internet and the customer will not run a tunnel, BlazeMeter can put the load generator inside the perimeter and HyperExecute cannot.</p>
+</section>
+
+<section id="data">
+  <h2><span class="num">05</span>Test data at run time</h2>
+  <p class="dek">A CSV that works on your laptop is the single most common reason a cloud run fails. Both platforms solve it; they solve it differently.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">Behaviour</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Getting files to the engine</th>
+        <td>Files attached to the test; Shared Folders reuse the same data set across many tests.</td>
+        <td>Files uploaded to the project alongside the JMX; they persist for every job triggered on that project.</td></tr>
+      <tr><th>Unique data per generator</th>
+        <td>CSV splitting across engines is a standard option, so no two engines replay the same rows.</td>
+        <td><code>splitcsv</code> flag distributes the CSV across threads and regions.</td></tr>
+      <tr><th>Path handling</th>
+        <td>Flattens attached files next to the script — relative paths generally resolve.</td>
+        <td>Same expectation: reference data files by bare filename, not by an absolute local path.</td></tr>
+      <tr><th>Generated / synthetic data</th>
+        <td>Test Data Pro and Mock Services are part of the platform.</td>
+        <td>Not part of the JMeter execution surface; generate data upstream.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="live">
+  <h2><span class="num">06</span>What you can do while it runs</h2>
+  <p class="dek">This is the largest single functional gap between the two, and it is entirely an execution concern.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">During the run</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Live KPI report</th><td>Yes — streaming response times, hits, errors, and codes as the test proceeds.</td><td>Yes — real-time monitoring of the running job with live metrics.</td></tr>
+      <tr><th>Change users mid-test</th><td>Yes, on Enterprise plans: users, ramp-up, and step count adjustable at run time.</td><td>No — the shape is fixed at trigger.</td></tr>
+      <tr><th>Change RPS mid-test</th><td>Yes, from the live report.</td><td>No.</td></tr>
+      <tr><th>Per-engine health</th><td>Engine Health report: CPU, memory, network per load generator — the tool you use to prove a bottleneck is yours, not the target's.</td><td>Task metrics report CPU/memory consumption per stage of the job.</td></tr>
+      <tr><th>Live logs</th><td>Per-engine JMeter logs streamed in the report.</td><td>Job console logs, plus <code>jmeter.log</code> in the downloadable artifact.</td></tr>
+      <tr><th>Abort</th><td>Yes; VU-hours already consumed are still billed.</td><td>Yes; same billing caveat.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><span class="pill p-bm">BlazeMeter edge</span> Mid-run adjustment turns a single booked window into an exploratory session — nudge users up until errors appear, and you have found the breaking point in one run instead of five. That is a real cost difference on VU-hours as well as a workflow difference.</p>
+</section>
+
+<section id="results">
+  <h2><span class="num">07</span>Results, artifacts, and history</h2>
+  <p class="dek">Both hand you the numbers a JMeter run produces. They diverge on what happens to the run <em>after</em> it finishes.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">After the run</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Standard reports</th>
+        <td>Summary, Timeline, Request Stats, Errors, Response codes, Engine Health, Logs.</td>
+        <td>Summary (VUs, response times, throughput, bandwidth), Timeline, Request Statistics.</td></tr>
+      <tr><th>Raw data</th>
+        <td>JTL and log bundles downloadable per engine.</td>
+        <td>Two artifact zips per job — the JMeter artifact (JTL, logs) and the generated HTML report directory.</td></tr>
+      <tr><th>Native JMeter HTML dashboard</th>
+        <td>Not the primary view; the platform report supersedes it.</td>
+        <td>Produced and collected as a first-class artifact, so the report your team already reads locally is the report they get from the cloud.</td></tr>
+      <tr><th>Run-to-run comparison</th>
+        <td><b>Trend reports and side-by-side comparison</b> across historical executions, with baselines.</td>
+        <td>Per-job reporting; cross-run trending is not a built-in view — export and chart it yourself.</td></tr>
+      <tr><th>Pass/fail gating</th>
+        <td><b>Test failure criteria</b> — declare thresholds (error %, p90, throughput) and the run itself is marked failed.</td>
+        <td>Job status reflects execution success; SLA gating comes from JMeter assertions in the JMX or a post-step that parses the JTL.</td></tr>
+      <tr><th>APM correlation</th>
+        <td>Integrations with AppDynamics, Dynatrace, New Relic to overlay server-side metrics.</td>
+        <td>Not part of the JMeter run surface.</td></tr>
+      <tr><th>Retention / traceability</th>
+        <td>Test-centric history with reports retained per plan.</td>
+        <td>Job-centric history with job labels for traceability across a build.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><span class="pill p-bm">BlazeMeter edge</span> Trend reporting and declarative failure criteria are what make a load test a <em>gate</em> rather than an <em>investigation</em>. Without them, regression detection has to be rebuilt in the pipeline.</p>
+  <p><span class="pill p-he">HyperExecute edge</span> Handing back the standard JMeter HTML dashboard means no report-format retraining and no lock-in on how results are read.</p>
+</section>
+
+<section id="pipeline">
+  <h2><span class="num">08</span>Triggering from a pipeline</h2>
+  <p class="dek">Both are automatable. HyperExecute's execution surface is thinner, which makes it easier to script and harder to misconfigure from a YAML file.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">Automation</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Native CI plugins</th><td>Jenkins, Azure DevOps, GitHub Actions, TeamCity, Bamboo and more, maintained by the vendor.</td><td>CLI binary plus documented CI recipes; the CLI is the integration point everywhere.</td></tr>
+      <tr><th>REST trigger</th><td>Public API covers create, run, status, and report retrieval.</td><td>REST covers project create, file upload, job trigger, job status, artifact status, artifact download — the full loop, as exercised by <code>hyperexecute_automation.py</code> in this repo.</td></tr>
+      <tr><th>Config as code</th><td>Taurus YAML is the canonical scripted form of a test.</td><td>HyperExecute YAML / trigger payload; load params are plain JSON fields.</td></tr>
+      <tr><th>Parameterising a run</th><td>Requires API overrides or a Taurus config per shape.</td><td>Every knob is a CLI flag — <code>--regions</code>, <code>--duration</code>, <code>--rampup</code>, <code>--max-vusers-per-vm</code>, <code>--concurrency</code>.</td></tr>
+      <tr><th>Scheduling</th><td>Built-in scheduler on the test object.</td><td>Trigger from your own scheduler or CI cron.</td></tr>
+      <tr><th>Notifications</th><td>Email, Slack, webhooks on completion and threshold breach.</td><td>Slack channel field on the job; artifact-ready email on completion.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="cost">
+  <h2><span class="num">09</span>Capacity and what a run costs</h2>
+  <p class="dek">Both meter virtual-user hours, so the arithmetic transfers. What differs is the shape of the entitlement.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">Commercial</th><th class="bm">BlazeMeter</th><th class="he">HyperExecute</th></tr></thead>
+    <tbody>
+      <tr><th>Unit</th><td class="num-cell">VUH = peak virtual users × elapsed hours, rounded up.</td><td class="num-cell">Same formula.</td></tr>
+      <tr><th>Concurrency cap</th><td>Plan-bound max concurrent users and max engines.</td><td>Plan-bound; practical ceiling documented around 2,000 VUs per test.</td></tr>
+      <tr><th>Multi-region cost</th><td>Multiplies — n locations at m users each bills n × m.</td><td>Same multiplication; percentage-split distribution can hold the total flat instead.</td></tr>
+      <tr><th>Aborted runs</th><td>Billed for elapsed time, spin-up included.</td><td>Same.</td></tr>
+      <tr><th>Shared with other testing</th><td>Separate product entitlement.</td><td>Shares the HyperExecute grid and account with your functional automation — one procurement, one dashboard.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The percentage-split point is worth a demo beat: on HyperExecute, distributing 100% of a 500-VU test across three regions as 50/30/20 is still 500 VUs of billing, while naively configuring 500 users in each of three locations is 1,500.</p>
+</section>
+
+<section id="ledger">
+  <h2><span class="num">10</span>The gap ledger</h2>
+  <p class="dek">Everything above, reduced to what one platform does that the other does not — execution only.</p>
+
+  <div class="ledger">
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Mid-run load adjustment.</b> Change users, ramp, and RPS while the test is live (Enterprise).</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Calibration workflow.</b> A supported low-scale run that tells you safe users-per-engine before you commit VU-hours.</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Private Locations.</b> Load generators running on your own infrastructure, inside the firewall.</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Declarative failure criteria.</b> Thresholds that mark the run itself as failed, without post-processing the JTL.</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Trend and baseline reporting.</b> Cross-run comparison as a built-in view.</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>Engine Health as a report.</b> Per-generator CPU/memory/network attributed to each engine.</div></div>
+    <div class="row"><div class="side bm">Only BlazeMeter</div><div class="what"><b>APM overlay.</b> Server-side metrics from Dynatrace/AppDynamics/New Relic on the same timeline.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>Per-invocation load parameters.</b> One uploaded JMX, any number of load shapes, zero test-object edits.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>Explicit fleet control.</b> Machine count per region and max VUs per VM are yours to set, not derived.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>Percentage-based regional distribution.</b> Split one user total across data centres by weight.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>Native JMeter HTML report as an artifact.</b> The standard dashboard, generated and downloadable.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>One grid for functional and performance.</b> Same account, same CLI, same job history as your Selenium/Appium/Playwright runs.</div></div>
+    <div class="row"><div class="side he">Only HyperExecute</div><div class="what"><b>Thin, fully-scripted trigger loop.</b> Create → upload → trigger → poll → download, all REST, all flag-driven.</div></div>
+  </div>
+</section>
+
+<section id="choose">
+  <h2><span class="num">11</span>Choosing per run, not per vendor</h2>
+  <p class="dek">If both are available, the run type decides.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th class="dim">The run is…</th><th class="bm">Favours BlazeMeter when</th><th class="he">Favours HyperExecute when</th></tr></thead>
+    <tbody>
+      <tr><th>A CI smoke / regression check</th><td>You need a hard pass/fail gate and trend history out of the box.</td><td>You want it triggered by flags next to the functional suite, with results in the same place.</td></tr>
+      <tr><th>A capacity-finding exercise</th><td>Strongly — mid-run user adjustment finds the knee in one session.</td><td>Workable, but each data point is a separate job.</td></tr>
+      <tr><th>A soak / endurance run</th><td>Engine health over hours tells you whether the generator or the target degraded.</td><td>Fine; set <code>globalTimeout</code> generously and watch task metrics.</td></tr>
+      <tr><th>Geo-latency validation</th><td>Wider region list if you need a specific far-flung location.</td><td>Cleaner weighted split when the six regions cover your users.</td></tr>
+      <tr><th>Against an internal-only app</th><td>Private Locations, no tunnel required.</td><td>Requires the LambdaTest tunnel to be acceptable to security.</td></tr>
+      <tr><th>Under 2,000 VUs, scripted, repeatable</th><td>Works, with more platform to configure.</td><td>The sweet spot.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  <p><strong>Verification notes.</strong> Load shapes, region lists, and concurrency ceilings move between releases and vary by plan. Confirm the following against your own account before quoting them externally: BlazeMeter's mid-run adjustment (Enterprise-gated), per-plan concurrency and engine caps, HyperExecute's fixed-IP support for JMeter jobs, and both platforms' current region lists.</p>
+  <p>Grounded in this repo's <code>hyperexecute_automation.py</code> trigger surface (regions, duration, rampup, max-vusers-per-vm, concurrency, splitcsv, globalTimeout, artifact download) and vendor documentation:</p>
+  <ul>
+    <li><a href="https://www.lambdatest.com/support/docs/hyperexecute-run-jmeter-tests/">HyperExecute — Run JMeter tests</a></li>
+    <li><a href="https://www.lambdatest.com/support/docs/hyperexecute-performance-testing/">HyperExecute — Performance testing</a></li>
+    <li><a href="https://help.blazemeter.com/docs/guide/performance-load-configuration.html">BlazeMeter — Load configuration</a></li>
+    <li><a href="https://help.blazemeter.com/docs/guide/performance-jmeter-calibration.html">BlazeMeter — Calibrate a JMeter test</a></li>
+    <li><a href="https://help.blazemeter.com/docs/guide/performance-engine-health-report.html">BlazeMeter — Engine Health report</a></li>
+  </ul>
+</footer>
+
+</div>

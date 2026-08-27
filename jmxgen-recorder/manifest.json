@@ -1,0 +1,78 @@
+{
+  "manifest_version": 3,
+  "name": "jmxgen recorder",
+  "version": "1.0.0",
+  "description": "Record a browser journey and author test steps by hand, then export a HAR that jmxgen turns into a JMeter .jmx.",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "storage",
+    "downloads",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "jmxgen recorder",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "overlay.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+9",
+        "mac": "Command+Shift+9"
+      },
+      "description": "Open the jmxgen recorder popup"
+    },
+    "toggle-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+8",
+        "mac": "Command+Shift+8"
+      },
+      "description": "Start / stop recording the current tab"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "run.html",
+        "author.html"
+      ],
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ]
+    }
+  ]
+}
