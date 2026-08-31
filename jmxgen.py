@@ -597,6 +597,33 @@ def build_webdriver_sampler(s):
                 inner)
 
 
+def _by_expr(action):
+    """A Selenium `By` for an action, from either action shape.
+
+    Hand-written specs carry a single `xpath`. The recorder emits a ranked
+    `locators` list instead, so the best surviving locator is chosen here -
+    Selenium has no fallback chain of its own, which is one more reason the
+    Playwright emitter is the better target for recorded journeys.
+    """
+    if action.get("xpath"):
+        return "By.xpath('%s')" % action["xpath"]
+    for loc in action.get("locators") or []:
+        kind, value = loc.get("type"), (loc.get("value") or "").replace("'", "\\'")
+        if kind == "testid":
+            return "By.cssSelector('[%s=\"%s\"]')" % (loc.get("attr", "data-testid"), value)
+        if kind == "id":
+            return "By.id('%s')" % value
+        if kind == "name":
+            return "By.name('%s')" % value
+        if kind == "css":
+            return "By.cssSelector('%s')" % value
+        if kind == "text":
+            return "By.xpath(\"//*[normalize-space(text())='%s']\")" % value
+        if kind == "xpath":
+            return "By.xpath('%s')" % value
+    return None
+
+
 def groovy_from_actions(actions):
     """Turn a short action list into a WebDriver Sampler groovy script."""
     head = [
@@ -613,18 +640,31 @@ def groovy_from_actions(actions):
     body = []
     for a in actions:
         kind = (a.get("do") or "").lower()
-        if kind == "open":
+        by = _by_expr(a)
+        if kind in ("open", "navigate"):
             body.append("  WDS.browser.get('%s')" % a["url"])
-        elif kind == "click":
+        elif kind in ("click", "check", "uncheck"):
+            if not by:
+                continue
             body.append("  wait.until(ExpectedConditions.elementToBeClickable("
-                        "By.xpath('%s'))).click()" % a["xpath"])
+                        "%s)).click()" % by)
         elif kind == "type":
+            if not by:
+                continue
             body.append("  def el = wait.until(ExpectedConditions.presenceOfElementLocated("
-                        "By.xpath('%s')))" % a["xpath"])
-            body.append("  el.clear(); el.sendKeys('%s' as String)" % a["text"])
+                        "%s))" % by)
+            body.append("  el.clear(); el.sendKeys('%s' as String)" % a.get("text", ""))
+        elif kind == "select":
+            if not by:
+                continue
+            body.append("  new org.openqa.selenium.support.ui.Select("
+                        "wait.until(ExpectedConditions.presenceOfElementLocated(%s)))"
+                        ".selectByVisibleText('%s')" % (by, a.get("text", "")))
         elif kind == "wait_for":
+            if not by:
+                continue
             body.append("  wait.until(ExpectedConditions.presenceOfElementLocated("
-                        "By.xpath('%s')))" % a["xpath"])
+                        "%s))" % by)
         elif kind == "assert_text":
             body.append("  assert WDS.browser.getPageSource().contains('%s') : "
                         "'missing: %s'" % (a["text"], a["text"]))
@@ -1197,6 +1237,399 @@ def dump_spec(spec, path):
         import yaml
         return yaml.safe_dump(spec, sort_keys=False, default_flow_style=False)
     return json.dumps(spec, indent=2)
+
+
+# --------------------------------------------------------------------------
+# recorded browser actions -> spec steps -> Playwright
+# --------------------------------------------------------------------------
+
+
+def actions_to_steps(actions):
+    """Recorded GUI actions -> webdriver steps, grouped by transaction.
+
+    The recorder emits a flat list because that is what actually happened; the
+    spec wants them grouped the way the rest of a plan is grouped, so a browser
+    test reads with the same shape as the protocol one.
+    """
+    groups = []
+    for act in actions or []:
+        tx = act.get("transaction") or "Flow"
+        if not groups or groups[-1]["transaction"] != tx:
+            groups.append({"transaction": tx, "steps": []})
+        groups[-1]["steps"].append(act)
+
+    out = []
+    for grp in groups:
+        inner = []
+        for act in grp["steps"]:
+            inner.append({"type": "webdriver",
+                          "name": _action_name(act),
+                          "actions": [_action_spec(act)]})
+        out.append({"transaction": grp["transaction"], "steps": inner})
+    return out
+
+
+def _action_name(act):
+    verb = act.get("do", "do")
+    if verb == "navigate":
+        return "Open %s" % (act.get("url") or "")
+    label = act.get("label") or "element"
+    if verb == "type":
+        return "Type into %s" % label
+    return "%s %s" % (verb.capitalize(), label)
+
+
+def _action_spec(act):
+    """One recorded action -> one spec action, keeping the whole locator list.
+
+    The locators are carried through rather than collapsed to one: whichever
+    runner consumes this can try them in order, which is the entire point of
+    verifying several at capture time.
+    """
+    verb = act.get("do")
+    out = {"do": verb}
+    if verb == "navigate":
+        out["url"] = act.get("url")
+        return out
+    out["locators"] = act.get("locators") or []
+    if act.get("text") is not None:
+        out["text"] = act["text"]
+    if act.get("weak"):
+        out["weak"] = True
+    return out
+
+
+def _pw_locator(loc):
+    """One recorded locator -> the Playwright call that finds it."""
+    kind, value = loc.get("type"), loc.get("value")
+    if kind == "testid":
+        return "page.get_by_test_id(%r)" % value
+    if kind == "id":
+        return "page.locator(%r)" % ("#" + value)
+    if kind == "name":
+        return "page.locator(%r)" % ('[name="%s"]' % value)
+    if kind == "text":
+        return "page.get_by_text(%r, exact=True)" % value
+    if kind == "xpath":
+        return "page.locator(%r)" % ("xpath=" + value)
+    return "page.locator(%r)" % value
+
+
+def _pw_action(act, indent="    "):
+    """One spec action -> Playwright lines, with locator fallback."""
+    verb = act.get("do")
+    if verb == "navigate":
+        return ["%spage.goto(%r)" % (indent, act.get("url") or "/")]
+
+    locs = act.get("locators") or []
+    if not locs:
+        return ["%s# skipped %s - no locator was recorded" % (indent, verb)]
+
+    if verb == "assert_text":
+        return ["%sexpect(%s).to_contain_text(%r)"
+                % (indent, _pw_locator(locs[0]), act.get("text") or "")]
+
+    call = {"click": ".click()",
+            "type": ".fill(%r)" % (act.get("text") or ""),
+            "select": ".select_option(label=%r)" % (act.get("text") or ""),
+            "check": ".check()",
+            "uncheck": ".uncheck()"}.get(verb, ".click()")
+
+    args = ", ".join(_pw_locator(l) for l in locs)
+    return ["%sfirst_of(page, [%s])%s" % (indent, args, call)]
+
+
+PW_PRELUDE = '''"""Browser test generated by jmxgen.
+
+Run it:
+    pip install playwright && python3 -m playwright install chromium
+    python3 %(file)s
+
+This is the FUNCTIONAL half of the recording - it drives one real browser and
+proves the journey still works. It does not carry load: the .jmx from the same
+session is what scales to thousands of users. A browser per virtual user is not
+a load test, it is a way to measure your own hardware.
+"""
+
+from playwright.sync_api import sync_playwright, expect
+
+
+def first_of(page, locators, timeout=5000):
+    """The first locator that is actually present.
+
+    Every element was recorded with several locators, ranked most-stable first
+    and each verified against the live DOM at capture time. Trying them in
+    order is what lets the script survive a page that has moved on.
+    """
+    last = None
+    for loc in locators:
+        try:
+            loc.wait_for(state="attached", timeout=max(timeout // len(locators), 500))
+            return loc
+        except Exception as exc:          # noqa: BLE001 - try the next one
+            last = exc
+    raise AssertionError("no recorded locator matched: %%s" %% last)
+'''
+
+
+def spec_to_playwright(spec, filename="browser_test.py"):
+    """Render the webdriver steps of a spec as a runnable Playwright script."""
+    body = [PW_PRELUDE % {"file": filename}, "", "def run(page):"]
+    wrote = False
+    for tg in spec.get("thread_groups") or []:
+        for node in tg.get("steps") or []:
+            if node.get("transaction"):
+                inner = [x for x in node.get("steps") or []
+                         if x.get("type") == "webdriver"]
+                if not inner:
+                    continue
+                body.append("    # --- %s ---" % node["transaction"])
+                for step in inner:
+                    body.append("    # %s" % step.get("name", ""))
+                    for act in step.get("actions") or []:
+                        body += _pw_action(act)
+                    think = step.get("think_time")
+                    if isinstance(think, dict):
+                        think = think.get("min")
+                    if think:
+                        body.append("    page.wait_for_timeout(%d)" % int(think))
+                    wrote = True
+            elif node.get("type") == "webdriver":
+                for act in node.get("actions") or []:
+                    body += _pw_action(act)
+                wrote = True
+    if not wrote:
+        body.append("    raise SystemExit('this plan has no browser steps')")
+
+    headless = bool((spec.get("webdriver") or {}).get("headless", True))
+    body += [
+        "",
+        "",
+        "if __name__ == '__main__':",
+        "    with sync_playwright() as pw:",
+        "        browser = pw.chromium.launch(headless=%s)" % headless,
+        "        page = browser.new_page()",
+        "        try:",
+        "            run(page)",
+        "            print('browser test passed')",
+        "        finally:",
+        "            browser.close()",
+        "",
+    ]
+    return "\n".join(body)
+
+
+def spec_has_browser_steps(spec):
+    """True when the plan carries anything Playwright could run."""
+    for tg in spec.get("thread_groups") or []:
+        for step in _walk_steps(tg.get("steps") or []):
+            if step.get("type") == "webdriver":
+                return True
+    return False
+
+
+# --------------------------------------------------------------------------
+# spec -> Taurus YAML
+# --------------------------------------------------------------------------
+
+
+def _taurus_time(value, unit="s"):
+    """Taurus wants a duration with a unit; the spec keeps plain seconds."""
+    if value in (None, "", 0):
+        return None
+    return "%s%s" % (value, unit)
+
+
+def _taurus_assert(rules):
+    """spec assertions -> Taurus `assert` blocks.
+
+    Taurus splits by subject, and its http-code subject only takes strings, so
+    a numeric code from the spec has to be stringified or the run fails at
+    validation rather than at assertion time.
+    """
+    out = []
+    for rule in rules or []:
+        field = (rule.get("field") or "body").lower()
+        subject = {"code": "http-code", "headers": "http-headers",
+                   "body": "body", "message": "body"}.get(field, "body")
+        pattern = rule.get("pattern")
+        if pattern is None:
+            continue
+        entry = {"contains": [str(pattern)], "subject": subject}
+        match = (rule.get("match") or "contains").lower()
+        if match in ("matches", "regex", "regexp"):
+            entry["regexp"] = True
+        elif match == "equals":
+            # Taurus has no equals; an anchored regexp is the honest equivalent
+            entry["contains"] = ["^%s$" % re.escape(str(pattern))]
+            entry["regexp"] = True
+        if rule.get("negate") or match.startswith("not"):
+            entry["not"] = True
+        out.append(entry)
+    return out
+
+
+def _taurus_extract(extracts, req):
+    """spec extractors -> Taurus extract-* maps, keyed by variable name."""
+    for ex in extracts or []:
+        var = ex.get("var")
+        if not var:
+            continue
+        kind = (ex.get("type") or "regex").lower()
+        query = ex.get("query") or ex.get("pattern") or ""
+        if kind in ("json", "jsonpath"):
+            req.setdefault("extract-jsonpath", {})[var] = {
+                "jsonpath": query, "default": ex.get("default", "NOT_FOUND")}
+        elif kind in ("xpath",):
+            req.setdefault("extract-xpath", {})[var] = {
+                "xpath": query, "default": ex.get("default", "NOT_FOUND")}
+        elif kind in ("css", "css-jquery"):
+            req.setdefault("extract-css-jquery", {})[var] = {
+                "expression": query, "default": ex.get("default", "NOT_FOUND")}
+        else:
+            req.setdefault("extract-regexp", {})[var] = {
+                "regexp": query,
+                "match-no": ex.get("match_no", 1),
+                "template": ex.get("template", "$1$"),
+                "default": ex.get("default", "NOT_FOUND")}
+
+
+def _taurus_request(step):
+    """One spec step -> one Taurus request."""
+    req = {"label": step.get("name") or step.get("path") or "request",
+           "url": step.get("path") or step.get("url") or "/"}
+    method = (step.get("method") or "GET").upper()
+    if method != "GET":
+        req["method"] = method
+    if step.get("headers"):
+        req["headers"] = dict(step["headers"])
+    body = step.get("body")
+    if body is not None:
+        # a dict becomes form/JSON params, a string goes through as a raw body
+        req["body"] = body if isinstance(body, (dict, list)) else str(body)
+    asserts = _taurus_assert(step.get("assert"))
+    if asserts:
+        req["assert"] = asserts
+    _taurus_extract(step.get("extract"), req)
+    think = step.get("think_time")
+    if isinstance(think, dict):
+        # Taurus has no range, so the midpoint is the honest single value
+        lo, hi = think.get("min", 0), think.get("max", think.get("min", 0))
+        think = int((lo + hi) / 2)
+    if think:
+        req["think-time"] = _taurus_time(think, "ms")
+    return req
+
+
+def _taurus_steps(steps):
+    """Walk the spec's steps, preserving transaction nesting."""
+    out = []
+    for step in steps or []:
+        if step.get("transaction"):
+            out.append({"transaction": step["transaction"],
+                        "do": _taurus_steps(step.get("steps"))})
+        elif step.get("kind") in (None, "http"):
+            out.append(_taurus_request(step))
+    return out
+
+
+def spec_to_taurus(spec):
+    """Render the spec as a Taurus YAML config.
+
+    Taurus is BlazeMeter's own runner format, so this is what makes a plan
+    portable: the same file runs under `bzt` locally, on BlazeMeter, or as the
+    JMX we already emit. Only the HTTP parts convert - a spec carrying
+    webdriver steps keeps those in the .jmx, which is noted in the output.
+    """
+    defaults = spec.get("defaults") or {}
+    domain = defaults.get("domain") or ""
+    protocol = defaults.get("protocol") or "https"
+    address = ""
+    if domain:
+        address = domain if "://" in domain else "%s://%s" % (protocol, domain)
+
+    scenario = {}
+    if address:
+        scenario["default-address"] = address
+    if spec.get("variables"):
+        scenario["variables"] = dict(spec["variables"])
+    headers = dict(spec.get("headers") or {})
+    if spec.get("auth"):
+        headers.update(auth_header(spec["auth"]))
+    if headers:
+        scenario["headers"] = headers
+    if defaults.get("connect_timeout"):
+        scenario["timeout"] = _taurus_time(int(defaults["connect_timeout"]) // 1000)
+    scenario["store-cache"] = bool(spec.get("cache", False))
+    scenario["keepalive"] = True
+    # `store-cookie` is the boolean; Taurus's `cookies` key takes a list of
+    # cookie objects and blows up on a bool
+    scenario["store-cookie"] = bool(spec.get("cookies", True))
+
+    sources = []
+    for csv in spec.get("csv") or []:
+        entry = {"path": csv.get("file"), "loop": True}
+        if csv.get("variables"):
+            entry["variable-names"] = ",".join(csv["variables"])
+        sources.append(entry)
+    if sources:
+        scenario["data-sources"] = sources
+
+    groups = spec.get("thread_groups") or []
+    requests = []
+    for tg in groups:
+        requests += _taurus_steps(tg.get("steps"))
+    scenario["requests"] = requests
+
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", spec.get("name") or "jmxgen").strip("-").lower()
+    name = name or "jmxgen"
+
+    execution = []
+    for tg in groups or [{}]:
+        item = {"scenario": name, "concurrency": _num_prop(tg.get("threads")) or 1}
+        ramp = _num_prop(tg.get("ramp_up"))
+        hold = _num_prop(tg.get("duration"))
+        if ramp:
+            item["ramp-up"] = _taurus_time(ramp)
+        if hold:
+            item["hold-for"] = _taurus_time(hold)
+        elif tg.get("loops"):
+            item["iterations"] = tg["loops"]
+        execution.append(item)
+
+    config = {
+        "execution": execution,
+        "scenarios": {name: scenario},
+        "reporting": [{"module": "console"}, {"module": "final-stats"}],
+    }
+    return config
+
+
+def dump_taurus(spec):
+    """Taurus YAML as text, ready to write or hand to `bzt`."""
+    config = spec_to_taurus(spec)
+    header = ("# Generated by jmxgen - run with:  bzt this-file.yml\n"
+              "# Or upload it to BlazeMeter / run the .jmx on HyperExecute.\n")
+    wd = any(s.get("kind") == "webdriver"
+             for tg in spec.get("thread_groups") or []
+             for s in _walk_steps(tg.get("steps") or []))
+    if wd:
+        header += ("# NOTE: this plan has browser steps, which Taurus JMeter\n"
+                   "#       scenarios cannot express - they stay in the .jmx.\n")
+    if _have_yaml():
+        import yaml
+        return header + yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    return header + json.dumps(config, indent=2)
+
+
+def _walk_steps(steps):
+    """Every leaf step, transactions flattened."""
+    for step in steps or []:
+        if step.get("transaction"):
+            for inner in _walk_steps(step.get("steps")):
+                yield inner
+        else:
+            yield step
 
 
 # --------------------------------------------------------------------------
@@ -1896,8 +2329,22 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     }
     if plan_ann.get("name") and not name:
         spec["name"] = plan_ann["name"]
+
+    # The recorder rides the browser steps along in the HAR's own extension
+    # field. They become a second thread group: one user, running the journey in
+    # a real browser, next to the protocol group that carries the load.
+    recorded = ((log.get("_jmxgen") or {}).get("actions")) or []
+    if recorded:
+        spec["thread_groups"].append({
+            "name": "Browser journey",
+            "threads": 1, "ramp_up": 1, "loops": 1,
+            "steps": actions_to_steps(recorded),
+        })
+        spec.setdefault("webdriver", {"headless": True})
+
     return spec, {"kept": len(kept), "total": len(entries), "skipped": skipped,
-                  "correlated": correlated, "pages": len(order)}
+                  "correlated": correlated, "pages": len(order),
+                  "actions": len(recorded)}
 
 
 # --------------------------------------------------------------------------
@@ -4832,6 +5279,16 @@ def main():
     p.add_argument("--name")
     p.add_argument("--deep", action="store_true")
 
+    p = sub.add_parser("to-playwright", parents=[prox],
+                       help="spec, .jmx or HAR -> a runnable Playwright browser test")
+    p.add_argument("source", help="a spec .yaml, a .jmx, or a recorded .har")
+    p.add_argument("-o", "--out", help="output .py (default: alongside the source)")
+
+    p = sub.add_parser("to-taurus", parents=[prox],
+                       help="spec or .jmx -> Taurus YAML (runs under bzt / BlazeMeter)")
+    p.add_argument("source", help="a spec .yaml or an existing .jmx")
+    p.add_argument("-o", "--out", help="output .yml (default: alongside the source)")
+
     p = sub.add_parser("optimize", help="repair / slim an existing .jmx", parents=[prox])
     p.add_argument("jmx")
     p.add_argument("-o", "--out", required=True)
@@ -5137,6 +5594,42 @@ def main():
         print("wrote %s" % spec_path)
         if a.out:
             return _emit(spec, a.out, None, a.deep)
+        return 0
+
+    if a.cmd == "to-playwright":
+        low = a.source.lower()
+        if low.endswith(".jmx"):
+            spec, _ = jmx_to_spec(a.source)
+        elif low.endswith((".har", ".json")):
+            spec, _ = har_to_spec(a.source)
+        elif low.endswith((".yaml", ".yml")):
+            spec = load_spec(a.source)
+        else:
+            print("cannot read %s - expected a spec (.yaml), a plan (.jmx) "
+                  "or a recording (.har)" % a.source)
+            return 1
+        if not spec_has_browser_steps(spec):
+            print("no browser steps in %s" % a.source)
+            print("record with the extension and leave 'record browser steps' ticked")
+            return 1
+        out = a.out or (os.path.splitext(a.source)[0] + "_browser_test.py")
+        open(out, "w", encoding="utf-8").write(
+            spec_to_playwright(spec, os.path.basename(out)))
+        print("wrote %s" % out)
+        print("run it with:  python3 %s" % out)
+        return 0
+
+    if a.cmd == "to-taurus":
+        if a.source.lower().endswith(".jmx"):
+            spec, _ = jmx_to_spec(a.source)
+        else:
+            spec = load_spec(a.source)
+        out = a.out or (os.path.splitext(a.source)[0] + ".taurus.yml")
+        open(out, "w", encoding="utf-8").write(dump_taurus(spec))
+        n = sum(1 for tg in spec.get("thread_groups") or []
+                for _ in _walk_steps(tg.get("steps") or []))
+        print("wrote %s  (%d request(s))" % (out, n))
+        print("run it with:  bzt %s" % out)
         return 0
 
     if a.cmd == "optimize":

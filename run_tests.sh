@@ -115,6 +115,59 @@ echo "== think times from recording =="
 $JG from-har "$FIX/mixed.har" --real-think-time --spec "$WORK/t.yaml" -o "$WORK/t.jmx" >/dev/null 2>&1
 grep -q "think_time: 3000" "$WORK/t.yaml" && ok "3s gap became think time" || bad "3s gap became think time" "not found"
 
+echo "== browser steps (recorded GUI -> Playwright + JMX) =="
+python3 - "$FIX/gui.har" <<'PYEOF'
+import json, sys
+har = {"log": {"version": "1.2", "creator": {"name": "jmxgen-recorder", "version": "1.0.0"},
+  "_jmxgen": {"actions": [
+    {"do": "navigate", "url": "http://localhost:8791/", "transaction": "Open"},
+    {"do": "click", "label": "button", "transaction": "Buy",
+     "locators": [{"type": "testid", "value": "checkout"},
+                  {"type": "text", "value": "Checkout", "tag": "button"}]},
+    {"do": "type", "label": "input", "text": "emilys", "transaction": "Buy",
+     "locators": [{"type": "name", "value": "q"}]},
+    {"do": "select", "label": "select", "text": "Two", "transaction": "Buy",
+     "locators": [{"type": "id", "value": "count"}]}]},
+  "pages": [{"id": "Buy", "title": "Buy", "startedDateTime": "2026-01-01T00:00:00Z",
+             "pageTimings": {"onContentLoad": -1, "onLoad": -1}}],
+  "entries": [{"pageref": "Buy", "startedDateTime": "2026-01-01T00:00:00Z", "time": 5,
+    "request": {"method": "GET", "url": "http://localhost:8791/", "httpVersion": "HTTP/1.1",
+                "headers": [], "queryString": [], "cookies": [], "headersSize": -1, "bodySize": 0},
+    "response": {"status": 200, "statusText": "OK", "httpVersion": "HTTP/1.1", "headers": [],
+      "cookies": [], "content": {"size": 2, "mimeType": "text/html", "text": "ok"},
+      "redirectURL": "", "headersSize": -1, "bodySize": 2},
+    "cache": {}, "timings": {"send": 0, "wait": 5, "receive": 0}, "_resourceType": "document"}]}}
+open(sys.argv[1], "w").write(json.dumps(har))
+PYEOF
+
+$JG from-har "$FIX/gui.har" --spec "$WORK/gui.yaml" -o "$WORK/gui.jmx" >"$WORK/gui.log" 2>&1
+grep -q "VALID" "$WORK/gui.log"   && ok "recording -> plan with browser steps" || bad "recording -> plan with browser steps" "invalid"
+grep -q "Browser journey" "$WORK/gui.yaml"   && ok "browser steps become their own thread group"   || bad "browser steps become their own thread group" "not found"
+grep -q "WebDriverSampler" "$WORK/gui.jmx"   && ok "browser steps reach the .jmx" || bad "browser steps reach the .jmx" "no sampler"
+
+$JG to-playwright "$FIX/gui.har" -o "$WORK/gui_test.py" >/dev/null 2>&1
+python3 -c "import ast,sys; ast.parse(open('$WORK/gui_test.py').read())" 2>/dev/null   && ok "playwright script is valid python" || bad "playwright script is valid python" "syntax error"
+grep -q "get_by_test_id('checkout')" "$WORK/gui_test.py"   && ok "test-id locator preferred" || bad "test-id locator preferred" "not emitted"
+grep -q "first_of(page, \[" "$WORK/gui_test.py"   && ok "locator fallback chain emitted" || bad "locator fallback chain emitted" "single locator only"
+grep -q "select_option(label='Two')" "$WORK/gui_test.py"   && ok "select action" || bad "select action" "not emitted"
+
+# a plan with no browser steps must say so rather than write an empty script
+$JG to-playwright "$WORK/curl.jmx" -o "$WORK/none.py" >"$WORK/none.log" 2>&1
+grep -q "no browser steps" "$WORK/none.log"   && ok "refuses a plan with no browser steps"   || bad "refuses a plan with no browser steps" "wrote one anyway"
+$JG to-playwright "$FIX/cmds.txt" -o "$WORK/none2.py" >"$WORK/none2.log" 2>&1
+grep -q "expected a spec" "$WORK/none2.log"   && ok "names the file types it accepts"   || bad "names the file types it accepts" "raw parser error"
+
+echo "== Taurus export =="
+$JG to-taurus "$WORK/gui.yaml" -o "$WORK/gui.taurus.yml" >/dev/null 2>&1
+python3 -c "
+import yaml,sys
+c = yaml.safe_load(open('$WORK/gui.taurus.yml'))
+assert 'execution' in c and 'scenarios' in c, 'missing top-level keys'
+sc = list(c['scenarios'].values())[0]
+assert isinstance(sc.get('store-cookie'), bool), 'store-cookie must be the boolean'
+assert 'cookies' not in sc, 'cookies takes a list, not a bool - bzt rejects it'
+" 2>/dev/null && ok "taurus config shape" || bad "taurus config shape" "invalid for bzt"
+
 echo "== import / optimize round-trip =="
 $JG import-jmx "$WORK/har_auto.jmx" --spec "$WORK/rt.yaml" -o "$WORK/rt.jmx" >"$WORK/rt.log" 2>&1 \
   && grep -q "VALID" "$WORK/rt.log" && ok "jmx -> spec -> jmx" || bad "jmx -> spec -> jmx" "round-trip failed"

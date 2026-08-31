@@ -47,6 +47,19 @@
     </div>
   </div>
 
+  <details class="adv" id="recopts">
+    <summary>Recording options</summary>
+    <label class="l">Emulate</label>
+    <select id="device" class="in"></select>
+    <label class="l">User agent <span class="dim">(overrides the preset)</span></label>
+    <input type="text" id="userAgent" class="in" placeholder="leave blank to use the preset" />
+    <label class="l">Block URLs <span class="dim">(one pattern per line)</span></label>
+    <textarea id="blockedPatterns" class="in" rows="2"
+              placeholder="*googletagmanager.com*&#10;*hotjar*"></textarea>
+    <label class="chk"><input type="checkbox" id="disableCache" /> Disable browser cache</label>
+    <label class="chk"><input type="checkbox" id="bypassServiceWorker" /> Bypass service workers</label>
+  </details>
+
   <details class="adv">
     <summary>Where jmxgen runs</summary>
     <input type="text" id="endpoint" class="in" placeholder="http://localhost:8770" />

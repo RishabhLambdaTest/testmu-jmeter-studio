@@ -45,3 +45,11 @@ code { display: block; background: #0e1013; padding: 5px 6px; border-radius: 5px
 .chip { background: #1a1d23; border: 1px solid #2c3038; color: #c9ced6;
         border-radius: 99px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; }
 .chip:hover { background: #262a31; color: #e8eaed; border-color: #3a3f49; }
+
+/* recording options */
+.adv textarea.in { resize: vertical; font-family: ui-monospace, Menlo, monospace;
+                   font-size: 11px; min-height: 34px; }
+.adv .chk { display: flex; align-items: center; gap: 7px; color: #9aa0a6;
+            font-size: 11.5px; margin-top: 8px; cursor: pointer; }
+.adv .chk input { width: auto; margin: 0; }
+.dim { color: #6b7076; }

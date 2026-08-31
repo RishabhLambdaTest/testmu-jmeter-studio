@@ -118,6 +118,48 @@ document.querySelectorAll(".chip").forEach((chip) => {
   };
 });
 
+/* ---- recording options -------------------------------------------------
+   Applied live: changing one mid-recording pushes it to every attached tab, so
+   you are not forced to throw away a session to fix an emulation setting. */
+const REC_TEXT = ["userAgent", "blockedPatterns"];
+const REC_BOOL = ["disableCache", "bypassServiceWorker"];
+
+const DEVICE_LABELS = {
+  desktop: "Desktop (no emulation)",
+  "iphone-14": "iPhone 14",
+  "pixel-7": "Pixel 7",
+  "ipad-pro": "iPad Pro",
+  "galaxy-s22": "Galaxy S22",
+};
+
+async function loadRecordingOptions() {
+  const d = await send({ type: "devices" });
+  const names = (d.ok && d.data) || ["desktop"];
+  $("device").innerHTML = names
+    .map((n) => `<option value="${n}">${DEVICE_LABELS[n] || n}</option>`).join("");
+
+  const r = await send({ type: "getRecordingOptions" });
+  if (!r.ok) return;
+  const o = r.data || {};
+  $("device").value = o.device || "desktop";
+  REC_TEXT.forEach((k) => $(k).value = o[k] || "");
+  REC_BOOL.forEach((k) => $(k).checked = !!o[k]);
+}
+
+async function saveRecordingOptions() {
+  const options = { device: $("device").value };
+  REC_TEXT.forEach((k) => options[k] = $(k).value);
+  REC_BOOL.forEach((k) => options[k] = $(k).checked);
+  const r = await send({ type: "setRecordingOptions", options });
+  if (r.ok) say($("device").value === "desktop" ? "options saved"
+                                                : "emulating " + DEVICE_LABELS[$("device").value]);
+}
+["device", ...REC_TEXT, ...REC_BOOL].forEach((k) => {
+  const el = $(k);
+  el.addEventListener(el.type === "checkbox" || el.tagName === "SELECT"
+                      ? "change" : "input", saveRecordingOptions);
+});
+
 $("saveEndpoint").onclick = async () => {
   const r = await send({ type: "setEndpoint", endpoint: $("endpoint").value.trim() });
   say(r.ok ? "saved" : r.error, !r.ok);
@@ -167,6 +209,7 @@ send({ type: "status" }).then((r) => {
   render(r.ok ? r.data : null);
   if (!r.ok || !r.data || !r.data.recording) checkTab();
   checkService();
+  loadRecordingOptions();
 });
 
 /* Run on HyperExecute opens a real tab, never the popup: the popup closes as soon

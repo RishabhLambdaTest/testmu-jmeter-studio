@@ -329,6 +329,46 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, _emit(sid, sess["spec"],
                                          {"mode": "restored",
                                           "correlated": sess["correlations"]}))
+        if self.path.startswith("/api/browser/"):
+            raw = self.path[len("/api/browser/"):]
+            sid, _, query = raw.partition("?")
+            sess = SESSIONS.get(sid)
+            if not sess:
+                return self._send(404, {"error": "no such session"})
+            if not jmxgen.spec_has_browser_steps(sess["spec"]):
+                return self._send(400, {"error": "this plan has no browser steps - "
+                                                 "record with 'record browser steps' ticked"})
+            name = urllib.parse.parse_qs(query).get("name", [""])[0]
+            name = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(name or "")).strip("._-")
+            name = (name.rsplit(".", 1)[0] if "." in name else name) or "browser"
+            name += "_test.py"
+            data = jmxgen.spec_to_playwright(sess["spec"], name).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/x-python")
+            self.send_header("Content-Disposition",
+                             'attachment; filename="%s"' % name)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
+        if self.path.startswith("/api/taurus/"):
+            raw = self.path[len("/api/taurus/"):]
+            sid, _, query = raw.partition("?")
+            sess = SESSIONS.get(sid)
+            if not sess:
+                return self._send(404, {"error": "no such session"})
+            data = jmxgen.dump_taurus(sess["spec"]).encode("utf-8")
+            name = urllib.parse.parse_qs(query).get("name", [""])[0]
+            name = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(name or "")).strip("._-")
+            if not name.endswith((".yml", ".yaml")):
+                name = (name.rsplit(".", 1)[0] if "." in name else name) or "plan"
+                name += ".taurus.yml"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-yaml")
+            self.send_header("Content-Disposition",
+                             'attachment; filename="%s"' % name)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
         if self.path.startswith("/api/plan/"):
             raw = self.path[len("/api/plan/"):]
             sid, _, query = raw.partition("?")

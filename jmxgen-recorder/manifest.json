@@ -32,6 +32,7 @@
         "<all_urls>"
       ],
       "js": [
+        "locator.js",
         "overlay.js"
       ],
       "css": [

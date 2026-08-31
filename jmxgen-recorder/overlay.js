@@ -55,6 +55,8 @@
           <button class="jg-b" id="jg-name">Rename…</button>
           <button class="jg-b jg-warn" id="jg-skip">Skip last</button>
         </div>
+        <label class="jg-chk"><input type="checkbox" id="jg-gui" checked />
+          record browser steps <span class="jg-count" id="jg-gui-count">0</span></label>
         <button class="jg-b jg-wide" id="jg-manual">+ Manual request…</button>
         <button class="jg-b jg-wide jg-go" id="jg-export">Finish → export HAR</button>
         <div class="jg-hint">then: <code>jmxgen from-har &lt;file&gt; -o plan.jmx</code></div>
@@ -101,6 +103,11 @@
       teardown();
     };
     q("#jg-c-cancel").onclick = () => showConfirm(false);
+
+    q("#jg-gui").onchange = (e) => {
+      guiOn = e.target.checked;
+      toast(guiOn ? "recording browser steps" : "browser steps paused - HTTP still recording");
+    };
 
     q("#jg-tx-set").onclick = async () => {
       const name = q("#jg-tx").value.trim();
@@ -177,6 +184,112 @@
     };
   }
 
+  /* ---- GUI capture ------------------------------------------------------
+     Recorded alongside the HTTP traffic, from the same session: the protocol
+     plan is what scales to thousands of users, and the browser steps are what
+     prove the journey still works. One recording, two artifacts.
+
+     Everything here is deliberately conservative - a recorder that captures
+     every mousemove produces a script nobody can read, so only the actions
+     that change application state are kept. */
+
+  let guiOn = true;
+  const LOC = () => window.__jmxgenLocator;
+
+  const fromOverlay = (event) => {
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    return path.some((n) => n && n.id === "jmxgen-overlay");
+  };
+
+  async function pushAction(action) {
+    if (!guiOn) return;
+    const r = await send({ type: "guiAction", action });
+    if (r && r.ok) bumpGui(r.data && r.data.actions);
+  }
+
+  function bumpGui(n) {
+    const el = root && root.querySelector("#jg-gui-count");
+    if (el && typeof n === "number") el.textContent = n;
+  }
+
+  function record(node, type, extra) {
+    const loc = LOC();
+    if (!loc || !node || node.nodeType !== 1) return;
+    const found = loc.locate(node);
+    if (!found.locators.length) return;
+    const action = {
+      do: type,
+      label: loc.describe(node),
+      locators: found.locators,
+      url: location.href,
+      at: Date.now(),
+      ...(extra || {}),
+    };
+    // a locator list that survived verification but is xpath-only will break
+    // the moment the page structure shifts - say so now, not at replay
+    if (found.weak) {
+      action.weak = true;
+      toast("recorded " + type + " - only a positional locator was stable", true);
+    }
+    pushAction(action);
+  }
+
+  function onClick(event) {
+    if (!guiOn || fromOverlay(event)) return;
+    const node = LOC().realTarget(event);
+    // a click that lands on a label/icon inside a button belongs to the button
+    const target = (node.closest && node.closest("button, a, [role=button], input, select, textarea")) || node;
+    record(target, "click");
+  }
+
+  /* Typing is one action with a final value, not one per keystroke. `change`
+     fires on blur for text inputs, which is exactly the moment the value is
+     settled. */
+  function onChange(event) {
+    if (!guiOn || fromOverlay(event)) return;
+    const node = LOC().realTarget(event);
+    const tag = (node.tagName || "").toLowerCase();
+    if (tag === "select") {
+      const opt = node.options && node.options[node.selectedIndex];
+      return record(node, "select", { text: opt ? opt.text : node.value });
+    }
+    if (node.type === "checkbox" || node.type === "radio") {
+      return record(node, node.checked ? "check" : "uncheck");
+    }
+    if (tag === "input" || tag === "textarea") {
+      if (node.type === "password") {
+        // never bake a password into a script; point at a variable instead
+        return record(node, "type", { text: "${PASSWORD}", secret: true });
+      }
+      return record(node, "type", { text: node.value });
+    }
+  }
+
+  /* SPA routing does not reload the page, so pushState has to be watched or
+     half a modern app's navigation is invisible. */
+  let lastUrl = location.href;
+  function noteNavigation(how) {
+    if (!guiOn) return;
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    pushAction({ do: "navigate", url: location.href, how: how, at: Date.now() });
+  }
+
+  function installGuiCapture() {
+    // capture phase, so a handler that stops propagation cannot hide the action
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("change", onChange, true);
+    window.addEventListener("popstate", () => noteNavigation("back"));
+    for (const m of ["pushState", "replaceState"]) {
+      const orig = history[m];
+      history[m] = function () {
+        const out = orig.apply(this, arguments);
+        setTimeout(() => noteNavigation(m), 0);
+        return out;
+      };
+    }
+  }
+
   function makeDraggable(handle, box) {
     let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
     handle.addEventListener("mousedown", (e) => {
@@ -238,5 +351,10 @@
     }
   });
 
-  send({ type: "status" }).then((r) => r.ok && render(r.data));
+  installGuiCapture();
+  send({ type: "status" }).then((r) => {
+    if (!r.ok) return;
+    render(r.data);
+    bumpGui(r.data && r.data.actions);
+  });
 })();

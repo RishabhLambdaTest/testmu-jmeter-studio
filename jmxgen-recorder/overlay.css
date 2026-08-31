@@ -54,3 +54,8 @@
 #jmxgen-overlay .jg-close:hover { color: #ff6b6b; }
 #jmxgen-overlay .jg-confirm { padding: 12px 10px; }
 #jmxgen-overlay .jg-ctext { color: #e8eaed; margin-bottom: 10px; line-height: 1.5; }
+
+/* browser-step capture toggle */
+#jmxgen-overlay .jg-chk { display:flex; align-items:center; gap:7px; margin:8px 0 6px;
+  color:#9aa0a6; font-size:11.5px; cursor:pointer; }
+#jmxgen-overlay .jg-chk input { width:auto; margin:0; }

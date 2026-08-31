@@ -14,7 +14,7 @@ SHARE="dist/jmxgen-recorder-${VERSION}-share.zip"
 # explicitly so a stray file in the folder never rides along into a release.
 FILES=(
     manifest.json background.js offscreen.html offscreen.js
-    overlay.js overlay.css
+    locator.js overlay.js overlay.css
     popup.html popup.css popup.js
     run.html run.css run.js
     author.html author.css author.js

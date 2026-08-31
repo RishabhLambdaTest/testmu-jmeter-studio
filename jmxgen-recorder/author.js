@@ -169,6 +169,16 @@ function render() {
   $("cards").innerHTML = cards.map(([k, n]) =>
     `<div class="card"><div class="n">${esc(n)}</div><div class="k">${k}</div></div>`).join("");
   if (!$("planName").value) $("planName").value = "plan.jmx";
+
+  const browser = (STATE.steps || []).some((s) => s.kind === "webdriver");
+  $("playwright").hidden = !browser;
+  $("dualNote").hidden = !browser;
+  if (browser) {
+    $("dualNote").textContent =
+      "This recording carries browser steps too. The .jmx is what scales to " +
+      "thousands of users; the browser test drives one real Chromium and " +
+      "proves the journey still works.";
+  }
   showTab("steps");
 }
 
@@ -222,6 +232,24 @@ $("download").onclick = () => {
   chrome.downloads.download({ url: url, filename: name || "plan.jmx" });
   say("saved " + (name || "plan.jmx"), "ok");
 };
+
+/* One recording yields two artifacts, and the split matters enough to say it
+   in the page rather than leave people to discover it: the .jmx carries the
+   load, the browser test proves the journey. */
+function saveFrom(path, ext, kind) {
+  const stem = ($("planName").value.trim() || "plan").replace(/\.[^.]+$/, "");
+  const name = stem + ext;
+  chrome.downloads.download({
+    url: base() + path + STATE.session + "?name=" + encodeURIComponent(name),
+    filename: name,
+  });
+  say("saved " + name + " - " + kind, "ok");
+}
+
+$("taurus").onclick = () => STATE && saveFrom("/api/taurus/", ".taurus.yml",
+                                              "runs under bzt or BlazeMeter");
+$("playwright").onclick = () => STATE && saveFrom("/api/browser/", "_browser_test.py",
+                                                  "one browser, functional check");
 
 $("validate").onclick = async () => {
   if (!STATE) return;

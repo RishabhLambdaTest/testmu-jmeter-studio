@@ -21,6 +21,7 @@ function freshState(tabId, transaction) {
     transactions: [tx],
     pending: {},         // requestId -> partial entry
     entries: [],         // finished entries, in order
+    actions: [],         // recorded browser steps, in order
     counter: 0,
     exported: false,     // false as soon as anything new is captured
   };
@@ -208,6 +209,7 @@ function statusPayload() {
     ? {
         recording: !state.stopped,
         count: state.entries.length,
+        actions: (state.actions || []).length,
         unsaved: state.entries.length > 0 && !state.exported,
         transaction: state.transaction,
         transactions: state.transactions,
@@ -215,7 +217,7 @@ function statusPayload() {
           ? state.entries[state.entries.length - 1].request.url
           : "",
       }
-    : { recording: false, count: 0, transaction: "", transactions: [] };
+    : { recording: false, count: 0, actions: 0, transaction: "", transactions: [] };
 }
 
 /* ------------------------------------------------------- start / stop / export */
@@ -237,15 +239,109 @@ async function assertRecordable(tabId) {
 }
 
 
+
+/* ---- recording options -------------------------------------------------
+   BlazeMeter exposes these on its recorder and they change what the capture is
+   worth: emulating a phone gets you the mobile variant of the site, and a warm
+   cache means the second run records nothing at all for half the assets. All of
+   them are CDP settings applied right after Network.enable, so they cost one
+   round trip per tab and nothing at replay time. */
+
+const DEVICES = {
+  desktop: null,
+  "iphone-14": {
+    ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    width: 390, height: 844, scale: 3, mobile: true, platform: "iPhone",
+  },
+  "pixel-7": {
+    ua: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    width: 412, height: 915, scale: 2.6, mobile: true, platform: "Linux armv8l",
+  },
+  "ipad-pro": {
+    ua: "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    width: 1024, height: 1366, scale: 2, mobile: true, platform: "iPad",
+  },
+  "galaxy-s22": {
+    ua: "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    width: 360, height: 780, scale: 3, mobile: true, platform: "Linux armv8l",
+  },
+};
+
+const DEFAULT_OPTIONS = {
+  device: "desktop",
+  userAgent: "",          // a custom string wins over the device preset
+  disableCache: true,     // a warm cache silently drops assets from the capture
+  bypassServiceWorker: true,
+  blockedPatterns: "",    // newline or comma separated, e.g. *.googletagmanager.com
+};
+
+async function recordingOptions() {
+  const got = await chrome.storage.local.get("jmxgen.recopts");
+  return { ...DEFAULT_OPTIONS, ...(got["jmxgen.recopts"] || {}) };
+}
+
+async function setRecordingOptions(patch) {
+  const next = { ...(await recordingOptions()), ...(patch || {}) };
+  await chrome.storage.local.set({ "jmxgen.recopts": next });
+  // a live recording picks the change up on every attached tab
+  if (state && !state.stopped) {
+    for (const tabId of state.tabIds || []) {
+      await applyOptions(tabId, next).catch(() => {});
+    }
+  }
+  return next;
+}
+
+const cdp = (tabId, method, params) =>
+  chrome.debugger.sendCommand({ tabId }, method, params || {});
+
+async function applyOptions(tabId, opts) {
+  const dev = DEVICES[opts.device] || null;
+  const ua = (opts.userAgent || "").trim() || (dev && dev.ua) || "";
+
+  // each of these is best-effort: an older Chrome missing one command must not
+  // take the whole recording down with it
+  if (ua) {
+    await cdp(tabId, "Network.setUserAgentOverride",
+              { userAgent: ua, platform: (dev && dev.platform) || undefined })
+      .catch(() => {});
+  }
+  if (dev) {
+    await cdp(tabId, "Emulation.setDeviceMetricsOverride", {
+      width: dev.width, height: dev.height,
+      deviceScaleFactor: dev.scale, mobile: dev.mobile,
+    }).catch(() => {});
+    await cdp(tabId, "Emulation.setTouchEmulationEnabled",
+              { enabled: true, maxTouchPoints: 5 }).catch(() => {});
+  } else {
+    await cdp(tabId, "Emulation.clearDeviceMetricsOverride").catch(() => {});
+  }
+  await cdp(tabId, "Network.setCacheDisabled",
+            { cacheDisabled: !!opts.disableCache }).catch(() => {});
+  await cdp(tabId, "Network.setBypassServiceWorker",
+            { bypass: !!opts.bypassServiceWorker }).catch(() => {});
+
+  const patterns = String(opts.blockedPatterns || "")
+    .split(/[\n,]/).map((p) => p.trim()).filter(Boolean);
+  await cdp(tabId, "Network.setBlockedURLs", { urls: patterns }).catch(() => {});
+}
+
+/* Every attach point needs the same buffers and the same options, so they all
+   go through here rather than three copies drifting apart. */
+async function enableCapture(tabId) {
+  await cdp(tabId, "Network.enable", {
+    maxTotalBufferSize: 100 * 1024 * 1024,
+    maxResourceBufferSize: 20 * 1024 * 1024,
+  });
+  await applyOptions(tabId, await recordingOptions());
+}
+
 async function start(tabId) {
   if (state && !state.stopped) throw new Error("already recording this tab");
   if (state && state.stopped) state = null;   // a stopped session starts fresh
   await assertRecordable(tabId);
   await chrome.debugger.attach({ tabId }, PROTOCOL);
-  await chrome.debugger.sendCommand({ tabId }, "Network.enable", {
-    maxTotalBufferSize: 100 * 1024 * 1024,
-    maxResourceBufferSize: 20 * 1024 * 1024,
-  });
+  await enableCapture(tabId);
   state = freshState(tabId);
   await persist();
   broadcast();
@@ -273,10 +369,7 @@ async function startAtUrl(rawUrl, transaction) {
       await new Promise((r) => setTimeout(r, 150));
     }
   }
-  await chrome.debugger.sendCommand({ tabId: tab.id }, "Network.enable", {
-    maxTotalBufferSize: 100 * 1024 * 1024,
-    maxResourceBufferSize: 20 * 1024 * 1024,
-  });
+  await enableCapture(tab.id);
   state = freshState(tab.id, transaction);
   await persist();
   broadcast();
@@ -330,7 +423,10 @@ function buildHar() {
       browser: { name: "Chrome", version: "" },
       pages,
       entries,
-      _jmxgen: { authoredWith: "jmxgen-recorder", recordedAt: iso(state.startedAt) },
+      // the browser steps ride in the HAR's own extension field, so one file
+      // still carries the whole session and `from-har` can emit both plans
+      _jmxgen: { authoredWith: "jmxgen-recorder", recordedAt: iso(state.startedAt),
+                 actions: state.actions || [] },
     },
   };
 }
@@ -572,10 +668,7 @@ async function attachExtra(tabId) {
       await new Promise((r) => setTimeout(r, 150));
     }
   }
-  await chrome.debugger.sendCommand({ tabId }, "Network.enable", {
-    maxTotalBufferSize: 100 * 1024 * 1024,
-    maxResourceBufferSize: 20 * 1024 * 1024,
-  });
+  await enableCapture(tabId);
   state.tabIds.push(tabId);
   await persist();
   return true;
@@ -642,6 +735,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await sendToConsole(msg.options) });
         case "ping":
           return sendResponse({ ok: true, data: await pingEndpoint() });
+        case "guiAction": {
+          if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
+          const a = msg.action || {};
+          // a click straight after typing in the same field is the blur, not a
+          // separate step the user meant to record
+          const prev = state.actions[state.actions.length - 1];
+          if (prev && prev.do === a.do && prev.label === a.label &&
+              a.at - prev.at < 400) {
+            state.actions[state.actions.length - 1] = { ...a, transaction: prev.transaction };
+          } else {
+            state.actions.push({ ...a, transaction: state.transaction });
+          }
+          state.exported = false;
+          await persist();
+          return sendResponse({ ok: true, data: { actions: state.actions.length } });
+        }
+        case "getRecordingOptions":
+          return sendResponse({ ok: true, data: await recordingOptions() });
+        case "setRecordingOptions":
+          return sendResponse({ ok: true, data: await setRecordingOptions(msg.options) });
+        case "devices":
+          return sendResponse({ ok: true, data: Object.keys(DEVICES) });
         case "setEndpoint":
           await chrome.storage.local.set({endpoint: msg.endpoint || DEFAULT_ENDPOINT});
           return sendResponse({ ok: true, data: msg.endpoint || DEFAULT_ENDPOINT });
