@@ -94,3 +94,18 @@ code { display:block; background:var(--sunk); padding:6px 7px;
             font-size:11.5px; margin-top:8px; cursor:pointer }
 .adv .chk input { width:auto; margin:0; accent-color:var(--brand) }
 .dim { color:var(--text-mute) }
+
+/* ---- session weight ----------------------------------------------------
+   A recording that can run for an hour has to show what it is accumulating,
+   or "no limit" is a claim rather than something you can see. */
+.meter { color:var(--text-mute); font-size:10px; margin-top:6px;
+         font-variant-numeric:tabular-nums; letter-spacing:.02em }
+.meter b { color:var(--text-dim); font-weight:600 }
+.meter .warn { color:var(--warn) }
+
+/* ---- a recording found on disk at startup ------------------------------- */
+.resume { border:1px solid var(--brand-lo); background:var(--brand-wash);
+          border-radius:var(--r); padding:10px 11px; margin-bottom:10px }
+.rtext { font-size:11.5px; color:var(--text); line-height:1.45; margin-bottom:8px }
+.rrow { display:flex; gap:6px }
+.rrow .b { flex:1; font-size:11px; padding:6px 8px }

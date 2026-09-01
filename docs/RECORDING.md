@@ -119,6 +119,34 @@ recording to fix a setting.
 [OPTIONS.md](OPTIONS.md) works through each of these with an example, along with
 every other control in the extension.
 
+## Recording for an hour
+
+There is no limit on how long you record, and nothing is sampled or dropped
+along the way. What makes that work is being selective about *bytes* rather
+than about requests.
+
+Every request is stored. For service calls and pages that means the method,
+URL, headers, body, status and response text: everything the plan is built
+from. For images, fonts, stylesheets and scripts it means a stub, because their
+content cannot appear in a `.jmx` — a font's bytes cannot be asserted on,
+correlated, or sent by a sampler. Their URL, method and type are kept, which is
+all a `web` plan ever needs, so one recording still authors either kind of plan
+without keeping a megabyte of CSS.
+
+Measured on a real session of 241 requests, 200 of them images: 241 entries and
+41 bodies on disk. The images cost nothing but their addresses.
+
+The recording is written to IndexedDB as it happens, which means:
+
+- it is on disk, not in memory, so an hour-long session costs the browser
+  nothing to hold;
+- it survives Chrome evicting the extension's worker, which happens routinely
+  during quiet stretches;
+- it survives closing Chrome altogether, and is offered back when you return.
+
+A realistic hour on an API-heavy application is roughly 3,000 service calls and
+70 MB. The browser grants gigabytes, and the popup shows the headroom.
+
 ## What gets thrown away
 
 A raw browser session is mostly not a load test. From the sample recording:

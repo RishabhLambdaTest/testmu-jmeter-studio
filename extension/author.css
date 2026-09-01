@@ -72,3 +72,12 @@ td.mono { font-family:var(--mono); font-size:11.5px }
 .log .error,.log .pyerr { color:var(--bad) }
 .log .ok    { color:var(--good) }
 .logwrap.collapsed .log { display:none }
+
+/* ---- choosing part of a long recording ---------------------------------- */
+.seglist { display:grid; gap:6px; margin:8px 0 10px }
+.seg { display:flex; align-items:center; gap:8px; padding:7px 9px;
+       border:1px solid var(--line); border-radius:var(--r-sm); background:var(--surface) }
+.seg input { margin:0 }
+.seg .name { font-weight:600; font-size:13px }
+.seg .n { margin-left:auto; color:var(--text-mute); font-size:11.5px;
+          font-variant-numeric:tabular-nums }

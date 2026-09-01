@@ -51,6 +51,16 @@
     </div>
   </fieldset>
 
+  <!-- shown only when authoring from a recording: an hour-long session is
+       authored by choosing the parts of it you want -->
+  <fieldset id="segments" hidden>
+    <legend>From the recording</legend>
+    <p class="hint" id="segSummary"></p>
+    <div id="segList" class="seglist"></div>
+    <label class="chk"><input type="checkbox" id="collapse" checked />
+      Collapse repeated requests into one sampler</label>
+  </fieldset>
+
   <details id="filters">
     <summary>Traffic filters</summary>
     <label for="traffic">Keep</label>
@@ -152,6 +162,7 @@
     <input type="text" id="endpoint" placeholder="http://localhost:8770" />
   </details>
 </div>
+<script src="db.js"></script>
 <script src="engine.js"></script>
 <script src="author.js"></script>
 </body>

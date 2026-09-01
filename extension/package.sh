@@ -18,6 +18,7 @@ SHARE="$OUTDIR/testmu-jmeter-studio-${VERSION}-share.zip"
 FILES=(
     manifest.json background.js offscreen.html offscreen.js
     brand.css
+    db.js
     locator.js overlay.js overlay.css
     popup.html popup.css popup.js
     run.html run.css run.js

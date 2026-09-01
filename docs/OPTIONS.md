@@ -5,12 +5,14 @@ defaults are chosen to be right most of the time, so treat this as reference
 rather than a checklist: you can author a good plan without touching any of it.
 
 - [The authoring page](#the-authoring-page)
-  [Source](#source) · [Traffic filters](#traffic-filters) ·
+  [Source](#source) · [From the recording](#from-the-recording) ·
+  [Traffic filters](#traffic-filters) ·
   [Authentication](#authentication) · [Test data](#test-data) ·
   [Load profile](#load-profile) · [What comes out](#what-comes-out)
 - [The popup](#the-popup)
   [Starting a recording](#starting-a-recording) · [Transaction](#transaction) ·
-  [Recording options](#recording-options) · [Finishing](#finishing)
+  [Recording options](#recording-options) · [While it is recording](#while-it-is-recording) ·
+  [Finishing](#finishing)
 - [The panel on the page](#the-panel-on-the-page)
 
 ---
@@ -22,6 +24,40 @@ rather than a checklist: you can author a good plan without touching any of it.
 *Where the requests come from.* Seven of them, covered one by one in
 [SOURCES.md](SOURCES.md) with a sample file each. The choice changes which input
 appears below it: a file picker, a text box, or both.
+
+## From the recording
+
+Shown only when you are authoring from something you recorded. An hour-long
+session is authored by choosing the parts of it you want.
+
+### The transaction list
+
+Every transaction you named while recording, with what it holds:
+
+```
+Login           2 requests · 2 not assets
+Search          1 requests · 1 not assets
+Idle polling   12 requests · 12 not assets
+```
+
+Untick what this plan should leave out. The recording itself is untouched, so
+you can author a different plan from the same session a minute later.
+
+**Example.** A two-hour session where you spent forty minutes reading
+documentation with a dashboard open in another tab. Tick Login, Search and
+Checkout; leave the polling behind. You get a plan someone would actually run
+instead of three thousand samplers.
+
+### Collapse repeated requests into one sampler
+
+On by default.
+
+**Example.** An hour with the app open polls `GET /api/notifications` four
+hundred times. Collapsed, that is one sampler. Left alone, it is four hundred
+samplers and a `.jmx` measured in megabytes, describing a test nobody meant to
+write.
+
+Requests count as repeats when the method, URL and body all match.
 
 ## Traffic filters
 
@@ -257,6 +293,26 @@ Requests hit the network instead of being answered by a service worker.
 **Example.** A PWA answers half its API calls from a worker cache. Without this,
 the recording contains the handful that escaped, and the plan tests almost
 nothing.
+
+## While it is recording
+
+Under the counter, the popup shows what the session weighs: requests, elapsed
+time, response text on disk, and how much browser storage is left.
+
+```
+241 requests · 3s · 2 KB of responses · 10240 MB of browser storage free
+```
+
+There is no cap on a recording. It is written to disk as it happens, so the
+only ceiling is what the browser grants the extension, which is measured in
+gigabytes and shown here. If it ever passes 80% of that grant, this line says
+so rather than letting a write fail.
+
+A recording also survives closing Chrome. Reopen it and the popup offers the
+session back:
+
+> A recording from 20:32 is on disk: 241 requests. Chrome was closed before it
+> was used.
 
 ## Finishing
 

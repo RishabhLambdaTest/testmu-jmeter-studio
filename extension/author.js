@@ -14,6 +14,7 @@ const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
 let MODES = {};
 let STATE = null;          // the last /api/author response
 let FILE = null;           // {name, content} of the picked file
+let FROM_RECORDING = false;  // author from what the recorder left on disk
 
 const base = () => ($("endpoint").value.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, "");
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
@@ -185,7 +186,14 @@ $("go").onclick = async () => {
     duration: $("dur").value.trim(),
   };
   const body = { mode: mode, options: opts, text: $("text").value.trim() };
-  if (FILE) body.file = FILE;
+  if (FROM_RECORDING) {
+    // written onto the engine's filesystem, so the payload carries a path
+    // rather than the recording itself
+    const { path } = await streamRecordingToEngine();
+    body.file = { name: "recording.har", path };
+  } else if (FILE) {
+    body.file = FILE;
+  }
 
   $("go").disabled = true;
   say("generating…", "info");
@@ -359,30 +367,79 @@ $("ship").onclick = async () => {
 };
 
 /* ---- a recording handed over by the popup ------------------------------
-   The recorder puts the HAR in session storage and opens this page with its
-   key. Reading it is one-shot: a reload must not silently re-author a capture
-   the user has moved on from. */
+   Nothing is handed over, in fact: the recorder writes to IndexedDB and this
+   page shares its origin, so it streams the recording straight out of the
+   store and into the engine's filesystem. One entry is in memory at a time,
+   which is what makes an hour-long session author at all.
+
+   Assets are left behind unless the mode asks for them. An hour of browsing is
+   perhaps 40,000 requests of which 3,000 are service calls; there is no reason
+   for the other 37,000 to cross into Python only to be discarded there. */
+async function streamRecordingToEngine() {
+  const wantAssets = $("traffic").value === "web";
+  const sink = await window.JmxgenEngine.openInput("recording.har");
+  const stats = await CaptureRead.stream(sink.write, {
+    skipAssets: !wantAssets,
+    only: selectedSegments(),
+    collapse: $("collapse").checked,
+  });
+  const { path, bytes } = sink.close();
+  const notes = [];
+  if (stats.assets) notes.push(`${stats.assets} assets ${wantAssets ? "kept" : "left out"}`);
+  if (stats.repeats) notes.push(`${stats.repeats} repeats collapsed`);
+  addLog("ok", `recording read from disk - ${stats.total} captured, ` +
+               `${stats.written} sent to the engine` +
+               (notes.length ? ` (${notes.join(", ")})` : "") +
+               `, ${(bytes / 1e6).toFixed(1)} MB`);
+  return { path, stats };
+}
+
+/* The transactions you named while recording, with what each one holds. This
+   is how a two-hour session becomes a plan someone would run: tick Login,
+   Search and Checkout, leave the forty minutes of reading behind. */
+async function showSegments() {
+  const txs = await CaptureRead.transactions();
+  const list = $("segList");
+  if (txs.length <= 1) {
+    // one transaction is not a choice worth presenting
+    list.innerHTML = "";
+    $("segSummary").textContent = "";
+    return txs;
+  }
+  list.innerHTML = txs.map((t, i) => `
+    <label class="seg">
+      <input type="checkbox" class="segbox" value="${esc(t.name)}" checked />
+      <span class="name">${esc(t.name)}</span>
+      <span class="n">${t.total} requests · ${t.api} not assets</span>
+    </label>`).join("");
+  return txs;
+}
+
+function selectedSegments() {
+  const boxes = [...document.querySelectorAll(".segbox")];
+  if (!boxes.length) return null;
+  const on = boxes.filter((b) => b.checked).map((b) => b.value);
+  return on.length === boxes.length ? null : on;    // all of it means no filter
+}
+
 async function takeRecording() {
-  const key = new URLSearchParams(location.search).get("har");
-  if (!key) return false;
-  // The recorder holds the HAR in the service worker rather than in session
-  // storage, which tops out at ten megabytes and is exactly what a long
-  // recording exceeds. Asking for it by message keeps the size irrelevant.
-  const r = await new Promise((resolve) =>
-    chrome.runtime.sendMessage({ type: "takeHandoff", key }, (res) =>
-      resolve(res || { ok: false, error: "the recorder did not answer" })));
-  const rec = r.ok ? r.data : null;
-  if (!rec) {
-    addLog("warn", (r.error || "the recording was already used") +
-                   " - record again, or pick a HAR file");
+  const q = new URLSearchParams(location.search);
+  if (q.get("from") !== "recording") return false;
+  const n = await CaptureRead.count();
+  if (!n) {
+    addLog("warn", "no recording on disk - record again, or pick a HAR file");
     return false;
   }
-  if (rec.rebuilt) addLog("info", "the recorder had restarted; rebuilt from its checkpoint");
-  FILE = { name: rec.name, content: rec.content };
+  FROM_RECORDING = true;
   $("mode").value = "har";
   syncInputs();
-  addLog("ok", `recording loaded - ${rec.count} captured request(s)`);
-  say(`recording loaded - ${rec.count} request(s)`, "ok");
+  $("segments").hidden = false;
+  const txs = await showSegments();
+  $("segSummary").textContent =
+    `${n} request(s) on disk across ${txs.length} transaction(s). ` +
+    `Untick what this plan should leave out.`;
+  say(`recording loaded - ${n} request(s) on disk`, "ok");
+  addLog("ok", `recording found - ${n} request(s)`);
   return true;
 }
 

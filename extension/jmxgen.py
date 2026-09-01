@@ -2120,17 +2120,40 @@ def _extractor_from_headers(value, headers_text, label):
     return ex, var
 
 
-def _correlate(entries, kept, steps_by_entry, limit=60, rules=None):
+# How far back a value may have come from, counted in kept requests.
+#
+# Two reasons for a horizon, and the second matters more than the first.
+#
+# Cost: without one, every candidate value is compared against every response
+# before it, so an hour-long recording is quadratic. Measured in the extension,
+# 3,000 requests correlate in 3.7s and 6,000 in 36.8s - the same session twice
+# the length takes ten times as long, and 12,000 is minutes.
+#
+# Correctness: a token that first appears forty minutes and two thousand
+# requests earlier is almost certainly a coincidence, not a source. Wiring it
+# up produces a plan that looks correlated and is wrong, which is worse than
+# one that admits it found nothing. Real sources are near: a login, then the
+# calls that use it.
+CORRELATION_HORIZON = 300
+
+
+def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
+               horizon=CORRELATION_HORIZON):
     """Wire values a later request sends back to the response that produced them.
 
     Returns provenance for every correlation so the result is reviewable rather
-    than a silent rewrite."""
+    than a silent rewrite. `horizon` bounds how far back a source may be, in
+    kept requests; 0 or None searches the whole session."""
     rules = rules if rules is not None else CORRELATION_RULES
     sources = []
     for idx in kept:
         entry = entries[idx]
         content = (entry.get("response") or {}).get("content") or {}
         sources.append((idx, content.get("text") or "", _response_headers(entry)))
+
+    # position within `sources`, so the search can start at the nearest
+    # preceding response rather than walking from the beginning of the session
+    pos_of = {src[0]: p for p, src in enumerate(sources)}
 
     found, made = [], {}
     for idx in kept:
@@ -2150,9 +2173,12 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None):
 
             src_idx = src_body = src_headers = None
             where = None
-            for j, body, headers in sources:
-                if j >= idx:
-                    break
+            # backwards from the request that used it: the nearest response
+            # carrying the value is the one that produced it
+            here = pos_of.get(idx, len(sources))
+            stop = 0 if not horizon else max(0, here - horizon)
+            for p in range(here - 1, stop - 1, -1):
+                j, body, headers = sources[p]
                 if body and value in body:
                     src_idx, src_body, src_headers, where = j, body, headers, "body"
                     break

@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.2.1-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.0-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.2.1.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.0.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.2.1-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.0-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -273,7 +273,9 @@ Every error the extension can produce, what it actually means, and what to do.
 | The panel is not on the page | It was hidden with the `–` button. It returns on the next captured request, or from the popup |
 | A popup window (SSO, payment) is not captured | Popups opened from the recorded tab are followed automatically. One opened another way needs recording separately |
 | "nothing recorded yet" when generating | The session holds no requests. Either recording never started, or it was reset |
-| The recording seems to have vanished | Chrome evicts idle service workers. The session is checkpointed to storage and restored, so reopen the popup and check the counter before assuming it is gone |
+| The recording seems to have vanished | It has not. The session is on disk, and survives both Chrome evicting the extension's worker and closing the browser. Reopen the popup: a recording found on disk is offered back |
+| "Session storage quota bytes exceeded" | Fixed in 1.3.0, where the recording moved to disk. If you see it, you are on an older build |
+| "could not write to disk" | The browser's storage grant is exhausted, which the popup warns about at 80%. Free space, or discard old recordings |
 
 ### While authoring
 

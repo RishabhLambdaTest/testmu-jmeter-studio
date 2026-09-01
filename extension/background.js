@@ -6,10 +6,29 @@
  * along in `_jmxgen` fields, which the HAR spec allows and other tools ignore.
  */
 
+importScripts("db.js");
+
 const PROTOCOL = "1.3";
 const RECORDABLE = /^https?:\/\//i;
 
-let state = null;      // null when idle
+/* Assets carry no bytes that can change a .jmx. A font's content cannot be
+   correlated, asserted on or sent by a sampler - only its URL, method and type
+   matter, and those are what a `web` plan needs. So an asset is stored as a
+   stub, which is why one recording still authors either kind of plan without
+   ever storing a megabyte of CSS. */
+const ASSET_TYPES = new Set(["image", "font", "media", "stylesheet", "script",
+                             "manifest", "other-static"]);
+
+/* A response bigger than this cannot be pulled back out of Chrome anyway - it
+   is over the per-resource buffer we asked for on Network.enable - so the
+   request is kept with a note rather than being lost. */
+const MAX_BODY = 20 * 1024 * 1024;
+
+/* Streaming endpoints never emit loadingFinished. Without a sweep they sit in
+   `pending` for the life of the recording and never reach the store. */
+const PENDING_TIMEOUT = 120 * 1000;
+
+let state = null;      // null when idle; never holds captured entries
 
 function freshState(tabId, transaction) {
   const tx = transaction || "Recorded";
@@ -19,70 +38,51 @@ function freshState(tabId, transaction) {
     startedAt: Date.now(),
     transaction: tx,
     transactions: [tx],
-    pending: {},         // requestId -> partial entry
-    entries: [],         // finished entries, in order
+    pending: {},         // requestId -> partial entry, in memory only
     actions: [],         // recorded browser steps, in order
-    counter: 0,
+    seq: 0,              // next entry key; the store is keyed by it
+    count: 0,            // captured so far
+    bytes: 0,            // response text held on disk, for the popup
+    lastSeq: -1,
+    lastUrl: "",
     exported: false,     // false as soon as anything new is captured
   };
 }
 
-/* The checkpoint exists because service workers get evicted mid-recording. It
- * is a fallback, never the source of truth: `state` in memory is. That matters
- * here, because session storage holds ten megabytes and a recording passes it
- * easily - the response bodies correlation needs are the same bodies that fill
- * the quota. So the checkpoint degrades in steps rather than failing, and a
- * failure to write one never interrupts capture.
+/* A recording is a session, not an append to the last one. */
+async function beginCapture() {
+  queue = [];
+  bodyQueue = [];
+  await CaptureStore.clearCapture().catch(() => {});
+  // ask the browser not to evict this origin mid-session; an hour of capture
+  // is exactly the kind of thing a storage-pressure sweep would take
+  CaptureStore.keepOnDisk().catch(() => {});
+}
+
+/* The checkpoint is metadata only - counters, the current transaction, the
+ * browser steps. The recording itself lives in IndexedDB, so this is a few
+ * kilobytes at any session length and can no longer overflow the ten megabytes
+ * session storage allows. It is written to both places: session storage for
+ * speed, and the database so a browser restart can still find the recording.
  */
 let persistTimer = null;
-let leanCheckpoint = false;    // bodies no longer fit, and the user has been told
 
-function withoutBodies(entry) {
-  const r = entry.response;
-  if (!r || !r.content || !r.content.text) return entry;
-  return { ...entry, response: { ...r, content: { ...r.content, text: "" } } };
+function metaOf() {
+  const { pending, ...rest } = state;
+  return { ...rest, pending: {} };
 }
 
 async function writeCheckpoint() {
   if (!state) {
     await chrome.storage.session.remove("state").catch(() => {});
+    await CaptureStore.putMeta({ live: false }).catch(() => {});
     return;
   }
-  const full = { ...state, pending: {} };
-  try {
-    await chrome.storage.session.set({ state: full });
-    leanCheckpoint = false;
-    return;
-  } catch (e) {
-    // over quota - fall through
-  }
-
-  // Second try without response bodies. A restored session still replays the
-  // journey; it just cannot correlate values it no longer holds.
-  try {
-    await chrome.storage.session.set({
-      state: { ...full, bodiesDropped: true, entries: full.entries.map(withoutBodies) },
-    });
-    if (!leanCheckpoint) {
-      notify("recording is large - the crash checkpoint has dropped response bodies");
-      leanCheckpoint = true;
-    }
-    return;
-  } catch (e) {
-    // still over quota
-  }
-
-  // Nothing fits. Recording continues in memory, which is where it was always
-  // being kept anyway - say so once, so a browser restart is not a surprise.
-  await chrome.storage.session.remove("state").catch(() => {});
-  if (!leanCheckpoint) {
-    notify("recording too large to checkpoint - finish and build before closing Chrome");
-    leanCheckpoint = true;
-  }
+  const meta = metaOf();
+  await chrome.storage.session.set({ state: meta }).catch(() => {});
+  await CaptureStore.putMeta({ live: true, ...meta }).catch(() => {});
 }
 
-/* Debounced. Rewriting the whole session on every captured request is O(n^2)
-   work over a long recording, and the checkpoint only has to be recent. */
 function persist() {
   if (persistTimer) return Promise.resolve();
   persistTimer = setTimeout(() => {
@@ -92,19 +92,67 @@ function persist() {
   return Promise.resolve();
 }
 
-/* For the moments that must be durable: stopping, exporting, handing over. */
 async function persistNow() {
   if (persistTimer) {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+  await flushEntries();
   await writeCheckpoint();
+}
+
+/* ---- the write path ------------------------------------------------------
+   Entries queue and go to disk in batches. One transaction per request costs a
+   round trip each time, which is what makes a long recording feel heavy;
+   batched, capture costs 0.03 ms per request. */
+let queue = [];        // entries not yet written
+let bodyQueue = [];    // their bodies, stored separately so scans stay cheap
+let flushTimer = null;
+let flushing = null;
+
+function queueEntry(entry, body) {
+  queue.push(entry);
+  if (body != null) bodyQueue.push({ seq: entry.seq, text: body });
+  if (queue.length >= 25) return flushEntries();
+  if (!flushTimer) flushTimer = setTimeout(() => flushEntries(), 250);
+  return Promise.resolve();
+}
+
+async function flushEntries() {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (flushing) await flushing;
+  if (!queue.length && !bodyQueue.length) return;
+  const entries = queue, bodies = bodyQueue;
+  queue = [];
+  bodyQueue = [];
+  flushing = CaptureStore.putEntries(entries, bodies)
+    .catch((e) => {
+      // disk is full or the origin was evicted: keep the session usable and
+      // say so, rather than failing silently on the next request
+      notify("could not write to disk: " + (e && e.message ? e.message : e));
+    })
+    .finally(() => { flushing = null; });
+  await flushing;
 }
 
 async function restore() {
   if (state) return state;
   const got = await chrome.storage.session.get("state");
   if (got && got.state) state = got.state;
+  // session storage is cleared by a browser restart; the database is not, so a
+  // recording survives closing Chrome and can be resumed or authored
+  if (!state) {
+    const meta = await CaptureStore.getMeta().catch(() => null);
+    if (meta && meta.live) {
+      const { k, live, ...rest } = meta;
+      // the browser was closed mid-session: the debugger is long detached, so
+      // this is a finished recording waiting to be used, not a live one
+      state = { ...rest, pending: {}, stopped: true, recovered: true };
+    }
+  }
   if (state && !state.tabIds) state.tabIds = [state.tabId];   // older sessions
   return state;
 }
@@ -131,8 +179,20 @@ function iso(ms) {
 
 /* ------------------------------------------------------------------ capture */
 
+/* Chrome keeps the debugger attached across a service-worker restart and wakes
+   the worker with the next event, at which point `state` is gone. Restoring
+   before the event is handled is what stops the first request after a restart
+   from being dropped - and with the recording on disk, nothing before it is
+   lost either. */
 function onEvent(source, method, params) {
-  if (!state || !(state.tabIds || [state.tabId]).includes(source.tabId)) return;
+  if (!state) {
+    restore().then((st) => {
+      if (st && !st.stopped) onEvent(source, method, params);
+    });
+    return;
+  }
+  if (!(state.tabIds || [state.tabId]).includes(source.tabId)) return;
+  sweepPending();
 
   if (method === "Network.requestWillBeSent") {
     const r = params.request || {};
@@ -189,17 +249,34 @@ function onEvent(source, method, params) {
     if (!e) return;
     delete state.pending[params.requestId];
     if (!e.response) e.response = emptyResponse();
+
+    // An asset's bytes cannot change a .jmx, so they are never fetched: that
+    // is most of an hour's traffic never crossing the process boundary.
+    if (ASSET_TYPES.has((e._type || "").toLowerCase())) return finishEntry(e, null);
+
+    // Chrome will not return a body past the per-resource buffer we asked for.
+    // Keep the request, note why the body is absent.
+    if ((params.encodedDataLength || 0) > MAX_BODY) {
+      e._jmxgen = { ...(e._jmxgen || {}), bodyOmitted: "larger than 20 MB" };
+      return finishEntry(e, null);
+    }
+
     // response bodies are what makes automatic correlation possible
     chrome.debugger.sendCommand(
       { tabId: e._tab || state.tabId },
       "Network.getResponseBody",
       { requestId: params.requestId },
       (result) => {
-        if (!chrome.runtime.lastError && result && !result.base64Encoded) {
-          e.response.content.text = result.body || "";
-          e.response.content.size = (result.body || "").length;
+        let body = null;
+        if (chrome.runtime.lastError) {
+          // the buffer was recycled, or the tab went away - the request still
+          // belongs in the plan, so it is kept with the reason attached
+          e._jmxgen = { ...(e._jmxgen || {}), bodyOmitted: chrome.runtime.lastError.message };
+        } else if (result && !result.base64Encoded) {
+          body = result.body || "";
+          e.response.content.size = body.length;
         }
-        finishEntry(e);
+        finishEntry(e, body);
       }
     );
     return;
@@ -210,7 +287,25 @@ function onEvent(source, method, params) {
     if (!e) return;
     delete state.pending[params.requestId];
     if (!e.response) e.response = emptyResponse();
-    finishEntry(e);
+    finishEntry(e, null);
+  }
+}
+
+/* Server-sent events, long-poll and anything still streaming never emit
+   loadingFinished. Left alone they sit in `pending` for the life of the
+   recording and never reach the store, so a plan silently misses them. */
+let lastSweep = 0;
+function sweepPending() {
+  const now = Date.now();
+  if (now - lastSweep < 30000) return;
+  lastSweep = now;
+  for (const [id, e] of Object.entries(state.pending)) {
+    const started = Date.parse(e.startedDateTime) || now;
+    if (now - started < PENDING_TIMEOUT) continue;
+    delete state.pending[id];
+    if (!e.response) e.response = emptyResponse();
+    e._jmxgen = { ...(e._jmxgen || {}), bodyOmitted: "still streaming when captured" };
+    finishEntry(e, null);
   }
 }
 
@@ -242,16 +337,61 @@ function emptyResponse() {
   };
 }
 
-function finishEntry(e) {
-  e.time = 0;
-  e.cache = {};
-  e.timings = { send: 0, wait: 0, receive: 0 };
-  e.pageref = e._tx;
-  delete e._tab;
-  e._jmxgen = e._jmxgen || {};
-  state.entries.push(e);
-  state.counter = state.entries.length;
+/* What gets stored, and what does not.
+ *
+ * The engine reads exactly these fields out of a HAR: method, url, headers,
+ * postData, status, redirectURL, content.text, content.mimeType,
+ * startedDateTime, pageref, _resourceType and _jmxgen. Everything else a HAR
+ * carries - queryString, cookies, headersSize, bodySize, cache, timings,
+ * httpVersion - is reconstructed on export instead of being stored, because it
+ * cannot change the plan and it is several hundred bytes on every request.
+ *
+ * Assets are reduced further, to a stub: their URL, method, status and type is
+ * all a `web` plan ever needs of them. Which is what lets one recording author
+ * either kind of plan without keeping a megabyte of stylesheet.
+ */
+function finishEntry(e, body) {
+  const type = (e._type || "").toLowerCase();
+  const asset = ASSET_TYPES.has(type);
+  const seq = state.seq++;
+
+  const record = asset
+    ? {
+        seq,
+        tx: e._tx,
+        startedDateTime: e.startedDateTime,
+        type,
+        hasBody: false,
+        request: { method: e.request.method, url: e.request.url },
+        response: { status: (e.response && e.response.status) || 0 },
+        ...(e._jmxgen && Object.keys(e._jmxgen).length ? { _jmxgen: e._jmxgen } : {}),
+      }
+    : {
+        seq,
+        tx: e._tx,
+        startedDateTime: e.startedDateTime,
+        type,
+        hasBody: body != null,
+        request: {
+          method: e.request.method,
+          url: e.request.url,
+          headers: e.request.headers,
+          ...(e.request.postData ? { postData: e.request.postData } : {}),
+        },
+        response: {
+          status: (e.response && e.response.status) || 0,
+          redirectURL: (e.response && e.response.redirectURL) || "",
+          mimeType: (e.response && e.response.content && e.response.content.mimeType) || "",
+        },
+        ...(e._jmxgen && Object.keys(e._jmxgen).length ? { _jmxgen: e._jmxgen } : {}),
+      };
+
+  state.count = (state.count || 0) + 1;
+  state.lastSeq = seq;
+  state.lastUrl = e.request.url;
+  state.bytes = (state.bytes || 0) + (body ? body.length : 0);
   state.exported = false;      // there is now something unsaved
+  queueEntry(record, asset ? null : body);
   persist();
   broadcast();
 }
@@ -271,16 +411,20 @@ function statusPayload() {
   return state
     ? {
         recording: !state.stopped,
-        count: state.entries.length,
+        count: state.count || 0,
         actions: (state.actions || []).length,
-        unsaved: state.entries.length > 0 && !state.exported,
+        unsaved: (state.count || 0) > 0 && !state.exported,
         transaction: state.transaction,
         transactions: state.transactions,
-        lastUrl: state.entries.length
-          ? state.entries[state.entries.length - 1].request.url
-          : "",
+        lastUrl: state.lastUrl || "",
+        // shown live in the popup, so a long recording is visible while it
+        // grows rather than at the moment something breaks
+        bytes: state.bytes || 0,
+        startedAt: state.startedAt,
+        recovered: !!state.recovered,
       }
-    : { recording: false, count: 0, actions: 0, transaction: "", transactions: [] };
+    : { recording: false, count: 0, actions: 0, transaction: "", transactions: [],
+        bytes: 0 };
 }
 
 /* ------------------------------------------------------- start / stop / export */
@@ -405,6 +549,7 @@ async function start(tabId) {
   await assertRecordable(tabId);
   await chrome.debugger.attach({ tabId }, PROTOCOL);
   await enableCapture(tabId);
+  await beginCapture();
   state = freshState(tabId);
   await persist();
   broadcast();
@@ -433,6 +578,7 @@ async function startAtUrl(rawUrl, transaction) {
     }
   }
   await enableCapture(tab.id);
+  await beginCapture();
   state = freshState(tab.id, transaction);
   await persist();
   broadcast();
@@ -453,124 +599,40 @@ async function stop() {
   }
   state.stopped = true;
   await persistNow();          // the session is finished; make the checkpoint current
-  const payload = { recording: false, count: state.entries.length };
+  const payload = { recording: false, count: state.count || 0 };
   broadcast();
   return payload;
 }
 
-function buildHar() {
-  const pages = state.transactions.map((t, i) => ({
-    id: t,
-    title: t,
-    startedDateTime: iso(state.startedAt + i),
-    pageTimings: { onContentLoad: -1, onLoad: -1 },
-  }));
-  const entries = state.entries
-    .filter((e) => !(e._jmxgen && e._jmxgen.skip))
-    .map((e) => {
-      const copy = { ...e };
-      delete copy._tx;
-      // Chrome knows what each request IS (document / xhr / fetch / script /
-      // image / font). Keeping it lets one recording produce either an API-level
-      // or a full browser-level plan. _resourceType is what DevTools' own HAR
-      // export uses, so other tools understand it too.
-      copy._resourceType = (e._type || "").toLowerCase();
-      copy._jmxgen = { ...(copy._jmxgen || {}), type: copy._resourceType };
-      delete copy._type;
-      return copy;
-    });
-  return {
-    log: {
-      version: "1.2",
-      creator: { name: "testmu-jmeter-studio", version: "1.2.0" },
-      browser: { name: "Chrome", version: "" },
-      pages,
-      entries,
-      // the browser steps ride in the HAR's own extension field, so one file
-      // still carries the whole session and `from-har` can emit both plans
-      _jmxgen: { authoredWith: "testmu-jmeter-studio", recordedAt: iso(state.startedAt),
-                 actions: state.actions || [] },
-    },
-  };
-}
-
-async function ensureOffscreen() {
-  const has = await chrome.offscreen.hasDocument();
-  if (has) return;
-  await chrome.offscreen.createDocument({
-    url: "offscreen.html",
-    reasons: ["BLOBS"],
-    justification: "Turn the recorded session into a downloadable HAR file.",
-  });
-}
-
-async function blobUrlFor(text) {
-  // service workers have no DOM, so createObjectURL lives in the offscreen page;
-  // a data: URL would cap out well below the size of a real recording
-  try {
-    await ensureOffscreen();
-    const r = await chrome.runtime.sendMessage({ type: "make-blob-url", text });
-    if (r && r.ok && r.url) return { url: r.url, blob: true };
-  } catch (e) {
-    /* fall through */
-  }
-  return { url: "data:application/octet-stream;base64," + b64(text), blob: false };
-}
-
-const DEFAULT_ENDPOINT = "http://localhost:8770";
-
-async function getEndpoint() {
-  try {
-    const got = await chrome.storage.local.get("endpoint");
-    return (got && got.endpoint) || DEFAULT_ENDPOINT;
-  } catch (e) {
-    return DEFAULT_ENDPOINT;
-  }
-}
-
-async function pingEndpoint() {
-  const base = await getEndpoint();
-  try {
-    const r = await fetch(base + "/api/ping", {cache: "no-store"});
-    return {up: r.ok, endpoint: base};
-  } catch (e) {
-    return {up: false, endpoint: base};
-  }
+/* The whole recording as one string. Used by Export HAR, where the file has to
+   exist in full anyway, and never on the authoring path. */
+async function buildHarText(opts) {
+  await flushEntries();
+  const parts = [];
+  const stats = await CaptureRead.stream((chunk) => parts.push(chunk), opts);
+  return { text: parts.join(""), stats };
 }
 
 /* Hand the recording to the extension's own authoring page.
  *
- * This used to POST the HAR to a console on localhost. It no longer does:
- * the engine runs inside the extension, so the capture only has to travel
- * from here to author.html. Session storage is the vehicle - it holds the
- * HAR for exactly as long as the browser session, is never written to disk,
- * and is readable only by this extension's own pages.
+ * Nothing is copied. The recording is in IndexedDB, the authoring page shares
+ * this origin, so the page opens the same database and streams it into the
+ * engine itself. What travels is a URL.
  */
-const handoffs = new Map();   // key -> the HAR, held in the worker, not in storage
-
 async function harHandoff(options) {
-  if (!state || !state.entries.length) throw new Error("nothing recorded yet");
-  const text = JSON.stringify(buildHar());
-  const key = "har-" + Date.now().toString(36);
-  // The HAR is the same bytes that overflow session storage, so it stays in
-  // the worker and only a marker is stored. If the worker is evicted before
-  // the authoring page collects it, the page asks for it again and it is
-  // rebuilt from the checkpoint.
-  handoffs.set(key, { name: "recording.har", content: b64(text), count: state.entries.length });
-  await chrome.storage.session.set({ [key]: { pending: true, count: state.entries.length } })
-    .catch(() => {});
+  if (!state || !(state.count || 0)) throw new Error("nothing recorded yet");
+  await persistNow();          // everything queued is on disk before the page reads it
   // the capture has left the recorder intact, so it no longer counts as unsaved
   state.exported = true;
-  await persistNow();
   broadcast();
 
-  const q = new URLSearchParams({ mode: "har", har: key, go: "1" });
+  const q = new URLSearchParams({ mode: "har", from: "recording", go: "1" });
   if (options && options.open === "hyperexecute") q.set("then", "hx");
   await chrome.tabs.create({
     url: chrome.runtime.getURL("author.html") + "?" + q.toString(),
     active: true,
   });
-  return { count: state.entries.length };
+  return { count: state.count };
 }
 
 // Run on HyperExecute without a recording - straight to the form, where the user
@@ -581,9 +643,8 @@ async function openHyperExecute() {
 }
 
 async function exportHar() {
-  if (!state || !state.entries.length) throw new Error("nothing recorded yet");
-  const har = buildHar();
-  const text = JSON.stringify(har, null, 1);
+  if (!state || !(state.count || 0)) throw new Error("nothing recorded yet");
+  const { text } = await buildHarText();
   const { url, blob } = await blobUrlFor(text);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const filename = `jmxgen-session-${stamp}.har`;
@@ -601,7 +662,7 @@ async function exportHar() {
   state.exported = true;
   await persist();
   broadcast();
-  return { filename, count: har.log.entries.length, bytes: text.length };
+  return { filename, count: state.count, bytes: text.length };
 }
 
 function b64(str) {
@@ -616,52 +677,62 @@ function b64(str) {
 
 /* ------------------------------------------------------- manual authoring */
 
-function lastEntry() {
-  if (!state || !state.entries.length) throw new Error("nothing captured yet");
-  return state.entries[state.entries.length - 1];
+/* Every control in the on-page panel applies to the request that was just
+   captured. That record may still be in the write queue, so look there first
+   and fall back to one cursor step from the end of the store. */
+async function lastEntry() {
+  if (!state || !(state.count || 0)) throw new Error("nothing captured yet");
+  if (queue.length) return queue[queue.length - 1];
+  const rec = await CaptureStore.lastStored();
+  if (!rec) throw new Error("nothing captured yet");
+  return rec;
 }
 
-function annotate(patch) {
-  const e = lastEntry();
-  e._jmxgen = { ...(e._jmxgen || {}), ...patch };
+async function saveEntry(rec) {
+  // if it is still queued it will be written with the batch; otherwise it is
+  // already on disk and this is an update in place
+  if (!queue.includes(rec)) await CaptureStore.putEntries([rec], []);
   persist();
+  return rec;
+}
+
+async function annotate(patch) {
+  const e = await lastEntry();
+  e._jmxgen = { ...(e._jmxgen || {}), ...patch };
+  await saveEntry(e);
   return e;
 }
 
-function addAssertion(a) {
-  const e = lastEntry();
+async function addAssertion(a) {
+  const e = await lastEntry();
   e._jmxgen = e._jmxgen || {};
   e._jmxgen.assert = (e._jmxgen.assert || []).concat([a]);
-  persist();
+  await saveEntry(e);
   return e._jmxgen.assert.length;
 }
 
-function addExtractor(ex) {
-  const e = lastEntry();
+async function addExtractor(ex) {
+  const e = await lastEntry();
   e._jmxgen = e._jmxgen || {};
   e._jmxgen.extract = (e._jmxgen.extract || []).concat([ex]);
-  persist();
+  await saveEntry(e);
   return e._jmxgen.extract.length;
 }
 
-function addManualRequest(step) {
+async function addManualRequest(step) {
   // a request the user types in - authored, never observed
   const url = step.url;
-  const entry = {
+  const seq = state.seq++;
+  const record = {
+    seq,
+    tx: state.transaction,
     startedDateTime: iso(Date.now()),
-    time: 0,
-    cache: {},
-    timings: { send: 0, wait: 0, receive: 0 },
-    pageref: state.transaction,
+    type: "manual",
+    hasBody: false,
     request: {
       method: (step.method || "GET").toUpperCase(),
       url,
-      httpVersion: "HTTP/1.1",
       headers: headerArray(step.headers),
-      queryString: queryArray(url),
-      cookies: [],
-      headersSize: -1,
-      bodySize: step.body ? step.body.length : 0,
       ...(step.body
         ? {
             postData: {
@@ -674,14 +745,16 @@ function addManualRequest(step) {
           }
         : {}),
     },
-    response: { ...emptyResponse(), status: 200 },
+    response: { status: 200, redirectURL: "", mimeType: "" },
     _jmxgen: { manual: true, name: step.name || undefined },
   };
-  state.entries.push(entry);
-  state.counter = state.entries.length;
+  state.count = (state.count || 0) + 1;
+  state.lastSeq = seq;
+  state.lastUrl = url;
+  await queueEntry(record, null);
   persist();
   broadcast();
-  return state.entries.length;
+  return state.count;
 }
 
 function setTransaction(name) {
@@ -704,7 +777,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   await restore();
   try {
     if (state && !state.stopped) {
-      const n = state.entries.length;
+      const n = state.count || 0;
       await stop();
       notify(`stopped - ${n} requests captured, open the popup to export`);
     } else {
@@ -797,28 +870,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await openHyperExecute() });
         case "harHandoff":
           return sendResponse({ ok: true, data: await harHandoff(msg.options) });
-        case "takeHandoff": {
-          const held = handoffs.get(msg.key);
-          if (held) {
-            handoffs.delete(msg.key);      // one-shot, so a reload cannot re-author it
-            await chrome.storage.session.remove(msg.key).catch(() => {});
-            return sendResponse({ ok: true, data: held });
-          }
-          // the worker restarted: rebuild from whatever the checkpoint holds
-          await restore();
-          if (!state || !state.entries.length) {
-            return sendResponse({ ok: false, error: "the recording is no longer available" });
-          }
-          await chrome.storage.session.remove(msg.key).catch(() => {});
-          return sendResponse({ ok: true, data: {
-            name: "recording.har",
-            content: b64(JSON.stringify(buildHar())),
-            count: state.entries.length,
-            rebuilt: true,
-          }});
-        }
-        case "ping":
-          return sendResponse({ ok: true, data: await pingEndpoint() });
         case "guiAction": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
           const a = msg.action || {};
@@ -857,15 +908,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           await chrome.storage.local.set({endpoint: msg.endpoint || DEFAULT_ENDPOINT});
           return sendResponse({ ok: true, data: msg.endpoint || DEFAULT_ENDPOINT });
         case "reset": {
-          if (state && state.entries.length && !state.exported && !msg.force) {
+          if (state && (state.count || 0) && !state.exported && !msg.force) {
             return sendResponse({
               ok: false,
-              unsaved: state.entries.length,
-              error: `${state.entries.length} captured requests have not been saved`,
+              unsaved: state.count,
+              error: `${state.count} captured requests have not been saved`,
             });
           }
           if (state && !state.stopped) await stop();
           state = null;
+          queue = [];
+          bodyQueue = [];
+          await CaptureStore.clearCapture().catch(() => {});
           await persist();
           broadcast();
           return sendResponse({ ok: true, data: statusPayload() });
@@ -874,7 +928,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // stop + discard, optionally exporting first
           if (msg.save) await exportHar();
           if (state && !state.stopped) await stop();
-          const n = state ? state.entries.length : 0;
+          const n = state ? state.count || 0 : 0;
           state = null;
           await persist();
           broadcast();
@@ -883,25 +937,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case "transaction":
           return sendResponse({ ok: true, data: setTransaction(msg.name) });
         case "assert":
-          return sendResponse({ ok: true, data: addAssertion(msg.assertion) });
+          return sendResponse({ ok: true, data: await addAssertion(msg.assertion) });
         case "extract":
-          return sendResponse({ ok: true, data: addExtractor(msg.extractor) });
+          return sendResponse({ ok: true, data: await addExtractor(msg.extractor) });
         case "pause":
-          annotate({ pause_after_ms: msg.ms });
+          await annotate({ pause_after_ms: msg.ms });
           return sendResponse({ ok: true, data: msg.ms });
         case "name":
-          annotate({ name: msg.name });
+          await annotate({ name: msg.name });
           return sendResponse({ ok: true, data: msg.name });
         case "skip":
-          annotate({ skip: true });
+          await annotate({ skip: true });
           return sendResponse({ ok: true, data: true });
         case "manual":
-          return sendResponse({ ok: true, data: addManualRequest(msg.step) });
+          return sendResponse({ ok: true, data: await addManualRequest(msg.step) });
         case "lastUrl":
-          return sendResponse({
-            ok: true,
-            data: state && state.entries.length ? lastEntry().request.url : "",
-          });
+          return sendResponse({ ok: true, data: (state && state.lastUrl) || "" });
         default:
           return sendResponse({ ok: false, error: "unknown message" });
       }

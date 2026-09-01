@@ -30,6 +30,18 @@
   <div class="stat">
     <div class="big" id="count">0</div>
     <div class="sub" id="sub">idle</div>
+    <!-- what a long recording weighs, while it grows rather than when it
+         breaks: requests, elapsed time, and what is on disk -->
+    <div class="meter" id="meter" hidden></div>
+  </div>
+
+  <!-- a recording outlives the browser now, so it has to be offered back -->
+  <div class="resume" id="resume" hidden>
+    <div class="rtext" id="resumeText"></div>
+    <div class="rrow">
+      <button class="b" id="resumeAuthor">Build the plan</button>
+      <button class="b warn" id="resumeDrop">Discard</button>
+    </div>
   </div>
 
   <label class="l">Transaction <span class="dim">(step name, optional)</span></label>
@@ -87,4 +99,5 @@
   <div class="msg" id="msg"></div>
   </div>
 </div>
+<script src="db.js"></script>
 <script src="popup.js"></script>

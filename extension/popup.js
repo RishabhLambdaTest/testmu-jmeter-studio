@@ -11,7 +11,44 @@ function say(text, bad) {
   m.className = "msg" + (text ? (bad ? " bad" : " good") : "");
 }
 
+function human(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+  return (bytes / 1048576).toFixed(bytes < 10485760 ? 1 : 0) + " MB";
+}
+
+function elapsed(since) {
+  const secs = Math.max(0, Math.round((Date.now() - since) / 1000));
+  if (secs < 60) return secs + "s";
+  const m = Math.floor(secs / 60);
+  if (m < 60) return m + "m " + (secs % 60) + "s";
+  return Math.floor(m / 60) + "h " + (m % 60) + "m";
+}
+
+/* The recording is on disk, so the ceiling is the browser's storage grant and
+   not something this extension chose. Show the headroom rather than a limit. */
+async function renderMeter(s) {
+  const el = $("meter");
+  if (!s || !s.count) { el.hidden = true; return; }
+  el.hidden = false;
+  const parts = [`<b>${s.count}</b> requests`];
+  if (s.startedAt) parts.push(`<b>${elapsed(s.startedAt)}</b>`);
+  if (s.bytes) parts.push(`<b>${human(s.bytes)}</b> of responses`);
+  let tail = "";
+  try {
+    const { used, quota } = await CaptureStore.captureQuota();
+    if (quota) {
+      const pct = used / quota;
+      tail = pct > 0.8
+        ? ` <span class="warn">${(pct * 100).toFixed(0)}% of the browser's storage used</span>`
+        : ` · ${human(quota - used)} of browser storage free`;
+    }
+  } catch (e) { /* estimate is a nicety */ }
+  el.innerHTML = parts.join(" · ") + tail;
+}
+
 function render(s) {
+  renderMeter(s);
   const on = !!(s && s.recording);
   const unsaved = !!(s && s.unsaved);
   $("dot").className = "dot" + (on ? " on" : "");
@@ -216,8 +253,31 @@ async function checkTab() {
   return ok;
 }
 
+/* A recording now survives closing Chrome, so on open we look for one and
+   offer it back rather than leaving it stranded on disk. */
+async function offerRecovered(s) {
+  if (!s || !s.recovered || s.recording) return;
+  const when = s.startedAt ? new Date(s.startedAt).toTimeString().slice(0, 5) : "earlier";
+  $("resumeText").innerHTML =
+    `A recording from <b>${when}</b> is on disk: <b>${s.count}</b> requests. ` +
+    `Chrome was closed before it was used.`;
+  $("resume").hidden = false;
+}
+
+$("resumeAuthor").onclick = async () => {
+  const r = await send({ type: "harHandoff", options: {} });
+  if (r.ok) window.close(); else say(r.error, true);
+};
+
+$("resumeDrop").onclick = async () => {
+  await send({ type: "reset", force: true });
+  $("resume").hidden = true;
+  render(null);
+};
+
 send({ type: "status" }).then((r) => {
   render(r.ok ? r.data : null);
+  offerRecovered(r.ok ? r.data : null);
   if (!r.ok || !r.data || !r.data.recording) checkTab();
   checkService();
   loadRecordingOptions();
