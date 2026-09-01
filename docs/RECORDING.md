@@ -165,8 +165,9 @@ verbatim and it fails the moment the token expires — which is roughly always.
 
 ## Recording without the extension
 
-The same recorder exists on the CLI for the cases a Chrome extension cannot
-reach:
+For the cases a Chrome extension cannot reach, the same recorder exists in the
+[jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) — a separate
+repository, needed only for these:
 
 ```bash
 jmxgen record https://app.example.com -o plan.jmx   # Playwright drives a browser

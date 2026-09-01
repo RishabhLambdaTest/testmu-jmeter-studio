@@ -1,53 +1,15 @@
-# Build output. The CLI bundles are per-platform and 9 MB+ each - build them
-# with ./build_binary.sh, or attach them to a GitHub release, but do not commit
-# them. The extension zip is the exception: it is the thing people are handed,
-# so it lives in the repo and is versioned with the manifest.
+# Build output. The extension zips are the exception - they are the thing people
+# are handed, so they live in the repo and are versioned with the manifest.
 dist/*
 !dist/testmu-recorder-*.zip
-.build/
-build/
-*.spec
 
-# Customer plans. Real recorded journeys with customer names, internal hosts and
-# at least one hardcoded token - fixtures for `optimize`, not for publishing.
-samples/
-
-# A separate project that happens to live in this folder.
-slack-assistant-bot/
-
-# JMeter run output
-*.jtl
-results.csv
-report/
-jmeter.log
+# Recordings and run output: per-person, and often carrying real session data
 *.har
-# ...but the sample recording IS the point of sample/ - it is the only input
-# that demonstrates correlation, so it has to travel with the repo
-!sample/recording.har
+*.jtl
+*.jmx
+!sample/*.jmx
+jmeter.log
+report/
 
-# Scratch
-new.txt
-*.png.import
-Screenshot*.png
-run-page.png
-.playwright-mcp/
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-
-# OS
 .DS_Store
-
-# Local editor/agent config (references customer filenames)
-.claude/
-
-# sample plans generated while trying things out
-sample/out/
-sample/*.jmx
-sample/system.properties
-# except the one shipped as the input for "Existing .jmx (import)"
-!sample/existing-plan.jmx
+__pycache__/

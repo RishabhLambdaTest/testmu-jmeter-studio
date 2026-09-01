@@ -1,20 +1,21 @@
 # sample — one input for every Source in the dropdown
 
 Real inputs against [dummyjson.com](https://dummyjson.com), a public API needing
-no key. Every option in the console's **Source** dropdown has a sample here.
+no key. Every option in the extension's **Source** dropdown has a sample here.
 
-Start the console, pick the Source, give it the file or text below, press
-**Generate plan**:
+Open the extension, pick the Source, give it the file or text below, and press
+**Generate plan**. [docs/SOURCES.md](../docs/SOURCES.md) walks through what to
+look for in each result.
 
-```bash
-./dist/jmxgen-macos/jmxgen console
-```
+Each entry also names its command-line equivalent. Those belong to the
+[jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen), a separate repository
+for CI use - nothing here requires them.
 
 ---
 
 ## 1. OpenAPI / Swagger
 
-**Console:** upload `api.yaml` — *or* paste a live spec URL into the text box:
+**Extension:** upload `api.yaml` — *or* paste a live spec URL into the text box:
 
 ```
 https://petstore3.swagger.io/api/v3/openapi.json
@@ -28,7 +29,7 @@ requests with no file at all.
 
 ## 2. Postman collection
 
-**Console:** upload `collection.json`
+**Extension:** upload `collection.json`
 
 **CLI:** `jmxgen from-postman sample/collection.json -o plan.jmx`
 
@@ -38,7 +39,7 @@ extractor, so the next request's `{{token}}` works as `${token}`.
 
 ## 3. Recording (HAR) — *the one to demo first*
 
-**Console:** upload `recording.har`, set **Keep: api**
+**Extension:** upload `recording.har`, set **Keep: api**
 
 **CLI:** `jmxgen from-har sample/recording.har --mode api -o plan.jmx`
 
@@ -67,7 +68,7 @@ recording, either an API-level or a browser-level plan.
 
 ## 4. cURL command(s)
 
-**Console:** paste the contents of `requests.txt` into the text box
+**Extension:** paste the contents of `requests.txt` into the text box
 
 **CLI:** `jmxgen from-curl sample/requests.txt -o plan.jmx`
 
@@ -77,7 +78,7 @@ right-click any request → *Copy as cURL* and paste it straight in. `-X`, `-H`,
 
 ## 5. Excel / CSV sheet
 
-**Console:** upload `endpoints.xlsx`
+**Extension:** upload `endpoints.xlsx`
 
 **CLI:** `jmxgen from-excel sample/endpoints.xlsx -o plan.jmx`
 
@@ -87,7 +88,7 @@ colleague to fill in.
 
 ## 6. Page URL list (probe)
 
-**Console:** paste the contents of `urls.txt` (one URL per line)
+**Extension:** paste the contents of `urls.txt` (one URL per line)
 
 **CLI:** `jmxgen probe sample/urls.txt -o plan.jmx`
 
@@ -97,7 +98,7 @@ no spec, no recording and no time.
 
 ## 7. Existing .jmx (import)
 
-**Console:** upload `existing-plan.jmx`
+**Extension:** upload `existing-plan.jmx`
 
 **CLI:** `jmxgen import-jmx sample/existing-plan.jmx --spec plan.yaml -o clean.jmx`
 
@@ -112,7 +113,7 @@ bloated or broken.
 
 | File | Used with | Shows |
 |---|---|---|
-| `users.csv` | **Test data** in the console, or `--csv` | So 50 virtual users aren't all `emilys` |
+| `users.csv` | **Test data** in the extension, or `--csv` | So 50 virtual users aren't all `emilys` |
 | `workload.yaml` | `jmxgen build` | `closed` vs `arrivals` thread groups |
 | `mtls.yaml` | `jmxgen build` | Client certificates; also writes `system.properties` |
 
@@ -136,7 +137,7 @@ extracted by user 1 is invisible to users 2 through 500. Getting that wrong is
 the usual reason a plan returns a wall of 401s under load but works perfectly
 with one user.
 
-In the console the same thing lives under **Authentication** and **Test data**.
+In the extension the same thing lives under **Authentication** and **Test data**.
 
 ## After you have a plan
 
@@ -147,7 +148,7 @@ jmeter -n -t plan.jmx -l r.jtl -e -o report/    # the load test
 
 `replay` is the gate — it runs the plan once and reports per-request codes plus
 any `${VARIABLE}` that never resolved. Cheaper than finding out at 500 users.
-In the console this is **Validate (single user)**.
+In the extension this is **Validate (single user)**, which needs the CLI's local console running.
 
 ## Notes
 

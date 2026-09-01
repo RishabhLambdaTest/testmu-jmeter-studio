@@ -1,6 +1,6 @@
 # Two workload models side by side. `arrivals` states the rate you want to
 # apply; `closed` states how many users are looping. Under load they answer
-# different questions - see JMXGEN_README.md, "Workload models".
+# different questions - see docs/SOURCES.md, "Open vs closed workload".
 name: DummyJSON workload
 defaults: {protocol: https, domain: dummyjson.com}
 headers: {Accept: application/json}

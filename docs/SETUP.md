@@ -180,17 +180,12 @@ HyperExecute API with your own credentials.
 
 ## Optional: the local console
 
-Nothing above needs it. One feature does: **Validate (single user)** runs the
-plan once against the real target and reports per-request status codes and any
-`${VARIABLE}` that never resolved — and that needs a real JMeter binary, which a
-browser cannot provide.
+Nothing above needs it, and it is not in this repository. One feature depends on
+it: **Validate (single user)** runs the plan once against the real target and
+reports per-request status codes and any `${VARIABLE}` that never resolved —
+which needs a real JMeter binary, and a browser cannot provide one.
 
-If you want it:
-
-```bash
-./dist/jmxgen-macos/jmxgen console
-```
-
-The popup then says *"local console found — single-user Validate is available
-too"* instead of *"everything runs in this extension"*. That is the only
-difference.
+It ships with the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen)
+(`jmxgen console`). Start it and the popup says *"local console found —
+single-user Validate is available too"* instead of *"everything runs in this
+extension"*. That is the only difference.

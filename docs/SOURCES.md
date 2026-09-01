@@ -9,8 +9,12 @@ Every sample below is in [`sample/`](../sample/) and points at
 new user can try all seven the day they install the extension.
 
 **In the extension:** popup → *Author from something else* → pick the source, or
-open the authoring page and use the **Source** dropdown.
-**On the CLI:** the command is given for each.
+open the authoring page and use the **Source** dropdown — that is all you need.
+
+Each source below also names its command-line equivalent. Those come from the
+[jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen), a separate repository
+for CI use; they are listed so the two stay recognisably the same tool, not
+because anything here requires them.
 
 ![The Source picker](screenshots/author-source.png)
 
