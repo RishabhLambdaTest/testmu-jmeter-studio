@@ -5,6 +5,7 @@
 <title>Run on HyperExecute — jmxgen</title>
 <link rel="stylesheet" href="brand.css" />
 <link rel="stylesheet" href="run.css" />
+<link rel="stylesheet" href="author.css" />
 <div class="page">
   <div class="pagebar">
     <span class="tm-logo">
@@ -90,6 +91,17 @@
        the HTML dashboard HyperExecute collects as the <b>report</b> artifact.</p>
   </fieldset>
 
+  <section class="logwrap">
+    <div class="loghead">
+      <span class="logtitle">Log</span>
+      <span class="logcount" id="logCount">0</span>
+      <button class="logbtn" id="logCopy">copy</button>
+      <button class="logbtn" id="logClear">clear</button>
+      <button class="logbtn" id="logToggle">hide</button>
+    </div>
+    <pre class="log" id="log"></pre>
+  </section>
+
   <details>
     <summary>Where jmxgen runs</summary>
     <input type="text" id="endpoint" placeholder="http://localhost:8770" />
@@ -101,4 +113,5 @@
     <button id="go" class="go">Create &amp; trigger</button>
   </div>
 </div>
+<script src="hx.js"></script>
 <script src="run.js"></script>

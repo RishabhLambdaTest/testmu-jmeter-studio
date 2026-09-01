@@ -310,13 +310,21 @@ $("playwright").onclick = () =>
 
 $("validate").onclick = async () => {
   if (!STATE) return;
+  if (!CONSOLE_UP) {
+    return say("Validate runs the plan through JMeter, which a browser cannot do. " +
+               "Start the local console, or validate by running it on HyperExecute.", "err");
+  }
+  addLog("info", "replaying once through the local console…");
   $("validate").disabled = true;
   say("running the plan once…", "info");
   try {
+    // Validate is the one thing that needs the JMeter binary, so it goes to
+    // the local console when one is running. The plan is posted with it: the
+    // console has no session for a plan this page built.
     const r = await fetch(base() + "/api/replay", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session: STATE.session }),
+      body: JSON.stringify({ jmx: STATE.jmx, name: stem() + ".jmx" }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
@@ -331,12 +339,16 @@ $("validate").onclick = async () => {
   }
 };
 
-$("ship").onclick = () => {
+$("ship").onclick = async () => {
   if (!STATE) return;
-  const name = $("planName").value.trim();
+  // hand the plan over in session storage: it was built in this page, so there
+  // is no server session for the run page to look up
+  const keyName = "handoff-" + Date.now().toString(36);
+  await chrome.storage.session.set({
+    [keyName]: { jmx: STATE.jmx, name: stem() + ".jmx", load: STATE.load || {} },
+  });
   chrome.tabs.create({
-    url: chrome.runtime.getURL("run.html") + "?session=" + encodeURIComponent(STATE.session) +
-         (name ? "&name=" + encodeURIComponent(name) : ""),
+    url: chrome.runtime.getURL("run.html") + "?handoff=" + encodeURIComponent(keyName),
     active: true,
   });
 };
@@ -345,8 +357,18 @@ $("ship").onclick = () => {
 
 (async () => {
   await load();
-  await ping();
   await loadModes();
+  await ping();                       // console check - cheap, and may fail
+  // Boot the engine up front so the first Generate is not the slow one. The
+  // status line only becomes accurate once this resolves, so ping again after.
+  try {
+    await window.JmxgenEngine.boot();
+  } catch (e) {
+    $("svc").textContent = "the engine failed to start - see the log";
+    $("svc").className = "svc down";
+    return;
+  }
+  await ping();
 })();
 
 /* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */

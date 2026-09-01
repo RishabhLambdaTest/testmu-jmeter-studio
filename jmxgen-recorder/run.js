@@ -11,7 +11,11 @@ const KEYS = ["user", "project", "projectId", "regions", "platform",
               "vusers", "maxVusers", "rampup", "duration", "timeout", "label", "planName", "endpoint"];
 const CHECKS = ["remember", "splitcsv"];
 
+/* The plan is handed over in session storage rather than by a server session:
+   the authoring page built it in-process, so there is no id to look up. */
+const HANDOFF = new URLSearchParams(location.search).get("handoff") || null;
 let SESSION = new URLSearchParams(location.search).get("session") || null;
+let PLAN = null;          // {jmx, name, load} from the authoring page
 // the authoring page passes the name already chosen there, so it is not retyped
 const WANTED_NAME = new URLSearchParams(location.search).get("name") || "";
 let EXTRA = [];
@@ -32,7 +36,8 @@ async function load() {
   if (!$("maxVusers").value) $("maxVusers").value = "2000";
   if (!$("endpoint").value) $("endpoint").value = DEFAULT_ENDPOINT;
   if (WANTED_NAME) $("planName").value = WANTED_NAME;
-  if (!SESSION) INCLUDE_GEN = false;
+  // INCLUDE_GEN is decided in takeHandoff(), which runs after this: at this
+  // point PLAN is always still null.
 }
 
 async function save() {
@@ -45,17 +50,13 @@ async function save() {
 
 const base = () => ($("endpoint").value.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, "");
 
+/* This page talks to HyperExecute directly - an extension with host permissions
+   is not subject to CORS - so a missing local console is not an error here. It
+   is only worth mentioning because it changes nothing. */
 async function ping() {
-  try {
-    const r = await fetch(base() + "/api/ping", { cache: "no-store" });
-    if (!r.ok) throw new Error();
-    show($("svc"), "jmxgen service found at " + base(), "ok");
-    return true;
-  } catch (e) {
-    show($("svc"), "cannot reach jmxgen at " + base() +
-      " - start it with: jmxgen console", "err");
-    return false;
-  }
+  show($("svc"), "uploads go straight to HyperExecute - your access key never " +
+                 "leaves this machine", "ok");
+  return true;
 }
 
 function planName() {
@@ -89,7 +90,7 @@ function renderFiles() {
   const list = $("fileList");
   list.textContent = "";
   const names = [];
-  if (SESSION) {
+  if (SESSION || PLAN) {
     list.appendChild(row(planName(), INCLUDE_GEN, (v) => { INCLUDE_GEN = v; renderFiles(); },
                          "from this recording"));
     if (INCLUDE_GEN) names.push(planName());
@@ -100,7 +101,7 @@ function renderFiles() {
   });
   if (!list.childNodes.length) {
     const s = document.createElement("span");
-    s.textContent = SESSION ? "nothing selected yet"
+    s.textContent = (SESSION || PLAN) ? "nothing selected yet"
                             : "no recording handed over - add a .jmx below";
     s.style.opacity = ".6";
     list.appendChild(s);
@@ -140,16 +141,35 @@ function vmCalc() {
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
 async function prefillLoad() {
-  if (!SESSION) return;
-  try {
-    const r = await fetch(base() + "/api/session/" + SESSION, { cache: "no-store" });
-    if (!r.ok) return;
-    const load = (await r.json()).load || {};
+  const load = PLAN ? (PLAN.load || {}) : await loadFromConsole();
+  if (!load) return;
+  {
     if (load.threads && !$("vusers").value) $("vusers").value = load.threads;
     if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
     if (load.duration && !$("duration").value) $("duration").value = load.duration;
     vmCalc();
-  } catch (e) { /* the form still works without it */ }
+  }
+}
+
+async function loadFromConsole() {
+  if (!SESSION) return null;
+  try {
+    const r = await fetch(base() + "/api/session/" + SESSION, { cache: "no-store" });
+    return r.ok ? (await r.json()).load || {} : null;
+  } catch (e) { return null; }   // the form still works without it
+}
+
+/* Pick up the plan the authoring page put in session storage. */
+async function takeHandoff() {
+  if (!HANDOFF) return;
+  const got = await chrome.storage.session.get(HANDOFF);
+  PLAN = got[HANDOFF] || null;
+  if (PLAN) {
+    await chrome.storage.session.remove(HANDOFF);   // one-shot
+    if (PLAN.name) $("planName").value = PLAN.name;
+  }
+  // only now is it known whether a plan was handed over at all
+  INCLUDE_GEN = !!(SESSION || PLAN);
 }
 
 $("files").onchange = async () => {
@@ -164,51 +184,123 @@ $("files").onchange = async () => {
 };
 $("endpoint").onchange = () => { save(); ping(); };
 
+
+/* Extra files arrive base64 from the file picker; HyperExecute wants the bytes. */
+function b64ToText(b64) {
+  const bin = atob(b64 || "");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function link(href, text) {
+  const a = document.createElement("a");
+  a.href = href; a.target = "_blank"; a.textContent = "  " + text;
+  $("msg").appendChild(a);
+}
+
+/* Same log panel as the authoring page: every call, and every failure, visible
+   without opening devtools. */
+const LOG = [];
+function addLog(level, text) {
+  const at = new Date();
+  LOG.push({ level, text, at });
+  const el = $("log");
+  if (!el) return;
+  const line = document.createElement("div");
+  line.innerHTML = `<span class="t">${at.toTimeString().slice(0, 8)}</span> ` +
+    `<span class="${level}">${String(text).replace(/[&<>]/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]))}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  const c = $("logCount"); if (c) c.textContent = LOG.length;
+}
+if ($("logCopy")) {
+  $("logCopy").onclick = async () => {
+    await navigator.clipboard.writeText(
+      LOG.map((l) => l.at.toTimeString().slice(0, 8) + "  [" + l.level + "] " + l.text).join("\n"));
+    show($("msg"), "log copied", "ok");
+  };
+  $("logClear").onclick = () => { LOG.length = 0; $("log").innerHTML = ""; $("logCount").textContent = "0"; };
+  $("logToggle").onclick = (e) => {
+    const hidden = document.querySelector(".logwrap").classList.toggle("collapsed");
+    e.currentTarget.textContent = hidden ? "show" : "hide";
+  };
+}
+
 async function submit(trigger) {
   await save();
-  const body = {
-    session: SESSION,
-    include_generated: INCLUDE_GEN && !!SESSION,
-    jmx_name: $("planName").value.trim(),
-    files: EXTRA.filter((f) => f.on !== false),
-    primary_jmx: $("primary").value,
-    username: $("user").value.trim(),
-    access_key: $("key").value,
-    project_name: $("project").value.trim(),
-    project_id: $("projectId").value.trim(),
-    regions: $("regions").value.trim(),
-    platform: $("platform").value.trim(),
-    vusers: $("vusers").value.trim(),
-    max_vusers_per_vm: $("maxVusers").value.trim(),
-    rampup: $("rampup").value.trim(),
-    duration: $("duration").value.trim(),
-    global_timeout: $("timeout").value.trim(),
-    job_label: $("label").value.trim(),
-    splitcsv: $("splitcsv").checked,
-    trigger: trigger,
+
+  const user = $("user").value.trim();
+  const key = $("key").value;
+  const num = (id) => {
+    const v = $(id).value.trim();
+    if (!v) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) throw new Error(`${id} must be a whole number, got "${v}"`);
+    return Math.round(n);
   };
+
   $("go").disabled = $("uploadOnly").disabled = true;
   show($("msg"), trigger ? "creating project, uploading and triggering…" : "uploading…", "info");
   try {
-    const r = await fetch(base() + "/api/ship", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
-    let text = (data.created ? "created project " : "using project ") + data.project_id +
-               " · uploaded " + (data.uploaded || []).length + " file(s)";
-    if (data.job_id) text += " · job " + data.job_id;
-    show($("msg"), text, "ok");
-    if (data.job_url || data.project_url) {
-      const a = document.createElement("a");
-      a.href = data.job_url || data.project_url;
-      a.target = "_blank";
-      a.textContent = data.job_id ? "  open the job" : "  open the project";
-      $("msg").appendChild(a);
+    if (!user || !key) throw new Error("username and access key are both needed");
+
+    // ---- the files ----
+    const files = [];
+    if (INCLUDE_GEN && PLAN && PLAN.jmx) files.push({ name: planName(), content: PLAN.jmx });
+    for (const f of EXTRA.filter((x) => x.on !== false)) {
+      files.push({ name: f.name, content: b64ToText(f.content) });
     }
+    if (!files.length) throw new Error("nothing to upload - author a plan or add a file");
+
+    const primary = $("primary").value ||
+      (files.find((f) => f.name.toLowerCase().endsWith(".jmx")) || {}).name;
+    if (!primary) throw new Error("choose which .jmx the job should run");
+
+    const regions = $("regions").value.trim().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+    if (trigger && !regions.length) throw new Error("pick at least one region");
+
+    // ---- project ----
+    let projectId = $("projectId").value.trim();
+    let created = false;
+    if (!projectId) {
+      const name = $("project").value.trim();
+      if (!name) throw new Error("give a project name, or an existing project id");
+      projectId = await HX.hxCreateProject(user, key, name, "jmeter", addLog);
+      created = true;
+      $("projectId").value = projectId;      // so a retry reuses it
+      await save();
+    }
+
+    await HX.hxUpload(user, key, projectId, files, addLog);
+
+    if (!trigger) {
+      show($("msg"), `${created ? "created" : "using"} project ${projectId} · ` +
+                     `uploaded ${files.length} file(s) · not triggered`, "ok");
+      link(`${HX.HX_UI}/projects`, "open the project");
+      return;
+    }
+
+    // ---- trigger ----
+    // -e -o report is always sent: it is what produces the HTML dashboard
+    // HyperExecute collects as an artefact
+    const jobId = await HX.hxTrigger(user, key, projectId, {
+      regions, jmx: primary,
+      args: ["-e", "-o", "report"], reportDir: "report",
+      duration: num("duration"), rampup: num("rampup"), users: num("vusers"),
+      maxVusersPerVm: num("maxVusers"), globalTimeout: num("timeout"),
+      platform: $("platform").value.trim() || null,
+      splitcsv: $("splitcsv").checked,
+      jobLabel: $("label").value.trim() || null,
+      concurrency: 1,
+    }, addLog);
+
+    show($("msg"), `${created ? "created" : "using"} project ${projectId} · ` +
+                   `uploaded ${files.length} file(s) · job ${jobId}`, "ok");
+    link(`${HX.HX_UI}/jobs/${jobId}`, "open the job");
   } catch (e) {
+    addLog("error", String(e.message || e));
     show($("msg"), String(e.message || e), "err");
   } finally {
     $("go").disabled = $("uploadOnly").disabled = false;
@@ -220,13 +312,15 @@ $("uploadOnly").onclick = () => submit(false);
 
 (async () => {
   await load();
+  await takeHandoff();          // before anything renders the file list
   KEYS.concat(["key"]).forEach((k) => $(k).addEventListener("input", save));
   $("planName").addEventListener("input", renderFiles);   // the list shows the name
   CHECKS.forEach((k) => $(k).addEventListener("change", save));
   renderFiles();
   vmCalc();
+  await prefillLoad();
+  if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
   ping();
-  prefillLoad();
 })();
 
 /* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */
