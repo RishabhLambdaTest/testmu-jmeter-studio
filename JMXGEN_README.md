@@ -7,7 +7,7 @@ verifies the generated XML before handing it to you.
 Same input, any runner: local, HyperExecute / TestMu, BlazeMeter, Jenkins — only the
 `platform:` value changes.
 
-Every generated plan follows the rules in [JMX_OPTIMIZATION_README.md](JMX_OPTIMIZATION_README.md)
+Every generated plan follows the rules in [JMX_OPTIMIZATION_README.md](docs/JMX_OPTIMIZATION_README.md)
 by default: no result-storing listeners, Simple Data Writer with response data off,
 timeouts set, functional mode off, embedded resources off, `loops=-1` only when a
 scheduler time-boxes the run.
@@ -378,7 +378,7 @@ few things in place. `jmxgen verify` tells you which of these a given plan actua
 | **Apache JMeter** | 5.6.3 (what the generated files declare). `brew install jmeter` on this machine. |
 | **Plugins** *(only if used)* | `bzm - Parallel Controller` for `--parallel` plans, `WebDriver Set` for browser plans. Install via JMeter's **Plugins Manager**. `verify` prints exactly which plugin elements a plan contains. |
 | **Data files** | Any CSV referenced by a CSV Data Set must sit next to the `.jmx` (or be given an absolute path). `verify` flags missing ones. |
-| **Heap** | Set with the `HEAP` / `JVM_ARGS` environment variable *before* launching — it cannot be set in `user.properties`. See [JMX_OPTIMIZATION_README.md](JMX_OPTIMIZATION_README.md). |
+| **Heap** | Set with the `HEAP` / `JVM_ARGS` environment variable *before* launching — it cannot be set in `user.properties`. See [JMX_OPTIMIZATION_README.md](docs/JMX_OPTIMIZATION_README.md). |
 | **Non-GUI mode** | `jmeter -n -t plan.jmx -l results.csv -e -o reports/`. GUI mode is for editing only. |
 
 **To run on HyperExecute / TestMu**: upload the `.jmx` *and* every data file it references,

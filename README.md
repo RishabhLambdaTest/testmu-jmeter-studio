@@ -20,6 +20,8 @@ access key never leaves the machine.
 | **record a journey by hand, like BlazeMeter's recorder** | [docs/RECORDING.md](docs/RECORDING.md) |
 | **compare it to BlazeMeter, or pitch it** | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | **use the CLI, or the full flag reference** | [JMXGEN_README.md](JMXGEN_README.md) |
+| **read the numbers a run produces** | [docs/JMETER_METRICS_GUIDE.md](docs/JMETER_METRICS_GUIDE.md) |
+| **understand why a plan is built the way it is** | [docs/JMX_OPTIMIZATION_README.md](docs/JMX_OPTIMIZATION_README.md) |
 
 ---
 
