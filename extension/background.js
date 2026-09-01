@@ -27,15 +27,78 @@ function freshState(tabId, transaction) {
   };
 }
 
-async function persist() {
+/* The checkpoint exists because service workers get evicted mid-recording. It
+ * is a fallback, never the source of truth: `state` in memory is. That matters
+ * here, because session storage holds ten megabytes and a recording passes it
+ * easily - the response bodies correlation needs are the same bodies that fill
+ * the quota. So the checkpoint degrades in steps rather than failing, and a
+ * failure to write one never interrupts capture.
+ */
+let persistTimer = null;
+let leanCheckpoint = false;    // bodies no longer fit, and the user has been told
+
+function withoutBodies(entry) {
+  const r = entry.response;
+  if (!r || !r.content || !r.content.text) return entry;
+  return { ...entry, response: { ...r, content: { ...r.content, text: "" } } };
+}
+
+async function writeCheckpoint() {
   if (!state) {
-    await chrome.storage.session.remove("state");
+    await chrome.storage.session.remove("state").catch(() => {});
     return;
   }
-  // service workers get evicted; keep enough to survive a restart
-  await chrome.storage.session.set({
-    state: { ...state, pending: {} },
-  });
+  const full = { ...state, pending: {} };
+  try {
+    await chrome.storage.session.set({ state: full });
+    leanCheckpoint = false;
+    return;
+  } catch (e) {
+    // over quota - fall through
+  }
+
+  // Second try without response bodies. A restored session still replays the
+  // journey; it just cannot correlate values it no longer holds.
+  try {
+    await chrome.storage.session.set({
+      state: { ...full, bodiesDropped: true, entries: full.entries.map(withoutBodies) },
+    });
+    if (!leanCheckpoint) {
+      notify("recording is large - the crash checkpoint has dropped response bodies");
+      leanCheckpoint = true;
+    }
+    return;
+  } catch (e) {
+    // still over quota
+  }
+
+  // Nothing fits. Recording continues in memory, which is where it was always
+  // being kept anyway - say so once, so a browser restart is not a surprise.
+  await chrome.storage.session.remove("state").catch(() => {});
+  if (!leanCheckpoint) {
+    notify("recording too large to checkpoint - finish and build before closing Chrome");
+    leanCheckpoint = true;
+  }
+}
+
+/* Debounced. Rewriting the whole session on every captured request is O(n^2)
+   work over a long recording, and the checkpoint only has to be recent. */
+function persist() {
+  if (persistTimer) return Promise.resolve();
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    writeCheckpoint();
+  }, 1200);
+  return Promise.resolve();
+}
+
+/* For the moments that must be durable: stopping, exporting, handing over. */
+async function persistNow() {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  await writeCheckpoint();
 }
 
 async function restore() {
@@ -389,7 +452,7 @@ async function stop() {
     }
   }
   state.stopped = true;
-  await persist();
+  await persistNow();          // the session is finished; make the checkpoint current
   const payload = { recording: false, count: state.entries.length };
   broadcast();
   return payload;
@@ -483,16 +546,22 @@ async function pingEndpoint() {
  * HAR for exactly as long as the browser session, is never written to disk,
  * and is readable only by this extension's own pages.
  */
+const handoffs = new Map();   // key -> the HAR, held in the worker, not in storage
+
 async function harHandoff(options) {
   if (!state || !state.entries.length) throw new Error("nothing recorded yet");
   const text = JSON.stringify(buildHar());
   const key = "har-" + Date.now().toString(36);
-  await chrome.storage.session.set({
-    [key]: { name: "recording.har", content: b64(text), count: state.entries.length },
-  });
+  // The HAR is the same bytes that overflow session storage, so it stays in
+  // the worker and only a marker is stored. If the worker is evicted before
+  // the authoring page collects it, the page asks for it again and it is
+  // rebuilt from the checkpoint.
+  handoffs.set(key, { name: "recording.har", content: b64(text), count: state.entries.length });
+  await chrome.storage.session.set({ [key]: { pending: true, count: state.entries.length } })
+    .catch(() => {});
   // the capture has left the recorder intact, so it no longer counts as unsaved
   state.exported = true;
-  await persist();
+  await persistNow();
   broadcast();
 
   const q = new URLSearchParams({ mode: "har", har: key, go: "1" });
@@ -728,6 +797,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await openHyperExecute() });
         case "harHandoff":
           return sendResponse({ ok: true, data: await harHandoff(msg.options) });
+        case "takeHandoff": {
+          const held = handoffs.get(msg.key);
+          if (held) {
+            handoffs.delete(msg.key);      // one-shot, so a reload cannot re-author it
+            await chrome.storage.session.remove(msg.key).catch(() => {});
+            return sendResponse({ ok: true, data: held });
+          }
+          // the worker restarted: rebuild from whatever the checkpoint holds
+          await restore();
+          if (!state || !state.entries.length) {
+            return sendResponse({ ok: false, error: "the recording is no longer available" });
+          }
+          await chrome.storage.session.remove(msg.key).catch(() => {});
+          return sendResponse({ ok: true, data: {
+            name: "recording.har",
+            content: b64(JSON.stringify(buildHar())),
+            count: state.entries.length,
+            rebuilt: true,
+          }});
+        }
         case "ping":
           return sendResponse({ ok: true, data: await pingEndpoint() });
         case "guiAction": {

@@ -342,9 +342,16 @@ $("ship").onclick = async () => {
   // hand the plan over in session storage: it was built in this page, so there
   // is no server session for the run page to look up
   const keyName = "handoff-" + Date.now().toString(36);
-  await chrome.storage.session.set({
-    [keyName]: { jmx: STATE.jmx, name: stem() + ".jmx", load: STATE.load || {} },
-  });
+  try {
+    await chrome.storage.session.set({
+      [keyName]: { jmx: STATE.jmx, name: stem() + ".jmx", load: STATE.load || {} },
+    });
+  } catch (e) {
+    // session storage is ten megabytes, and a plan that large is unusual but
+    // possible from a long recording kept in web mode
+    return say("the plan is too large to hand over - download the .jmx and " +
+               "attach it on the run page instead", "err");
+  }
   chrome.tabs.create({
     url: chrome.runtime.getURL("run.html") + "?handoff=" + encodeURIComponent(keyName),
     active: true,
@@ -358,13 +365,19 @@ $("ship").onclick = async () => {
 async function takeRecording() {
   const key = new URLSearchParams(location.search).get("har");
   if (!key) return false;
-  const got = await chrome.storage.session.get(key);
-  const rec = got && got[key];
-  await chrome.storage.session.remove(key);
+  // The recorder holds the HAR in the service worker rather than in session
+  // storage, which tops out at ten megabytes and is exactly what a long
+  // recording exceeds. Asking for it by message keeps the size irrelevant.
+  const r = await new Promise((resolve) =>
+    chrome.runtime.sendMessage({ type: "takeHandoff", key }, (res) =>
+      resolve(res || { ok: false, error: "the recorder did not answer" })));
+  const rec = r.ok ? r.data : null;
   if (!rec) {
-    addLog("warn", "the recording was already used - record again, or pick a HAR file");
+    addLog("warn", (r.error || "the recording was already used") +
+                   " - record again, or pick a HAR file");
     return false;
   }
+  if (rec.rebuilt) addLog("info", "the recorder had restarted; rebuilt from its checkpoint");
   FILE = { name: rec.name, content: rec.content };
   $("mode").value = "har";
   syncInputs();

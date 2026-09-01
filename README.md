@@ -13,7 +13,7 @@ API, so your access key never leaves the machine.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.2.0-share.zip
+1. unzip dist/testmu-jmeter-studio-1.2.1-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. toolbar icon  →  cURL  →  paste a request  →  Generate plan
 4. Run on HyperExecute…  →  credentials  →  Create & trigger
@@ -35,6 +35,10 @@ Each one has a sample in [`sample/`](sample/) you can run today.
 
 [**Recording**](docs/RECORDING.md) is the guided version of recording a journey
 and annotating it as you browse.
+
+[**Options**](docs/OPTIONS.md) explains every control in the extension, with a
+worked example for each. Reference rather than reading: the defaults are right
+most of the time.
 
 [**Comparison**](docs/COMPARISON.md) sets this against BlazeMeter, including the
 places BlazeMeter is ahead.
@@ -74,8 +78,8 @@ Playwright test covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.2.0-share.zip     6.3 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.2.0.zip           6.3 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.2.1-share.zip     6.3 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.2.1.zip           6.3 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`

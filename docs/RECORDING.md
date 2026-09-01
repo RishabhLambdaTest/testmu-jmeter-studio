@@ -116,6 +116,9 @@ recording to fix a setting.
 
 `⌘⇧8` / `Ctrl+Shift+8` starts and stops recording without opening the popup.
 
+[OPTIONS.md](OPTIONS.md) works through each of these with an example, along with
+every other control in the extension.
+
 ## What gets thrown away
 
 A raw browser session is mostly not a load test. From the sample recording:
