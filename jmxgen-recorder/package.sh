@@ -7,8 +7,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
-STORE="dist/jmxgen-recorder-${VERSION}.zip"
-SHARE="dist/jmxgen-recorder-${VERSION}-share.zip"
+# Write OUTSIDE the extension folder. A dist/ inside it is loaded as part of
+# the extension when you "Load unpacked", which quietly doubles its size.
+OUTDIR="../dist"
+STORE="$OUTDIR/jmxgen-recorder-${VERSION}.zip"
+SHARE="$OUTDIR/jmxgen-recorder-${VERSION}-share.zip"
 
 # only what the extension needs at runtime - no docs, no build output. Listed
 # explicitly so a stray file in the folder never rides along into a release.
@@ -43,7 +46,7 @@ if missing:
     sys.exit("manifest references files package.sh does not ship: " + ", ".join(missing))
 PY
 
-mkdir -p dist && rm -f "$STORE" "$SHARE"
+mkdir -p "$OUTDIR" && rm -f "$STORE" "$SHARE"
 zip -q -r "$STORE" "${FILES[@]}" -x "*.DS_Store"
 
 # the share zip needs the folder, so stage it under the name people will see

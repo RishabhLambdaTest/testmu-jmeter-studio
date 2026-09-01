@@ -18,6 +18,9 @@ results.csv
 report/
 jmeter.log
 *.har
+# ...but the sample recording IS the point of sample/ - it is the only input
+# that demonstrates correlation, so it has to travel with the repo
+!sample/recording.har
 
 # Scratch
 new.txt
@@ -43,3 +46,5 @@ venv/
 sample/out/
 sample/*.jmx
 sample/system.properties
+# except the one shipped as the input for "Existing .jmx (import)"
+!sample/existing-plan.jmx
