@@ -1,6 +1,9 @@
-# Build output. The bundles are per-platform and 9 MB+ each - build them with
-# ./build_binary.sh, or attach them to a GitHub release, but do not commit them.
-dist/
+# Build output. The CLI bundles are per-platform and 9 MB+ each - build them
+# with ./build_binary.sh, or attach them to a GitHub release, but do not commit
+# them. The extension zip is the exception: it is the thing people are handed,
+# so it lives in the repo and is versioned with the manifest.
+dist/*
+!dist/testmu-recorder-*.zip
 .build/
 build/
 *.spec

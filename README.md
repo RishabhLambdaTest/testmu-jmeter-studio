@@ -64,8 +64,17 @@ Playwright browser test for the journey, and the HAR itself.
 
 ## Sharing it
 
-One file: `dist/testmu-recorder-<version>-share.zip` (~6 MB), built by
-`jmxgen-recorder/package.sh`. Send it with [docs/SETUP.md](docs/SETUP.md).
+One file, committed to this repo so nobody has to build it:
+
+```
+dist/testmu-recorder-1.1.0-share.zip     ~6 MB   →  people (Load unpacked)
+dist/testmu-recorder-1.1.0.zip           ~6 MB   →  Chrome Web Store, unlisted
+```
+
+Send the `-share` one with [docs/SETUP.md](docs/SETUP.md). Rebuild both after any
+change to the extension with `jmxgen-recorder/package.sh`, and commit the new
+pair — the filename carries the manifest version, so what someone installed is
+always identifiable.
 
 For managed Chrome fleets, force-install by policy; for a team, upload the
 store-shaped zip as an **unlisted** Chrome Web Store item so updates arrive
