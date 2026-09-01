@@ -279,7 +279,9 @@ function showTab(which) {
        <td>${esc(s.assertion || s.message || "")}</td></tr>`).join("");
     el.innerHTML = rows
       ? `<table><thead><tr><th>Request</th><th>Code</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`
-      : '<div class="empty">No results came back.</div>';
+      : `<div class="empty">Nothing ran.${
+            checks.reason ? " JMeter said: " + esc(checks.reason) : ""
+          }<br />A data file the plan references may be missing beside it, or no thread group is enabled.</div>`;
   }
 }
 document.querySelectorAll(".tabs button").forEach((b) =>
@@ -336,8 +338,22 @@ $("validate").onclick = async () => {
     if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
     STATE.checks = data;
     showTab("checks");
-    const bad = (data.samples || []).filter((s) => !s.success).length;
-    say(bad ? bad + " request(s) failed - see Checks" : "every request passed", bad ? "err" : "ok");
+    const samples = data.samples || [];
+    const bad = samples.filter((s) => !s.success).length;
+    if (!samples.length) {
+      // A run that executed nothing is not a pass. Both look like an empty
+      // failure list, and reporting the wrong one is how a broken plan reaches
+      // five hundred users.
+      const why = data.reason || "the plan did not execute";
+      addLog("error", "validate ran nothing - " + why);
+      say("nothing ran - " + why, "err");
+    } else if (bad) {
+      addLog("error", bad + " of " + samples.length + " request(s) failed");
+      say(bad + " request(s) failed - see Checks", "err");
+    } else {
+      addLog("ok", "validate passed - " + samples.length + " request(s), every variable resolved");
+      say("every request passed - " + samples.length + " sampler(s)", "ok");
+    }
   } catch (e) {
     say(String(e.message || e), "err");
   } finally {

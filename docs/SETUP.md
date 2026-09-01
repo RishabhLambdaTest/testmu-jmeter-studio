@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.3.0-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.1-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.3.0.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.1.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.3.0-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.1-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -290,6 +290,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "needs jmeter-plugins-webdriver on the runner" | The plan carries browser steps as WebDriver samplers. Same fix, or generate without browser steps |
 | **Validate (single user)** is greyed out | Validate runs the plan through real JMeter, which a browser cannot do. It needs the local console from the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen). Everything else works without it |
 | The errors count is above zero | Open the Checks tab. A plan with errors is never shipped silently |
+| Validate says "nothing ran" | JMeter started and executed no samplers. The message carries JMeter's own reason, and it is usually a data file the plan references that is not sitting beside it. Upload the CSV with the plan, or clear the Test data fields |
 
 ### While running on HyperExecute
 

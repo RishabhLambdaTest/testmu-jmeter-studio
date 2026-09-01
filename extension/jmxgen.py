@@ -3515,9 +3515,10 @@ def replay(path, out_dir=None, timeout=300, quiet=False):
     # ${column} silently resolves to nothing and the whole replay fails at login.
     cwd = os.path.dirname(os.path.abspath(path)) or os.getcwd()
 
+    log_path = os.path.join(work, "replay.log")
     try:
-        subprocess.run([jmeter, "-n", "-t", plan, "-j", os.path.join(work, "replay.log")],
-                       capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        proc = subprocess.run([jmeter, "-n", "-t", plan, "-j", log_path],
+                              capture_output=True, text=True, timeout=timeout, cwd=cwd)
     except subprocess.TimeoutExpired:
         raise ValueError("replay exceeded %ds - is the plan time-boxed?" % timeout)
 
@@ -3594,6 +3595,38 @@ def replay(path, out_dir=None, timeout=300, quiet=False):
     failures = [x for x in samples if not x["success"]]
     unresolved = [x for x in samples if x["unresolved"]]
 
+    # A run that produced nothing is not a pass, and the caller cannot tell the
+    # difference from the sample list alone - both are empty. JMeter has
+    # usually said why on stdout or in its log ("File users.csv must exist and
+    # be readable" is the common one), so the reason is carried out with it
+    # rather than left in a temp directory nobody will look in.
+    reason = ""
+    if not samples:
+        blob = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+                blob += "\n" + fh.read()
+        except OSError:
+            pass
+        # Rank by usefulness. JMeter logs INFO lines containing the word
+        # "error" ("Thread will continue on error"), so a first-match scan
+        # reports noise and hides the exception three lines below it.
+        best = ""
+        for line in blob.splitlines():
+            text = re.sub(r"^\d{4}-\d\d-\d\d \S+ \S+ \S+: ", "", line.strip())
+            low = text.lower()
+            if "must exist" in low or "no such file" in low:
+                best = text
+                break                                   # the definitive one
+            if not best and ("caused by:" in low or "exception:" in low
+                             or low.startswith("error") or " error " in low
+                             and "continue on error" not in low):
+                best = text
+        reason = best[:200]
+        if not reason:
+            reason = ("JMeter ran but produced no samples - the plan may have no "
+                      "enabled thread group, or its data file is missing")
+
     if not quiet:
         print("== replay %s ==" % path)
         print("  ran %d sampler(s) as a single user" % len(samples))
@@ -3607,7 +3640,7 @@ def replay(path, out_dir=None, timeout=300, quiet=False):
                 print("       depends on ${%s} - check those correlations resolved"
                       % ("}, ${".join(x["depends_on"])))
         if not samples:
-            print("  ?  nothing ran - check the plan has a thread group with samplers")
+            print("  X  nothing ran - %s" % reason)
         elif not failures and not unresolved:
             print("  PASS - every request succeeded and every variable resolved")
         else:
@@ -3615,7 +3648,7 @@ def replay(path, out_dir=None, timeout=300, quiet=False):
                   % (len(failures), len(unresolved)))
         print("  artifacts: %s" % work)
     return {"samples": samples, "failures": failures, "unresolved": unresolved,
-            "dir": work}
+            "ran": bool(samples), "reason": reason, "dir": work}
 
 
 def _deep_load_check(path):

@@ -200,6 +200,7 @@ what you set here is what a local JMeter run would use.
 |---|---|---|
 | Download .jmx | the plan | nothing |
 | Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console |
+
 | Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials |
 | Download Taurus .yml | the same test as a `bzt` config | `bzt`, if you use it |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it |
