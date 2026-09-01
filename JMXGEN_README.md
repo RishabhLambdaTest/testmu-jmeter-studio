@@ -652,6 +652,32 @@ thread_groups:
             think_time: {min: 500, max: 1500}     # or think_time: 1000
 ```
 
+### Workload models — `model:` on a thread group
+
+```yaml
+thread_groups:
+- {name: Steady,  model: closed, threads: 200, ramp_up: 60, duration: 600}   # default
+- {name: Hold,    model: concurrency, threads: 200, ramp_up: 60, duration: 600}
+- {name: Orders,  model: arrivals, rate: 50, unit: S, ramp_up: 30, duration: 300,
+   max_concurrency: 500}
+```
+
+`closed` is a plain JMeter Thread Group: N users, each looping. The rate you get
+out depends on how fast the app responds — so when the app slows down, the load
+you are applying quietly drops, which hides the problem you were testing for.
+
+`arrivals` states the rate instead: 50 iterations start every second whether or
+not the previous ones finished. This is how capacity targets are normally
+written ("500 orders per second"), and it is the model that exposes queueing.
+`max_concurrency` caps the threads so a struggling target cannot open unbounded
+connections.
+
+`concurrency` holds N users concurrently and lets JMeter manage the thread pool.
+
+All three honour `-Jrate=`, `-Jthreads=`, `-Jramp=` and `-Jduration=` at run time.
+The last two models need **jmeter-plugins-casutg**; `verify` names the jar, and
+on HyperExecute you can upload it alongside the plan.
+
 ### Element coverage (Phase 0)
 
 **Assertions** — `assert:` on any sampler:

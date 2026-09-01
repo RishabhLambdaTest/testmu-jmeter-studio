@@ -15,6 +15,7 @@ LIVE=0; [ "${1:-}" = "--live" ] && LIVE=1
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); printf "  \033[32mok\033[0m   %s\n" "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf "  \033[31mFAIL\033[0m %s — %s\n" "$1" "$2"; }
+skip() { printf "  \033[33mskip\033[0m %s — %s\n" "$1" "$2"; }
 
 echo "== fixtures =="
 FIX="$WORK/fixtures"; mkdir -p "$FIX/site"
@@ -115,6 +116,35 @@ echo "== think times from recording =="
 $JG from-har "$FIX/mixed.har" --real-think-time --spec "$WORK/t.yaml" -o "$WORK/t.jmx" >/dev/null 2>&1
 grep -q "think_time: 3000" "$WORK/t.yaml" && ok "3s gap became think time" || bad "3s gap became think time" "not found"
 
+echo "== workload models =="
+cat > "$FIX/arrivals.yaml" <<'YAML'
+name: Arrival rate
+defaults: {protocol: http, domain: localhost, port: 8791}
+thread_groups:
+- {name: Open, model: arrivals, rate: 50, unit: S, ramp_up: 10, duration: 60,
+   max_concurrency: 500, steps: [{name: GET /, method: GET, path: /}]}
+- {name: Steady, model: concurrency, threads: 200, ramp_up: 30, duration: 120,
+   steps: [{name: GET /, method: GET, path: /}]}
+YAML
+$JG build "$FIX/arrivals.yaml" -o "$WORK/arrivals.jmx" >"$WORK/arrivals.log" 2>&1
+grep -q "VALID" "$WORK/arrivals.log" \
+  && ok "open-workload plan is valid" || bad "open-workload plan is valid" "invalid"
+grep -q "2 thread group" "$WORK/arrivals.log" \
+  && ok "verifier counts plugin thread groups" \
+  || bad "verifier counts plugin thread groups" "reported none"
+grep -q "ArrivalsThreadGroup" "$WORK/arrivals.jmx" \
+  && ok "arrivals thread group emitted" || bad "arrivals thread group emitted" "missing"
+grep -q "ConcurrencyThreadGroup" "$WORK/arrivals.jmx" \
+  && ok "concurrency thread group emitted" || bad "concurrency thread group emitted" "missing"
+grep -q 'name="TargetLevel">\${__P(rate,50)}' "$WORK/arrivals.jmx" \
+  && ok "rate overridable with -Jrate" || bad "rate overridable with -Jrate" "value baked in"
+grep -q "jmeter-plugins-casutg" "$WORK/arrivals.log" \
+  && ok "names the plugin jar needed" || bad "names the plugin jar needed" "vague warning"
+printf 'name: x\nthread_groups:\n- {name: a, model: bogus, steps: []}\n' > "$FIX/bogus.yaml"
+$JG build "$FIX/bogus.yaml" -o "$WORK/bogus.jmx" >"$WORK/bogus.log" 2>&1
+grep -q "unknown thread group model" "$WORK/bogus.log" \
+  && ok "rejects an unknown model" || bad "rejects an unknown model" "accepted it"
+
 echo "== browser steps (recorded GUI -> Playwright + JMX) =="
 python3 - "$FIX/gui.har" <<'PYEOF'
 import json, sys
@@ -178,6 +208,15 @@ echo "== JMeter loads every plan =="
 if command -v jmeter >/dev/null; then
   for f in "$WORK"/*.jmx; do
     n=$(basename "$f" .jmx)
+    # a plan that needs an optional jpgc jar cannot load on a stock JMeter -
+    # that is the plugin missing, not the plan being wrong
+    needs_plugin=$(grep -c "com.blazemeter.jmeter\|kg.apc.jmeter\|com.googlecode.jmeter" "$f" || true)
+    have_plugin=$(ls "$(dirname "$(readlink -f "$(command -v jmeter)")")/../lib/ext/" 2>/dev/null \
+                  | grep -ci "casutg\|webdriver" || true)
+    if [ "$needs_plugin" -gt 0 ] && [ "$have_plugin" -eq 0 ]; then
+      skip "deep: $n" "needs a jpgc plugin this JMeter does not have"
+      continue
+    fi
     $JG verify "$f" --deep 2>&1 | grep -q "loaded the tree successfully" \
       && ok "deep: $n" || bad "deep: $n" "JMeter could not load it"
   done

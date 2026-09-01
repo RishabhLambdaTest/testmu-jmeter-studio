@@ -945,6 +945,26 @@ def auth_header(auth):
 
 
 def build_thread_group(tg, defaults):
+    """Emit the thread group the spec asked for.
+
+    `model:` picks the workload shape:
+      closed      (default) N users looping - the plain JMeter Thread Group
+      concurrency hold N concurrent users, JMeter manages the threads
+      arrivals    N iterations started per second/minute, regardless of latency
+
+    Arrival rate is the one worth reaching for when the target is written as
+    throughput: under a closed model a slow response reduces the offered load,
+    which quietly hides the very problem you are testing for.
+    """
+    model = str(tg.get("model", "closed")).lower()
+    if model in ("arrivals", "arrival", "rate", "rps", "open"):
+        return _casutg_group(tg, "arrivals")
+    if model in ("concurrency", "concurrent"):
+        return _casutg_group(tg, "concurrency")
+    if model not in ("closed", "threads", ""):
+        raise ValueError("unknown thread group model %r - use closed, concurrency or arrivals"
+                        % tg.get("model"))
+
     name = tg.get("name", "Thread Group")
     threads = tg.get("threads", 1)
     ramp = tg.get("ramp_up", 1)
@@ -984,6 +1004,69 @@ def build_thread_group(tg, defaults):
     children += build_steps(tg.get("steps", []))
 
     return node("ThreadGroup", gui("ThreadGroupGui", "ThreadGroup", name, tg.get("enabled", True)),
+                inner, children)
+
+
+# jpgc Custom Thread Groups. These express an OPEN workload - you state the rate
+# or the concurrency you want and JMeter works out the threads - which is how
+# load targets are normally written ("500 orders per second"), and what a plain
+# Thread Group cannot say at all.
+CASUTG = "com.blazemeter.jmeter.threads"
+VU_CONTROLLER = ('<elementProp name="ThreadGroup.main_controller" '
+                 'elementType="com.blazemeter.jmeter.control.VirtualUserController"/>')
+
+
+def _casutg_group(tg, kind):
+    """Shared body for the arrivals and concurrency thread groups.
+
+    `rate` (arrivals) and `threads` (concurrency) both land in TargetLevel -
+    the element is the same shape, only the meaning of the number changes.
+    """
+    name = tg.get("name", "Thread Group")
+    if kind == "arrivals":
+        cls = "%s.arrivals.ArrivalsThreadGroup" % CASUTG
+        guicls = "%s.arrivals.ArrivalsThreadGroupGui" % CASUTG
+        label = "bzm - Arrivals Thread Group"
+        target = tg.get("rate", tg.get("arrival_rate", 1))
+        prop = "rate"
+    else:
+        cls = "%s.concurrency.ConcurrencyThreadGroup" % CASUTG
+        guicls = "%s.concurrency.ConcurrencyThreadGroupGui" % CASUTG
+        label = "bzm - Concurrency Thread Group"
+        target = tg.get("threads", 1)
+        prop = "threads"
+
+    # per second unless the spec says per minute - "600 per minute" reads better
+    # for slow business flows and is what capacity docs usually quote
+    unit = str(tg.get("unit", "S")).upper()[:1]
+    unit = "M" if unit == "M" else "S"
+
+    inner = [
+        VU_CONTROLLER,
+        sp("ThreadGroup.on_sample_error", tg.get("on_error", "continue")),
+        # same __P() treatment as the plain group, so one file runs at any load
+        sp("TargetLevel", "${__P(%s,%s)}" % (prop, target)),
+        sp("RampUp", "${__P(ramp,%s)}" % tg.get("ramp_up", 0)),
+        sp("Steps", tg.get("steps_count", 1)),
+        sp("Hold", "${__P(duration,%s)}" % (tg.get("duration") or 0)),
+        sp("LogFilename", tg.get("log_file", "")),
+        sp("Unit", unit),
+    ]
+    if kind == "arrivals":
+        # a runaway target must not open unbounded threads; blank means no cap
+        inner.append(sp("ConcurrencyLimit", tg.get("max_concurrency", "")))
+        inner.append(sp("Iterations", tg.get("loops", "")))
+
+    children = []
+    if tg.get("variables"):
+        children += build_user_vars(tg["variables"], "Vars - %s" % name)
+    for csv in tg.get("csv", []):
+        children += build_csv(csv)
+    if tg.get("headers"):
+        children += build_header_manager(tg["headers"], "Headers - %s" % name)
+    children += build_steps(tg.get("steps", []))
+
+    return node(cls, gui(guicls, cls, "%s (%s)" % (name, label), tg.get("enabled", True)),
                 inner, children)
 
 
@@ -3072,7 +3155,10 @@ def verify(path, deep=False, quiet=False):
         errors.append("no <TestPlan> element")
     tgs = (root.findall(".//ThreadGroup") + root.findall(".//SetupThreadGroup")
            + root.findall(".//PostThreadGroup")
-           + root.findall(".//kg.apc.jmeter.threads.UltimateThreadGroup"))
+           + root.findall(".//kg.apc.jmeter.threads.UltimateThreadGroup")
+           + root.findall(".//%s.arrivals.ArrivalsThreadGroup" % CASUTG)
+           + root.findall(".//%s.concurrency.ConcurrencyThreadGroup" % CASUTG)
+           + root.findall(".//%s.arrivals.FreeFormArrivalsThreadGroup" % CASUTG))
     if not tgs:
         errors.append("no Thread Group - nothing would run")
     samplers = [e for e in root.iter() if e.tag.endswith("Sampler")
@@ -3109,8 +3195,22 @@ def verify(path, deep=False, quiet=False):
     plugins = sorted({e.tag for e in root.iter()
                       if e.tag.startswith(("com.googlecode.jmeter.plugins",
                                            "kg.apc.jmeter", "com.blazemeter"))})
+    # naming the jar matters: "needs a plugin" sends people hunting, and on
+    # HyperExecute the fix is simply to upload the jar with the plan
+    PLUGIN_JARS = {
+        "com.blazemeter.jmeter.threads": "jmeter-plugins-casutg (Custom Thread Groups)",
+        "com.googlecode.jmeter.plugins.webdriver": "jmeter-plugins-webdriver",
+        "kg.apc.jmeter.threads": "jmeter-plugins-casutg (Custom Thread Groups)",
+        "kg.apc.jmeter": "jmeter-plugins-standard",
+    }
     for p in plugins:
-        warnings.append("needs plugin element on the runner: %s" % p)
+        jar = next((v for k, v in PLUGIN_JARS.items() if p.startswith(k)), None)
+        if jar:
+            warnings.append("needs %s on the runner - install it in JMeter's "
+                            "lib/ext, or upload the jar alongside the plan (%s)"
+                            % (jar, p.rsplit(".", 1)[-1]))
+        else:
+            warnings.append("needs plugin element on the runner: %s" % p)
 
     # referenced files
     base = os.path.dirname(os.path.abspath(path))
