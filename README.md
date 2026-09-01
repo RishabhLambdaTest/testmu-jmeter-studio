@@ -70,6 +70,11 @@ dist/testmu-recorder-1.1.0-share.zip     6.3 MB   →  people (Load unpacked)
 dist/testmu-recorder-1.1.0.zip           6.3 MB   →  Chrome Web Store, unlisted
 ```
 
+Same extension in both; the only difference is that `-share` wraps the files in a
+`testmu-recorder/` folder, which is what *Load unpacked* asks you to select, while
+the store requires `manifest.json` at the top level and rejects a wrapper folder.
+**If a human is going to unzip it, send `-share.zip`.**
+
 Both are committed, so nobody has to build anything — clone, send the `-share`
 zip and [docs/SETUP.md](docs/SETUP.md), done. Rebuild them after a change with
 `jmxgen-recorder/package.sh`; the filename carries the manifest version, so an
