@@ -1,4 +1,4 @@
-# TestMu AI — JMeter Recorder (Chrome extension)
+# TestMu AI — JMeter Studio (Chrome extension)
 
 The whole product. Record a journey in your **own** Chrome — your profile, your
 logins, your VPN — or bring a cURL command, an OpenAPI spec, a Postman
@@ -29,8 +29,8 @@ the DevTools protocol attaching, and it is how response bodies get captured.
 
 ```bash
 ./package.sh
-#   ../dist/testmu-recorder-<v>.zip         files at the root  — Chrome Web Store
-#   ../dist/testmu-recorder-<v>-share.zip   wrapped in a folder — Load unpacked
+#   ../dist/testmu-jmeter-studio-<v>.zip         files at the root  — Chrome Web Store
+#   ../dist/testmu-jmeter-studio-<v>-share.zip   wrapped in a folder — Load unpacked
 ```
 
 `package.sh` ships an explicit file list and fails if the manifest references

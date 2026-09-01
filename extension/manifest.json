@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "TestMu AI — JMeter Recorder",
-  "version": "1.1.0",
+  "name": "TestMu AI — JMeter Studio",
+  "version": "1.2.0",
   "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
     "debugger",
@@ -18,7 +18,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "TestMu AI — JMeter Recorder",
+    "default_title": "TestMu AI — JMeter Studio",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -48,7 +48,7 @@
         "default": "Ctrl+Shift+9",
         "mac": "Command+Shift+9"
       },
-      "description": "Open the TestMu recorder"
+      "description": "Open TestMu JMeter Studio"
     },
     "toggle-recording": {
       "suggested_key": {

@@ -1,6 +1,6 @@
 # Chrome Web Store submission
 
-**Name:** TestMu AI — JMeter Recorder
+**Name:** TestMu AI — JMeter Studio
 **Category:** Developer Tools
 **Visibility:** Unlisted (share the link with customers) or Private to the org
 
@@ -11,7 +11,7 @@ JMeter .jmx. No install.
 
 ## Detailed description
 
-TestMu Recorder captures what your browser actually requests — including response bodies,
+JMeter Studio captures what your browser actually requests — including response bodies,
 redirect chains and OAuth popups — and lets you author test steps while you browse:
 name transactions, add assertions, extract values into variables, insert pauses, drop
 requests you don't want, and type in requests that never happened.

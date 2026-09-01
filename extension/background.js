@@ -1,4 +1,4 @@
-/* jmxgen recorder - service worker.
+/* TestMu AI — JMeter Studio - service worker.
  *
  * Attaches the DevTools protocol to the recorded tab, collects every
  * request/response (bodies included), merges in the steps the user authors by
@@ -419,13 +419,13 @@ function buildHar() {
   return {
     log: {
       version: "1.2",
-      creator: { name: "jmxgen-recorder", version: "1.0.0" },
+      creator: { name: "testmu-jmeter-studio", version: "1.2.0" },
       browser: { name: "Chrome", version: "" },
       pages,
       entries,
       // the browser steps ride in the HAR's own extension field, so one file
       // still carries the whole session and `from-har` can emit both plans
-      _jmxgen: { authoredWith: "jmxgen-recorder", recordedAt: iso(state.startedAt),
+      _jmxgen: { authoredWith: "testmu-jmeter-studio", recordedAt: iso(state.startedAt),
                  actions: state.actions || [] },
     },
   };

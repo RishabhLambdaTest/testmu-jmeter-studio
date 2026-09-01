@@ -1,63 +1,61 @@
-# Recording and authoring a journey
+# Recording a journey
 
 This is the path BlazeMeter's Chrome recorder covers, and the one people ask for
-first: *don't make me write a test — let me click through the app and get one.*
+first: don't make me write a test, let me click through the app and get one.
 
-You record in **your own Chrome** — your profile, your SSO session, your VPN,
+You record in your own Chrome, with your profile, your SSO session, your VPN and
 your feature flags. Nothing is proxied, nothing is uploaded, and the plan is
 built in the browser.
 
----
+## Recording
 
-## Record
-
-**1. Open the popup** (toolbar icon, or `⌘⇧9` / `Ctrl+Shift+9`).
+Open the popup with the toolbar icon, or `⌘⇧9` / `Ctrl+Shift+9`.
 
 ![The popup, idle](screenshots/popup-idle.png)
 
-**2. Start.** Two ways, and the difference matters:
+There are two ways to start, and the difference matters. **Start recording this
+tab** attaches to the page in front of you, which is right when you are already
+where you want to begin. Typing a URL in the box and pressing **Go** opens it in
+a new tab and attaches before anything is sent, so you capture request number
+one: the first navigation, the redirect chain, the SSO bounce. Those are exactly
+the requests a plan needs and the ones an already-open tab has missed.
 
-| | When to use it |
-|---|---|
-| **Start recording this tab** | you are already on the page you want to start from |
-| the URL box → **Go** | you want request **#1** — the very first navigation, the redirect chain, the SSO bounce. It opens the URL in a new tab and attaches before anything is sent. |
+Chrome then shows a banner saying the extension started debugging this browser.
+That is the DevTools protocol attaching, and it is the only Chrome API that can
+read response bodies, which correlation cannot work without.
 
-Chrome shows a *"started debugging this browser"* banner. That is the DevTools
-protocol attaching, and it is the only Chrome API that can read **response
-bodies** — which correlation cannot work without.
-
-**3. Browse.** Log in, click, submit, search. A panel appears on the page:
+Now browse. Log in, click, submit, search. A panel appears on the page:
 
 ![The recording panel on a page under test](screenshots/panel-recording.png)
 
-**4. Finish → build the plan.** The plan opens in a new tab, already generated.
+When you are done, press **Finish → build the plan**. The plan opens in a new
+tab, already generated.
 
 ![The popup while recording](screenshots/popup-recording.png)
 
----
+## Annotating as you browse
 
-## Author while you browse
-
-A raw recording cannot know what a step *means*. The panel is where you tell it,
-at the moment you are looking at the thing — not an hour later in a JMeter tree.
+A raw recording cannot know what a step means. The panel is where you say so, at
+the moment you are looking at the thing, rather than an hour later in a JMeter
+tree.
 
 | Control | What it writes into the plan |
 |---|---|
-| **Transaction** | every request from here on lands in this Transaction Controller — this is what turns 200 requests into "Login / Search / Checkout" in the report |
-| **Assert 200** | a response assertion on the last request |
-| **Assert text…** | "body contains …" on the last request — the check that catches a 200 with an error page in it |
-| **Extract…** | a JSON extractor: `$.data.token` → `${TOKEN}` |
-| **Pause 2s** | a Flow Control Action pause after that request |
-| **Rename…** | the sampler label |
-| **Skip last** | drops that request from the plan |
-| **+ Manual request…** | a request you type in — one that never happened, but has to be in the test |
+| Transaction | every request from here on lands in this Transaction Controller, which is what turns 200 requests into Login, Search and Checkout in the report |
+| Assert 200 | a response assertion on the last request |
+| Assert text… | "body contains …" on the last request, the check that catches a 200 carrying an error page |
+| Extract… | a JSON extractor: `$.data.token` becomes `${TOKEN}` |
+| Pause 2s | a Flow Control Action pause after that request |
+| Rename… | the sampler label |
+| Skip last | drops that request from the plan |
+| + Manual request… | a request you type in, one that never happened but has to be in the test |
 
-Drag the panel by its title bar; `–` hides it, and it returns on the next
-captured request or from the popup.
+Drag the panel by its title bar. The `–` button hides it, and it comes back on
+the next captured request or from the popup.
 
-Everything you add travels inside the exported HAR as `_jmxgen` fields — a
-custom key the HAR spec permits — so the file stays a valid HAR that DevTools
-and every other tool still reads.
+Everything you add travels inside the exported HAR as `_jmxgen` fields, a custom
+key the HAR spec permits, so the file stays a valid HAR that DevTools and other
+tools still read.
 
 ```json
 {
@@ -73,20 +71,19 @@ and every other tool still reads.
 }
 ```
 
----
+## Two artifacts from one session
 
-## Two artifacts from one recording
+The *record browser steps* checkbox in the panel is on by default, and its
+counter climbs as you click. So one session gives you two things.
 
-The **record browser steps** checkbox in the panel is on by default, and its
-counter climbs as you click. So a single session produces:
+The protocol plan, a `.jmx` of HTTP samplers with no browser involved, is what
+scales to thousands of users on a handful of machines. The browser test is the
+same journey as real clicks and typing, and it is what proves the journey still
+works when the front end changes.
 
-- a **protocol plan** (`.jmx`) — HTTP samplers, no browser, the thing that scales
-  to thousands of users on a handful of machines;
-- a **browser test** — the same journey as real clicks and typing, which is what
-  proves the journey still works when the front end changes.
-
-On the result page: **Download .jmx** and **Download browser test .py**. The
-browser test is Playwright, and it uses ranked locators, not recorded XPaths:
+Both are on the result page: **Download .jmx** and **Download browser test .py**.
+The browser test is Playwright, and it uses ranked locators rather than recorded
+XPaths:
 
 ```
 data-testid  →  id (unless it looks generated)  →  name  →  aria-label
@@ -94,36 +91,32 @@ data-testid  →  id (unless it looks generated)  →  name  →  aria-label
 ```
 
 Each candidate is re-queried against the live DOM at capture time, and the first
-one that actually resolves — uniquely — is the one written down. A recorder that
-emits `/html/body/div[3]/div[2]/form/button` produces a script that breaks on the
-next release; this is the difference between a recording you keep and one you
-re-record every sprint.
+that resolves uniquely is the one written down. A recorder that emits
+`/html/body/div[3]/div[2]/form/button` produces a script that breaks on the next
+release. This is the difference between a recording you keep and one you redo
+every sprint.
 
-If you want those browser steps inside the `.jmx` itself, they are emitted as
-WebDriver samplers, which need `jmeter-plugins-webdriver` on the runner. The log
-tells you so, by name, at generation time.
-
----
+Browser steps can also go into the `.jmx` itself, as WebDriver samplers, which
+need `jmeter-plugins-webdriver` on the runner. The log says so by name at
+generation time.
 
 ## Recording options
 
-Under **Recording options** in the popup, applied live — changing one mid-session
-pushes it to the attached tab, so you never throw away a recording to fix a
-setting:
+These sit under *Recording options* in the popup and apply live, so changing one
+mid-session pushes it to the attached tab. You never have to throw away a
+recording to fix a setting.
 
 | Option | What it does |
 |---|---|
-| **Device** | iPhone 14, Pixel 7, iPad Pro, Galaxy S22, or desktop — sets the metrics *and* the user agent, so you capture the mobile site |
-| **User agent** | override it by hand |
-| **Blocked patterns** | drop hosts at capture time — analytics, chat widgets, anything you will never load-test |
-| **Disable cache** | every asset is fetched, so the recording reflects a cold visit |
-| **Bypass service worker** | requests hit the network instead of being answered from a worker cache |
+| Device | iPhone 14, Pixel 7, iPad Pro, Galaxy S22 or desktop. Sets the metrics and the user agent together, so you capture the mobile site |
+| User agent | override it by hand |
+| Blocked patterns | drop hosts at capture time: analytics, chat widgets, anything you will never load-test |
+| Disable cache | every asset is fetched, so the recording reflects a cold visit |
+| Bypass service worker | requests hit the network instead of being answered from a worker cache |
 
 `⌘⇧8` / `Ctrl+Shift+8` starts and stops recording without opening the popup.
 
----
-
-## What gets thrown away, and why
+## What gets thrown away
 
 A raw browser session is mostly not a load test. From the sample recording:
 
@@ -132,42 +125,38 @@ kept 3 of 58 recorded requests across 1 page(s)
   (dropped 42 static, 13 third-party, 0 filtered)
 ```
 
-- **static** — images, fonts, CSS. A CDN serving a logo 500 times does not tell
-  you anything about your API, and it drags the average response time down until
-  the report is flattering and useless.
-- **third-party** — analytics, tag managers, chat. Load-testing someone else's
-  service is at best noise and at worst abuse.
-- **filtered** — whatever you excluded yourself.
+Static assets go first: images, fonts, CSS. A CDN serving a logo 500 times tells
+you nothing about your API, and it drags the average response time down until the
+report is flattering and useless. Third-party requests follow: analytics, tag
+managers, chat. Load-testing someone else's service is noise at best. Anything
+you excluded yourself is counted as filtered.
 
-**Keep: web** keeps the assets, for when the page load *is* the thing you are
-measuring. The same recording, either way — the decision is made at generation
-time, not at record time, so you are never forced to re-record.
+*Keep: web* keeps the assets, for when the page load is the thing you are
+measuring. It is the same recording either way, because the decision is made at
+generation time rather than at record time, so you are never forced to record
+again.
 
----
+## Correlation
 
-## Correlation, in one paragraph
-
-Every recorded response is scanned for values that reappear in a later request:
+Every recorded response is scanned for values that turn up in a later request:
 bearer tokens, CSRF tokens, session ids, order ids. When one matches, the plan
 gets an extractor on the first response and a `${VARIABLE}` in the second, and
-the **Correlations** tab shows the rule that matched, the confidence, and the
-exact hop:
+the Correlations tab shows the rule that matched, the confidence, and the exact
+hop.
 
 ```
 ${ACCESSTOKEN}   bearer-token   high   from body
                  POST /auth/login -> GET /auth/me
 ```
 
-This is the difference between a recording and a test. Replay a recording
-verbatim and it fails the moment the token expires — which is roughly always.
-
----
+This is what separates a recording from a test. Replay a recording as it stands
+and it fails the moment the token expires, which is to say almost immediately.
 
 ## Recording without the extension
 
 For the cases a Chrome extension cannot reach, the same recorder exists in the
-[jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) — a separate
-repository, needed only for these:
+[jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen), a separate repository
+needed only for these:
 
 ```bash
 jmxgen record https://app.example.com -o plan.jmx   # Playwright drives a browser
@@ -175,6 +164,6 @@ jmxgen capture --port 8080 -o plan.jmx              # a proxy: mobile apps, Post
                                                     # desktop clients, backend traffic
 ```
 
-Firefox is not supported and it is not a matter of effort: Firefox does not
-implement `chrome.debugger`, so response bodies cannot be captured, so
-correlation has nothing to work with. Use `jmxgen record` there.
+Firefox is not supported, and not for want of effort. It does not implement
+`chrome.debugger`, so response bodies cannot be captured, so correlation has
+nothing to work with. Use `jmxgen record` there.

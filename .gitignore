@@ -1,7 +1,7 @@
 # Build output. The extension zips are the exception - they are the thing people
 # are handed, so they live in the repo and are versioned with the manifest.
 dist/*
-!dist/testmu-recorder-*.zip
+!dist/testmu-jmeter-studio-*.zip
 
 # Recordings and run output: per-person, and often carrying real session data
 *.har
