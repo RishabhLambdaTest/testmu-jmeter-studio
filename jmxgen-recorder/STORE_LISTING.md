@@ -1,25 +1,30 @@
 # Chrome Web Store submission
 
-**Name:** jmxgen recorder
+**Name:** TestMu AI — JMeter Recorder
 **Category:** Developer Tools
 **Visibility:** Unlisted (share the link with customers) or Private to the org
 
 ## Short description (132 char max)
 
-Record a browser journey, author test steps by hand, and export a HAR that becomes a
-ready-to-run JMeter test plan.
+Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run
+JMeter .jmx. No install.
 
 ## Detailed description
 
-jmxgen recorder captures what your browser actually requests — including response bodies,
+TestMu Recorder captures what your browser actually requests — including response bodies,
 redirect chains and OAuth popups — and lets you author test steps while you browse:
 name transactions, add assertions, extract values into variables, insert pauses, drop
 requests you don't want, and type in requests that never happened.
 
-Export a HAR and the jmxgen CLI (or console) turns it into a JMeter .jmx with the noise
-removed and dynamic tokens correlated automatically.
+Finish, and the plan is built right there: noise stripped out, dynamic tokens correlated,
+and every decision shown with the rule that made it. You can also author from a cURL
+command, an OpenAPI spec, a Postman collection, a spreadsheet, a URL list or an existing
+.jmx — no recording required.
 
-Nothing is uploaded. The recording stays on your machine until you export it.
+Download the .jmx, or trigger it on LambdaTest HyperExecute from the same window.
+
+Nothing is uploaded. The recording, and the plan built from it, stay on your machine.
+The engine runs locally in WebAssembly; there is no server in the middle.
 
 ## Permission justifications (required at review)
 
@@ -34,8 +39,9 @@ Nothing is uploaded. The recording stays on your machine until you export it.
 
 ## Data use disclosure
 
-- Does **not** collect or transmit user data. All capture stays local.
-- No analytics, no remote endpoints, no third-party libraries.
+- Does **not** collect or transmit user data. All capture and all authoring stay local.
+- No analytics and no third-party endpoints. The only outbound calls are to the site
+  you are recording and, if you use it, to the HyperExecute API with your own credentials.
 - The exported HAR is written to the user's own Downloads folder.
 
 ## Assets needed for the listing

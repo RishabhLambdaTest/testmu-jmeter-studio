@@ -475,38 +475,33 @@ async function pingEndpoint() {
   }
 }
 
-async function sendToConsole(options) {
+/* Hand the recording to the extension's own authoring page.
+ *
+ * This used to POST the HAR to a console on localhost. It no longer does:
+ * the engine runs inside the extension, so the capture only has to travel
+ * from here to author.html. Session storage is the vehicle - it holds the
+ * HAR for exactly as long as the browser session, is never written to disk,
+ * and is readable only by this extension's own pages.
+ */
+async function harHandoff(options) {
   if (!state || !state.entries.length) throw new Error("nothing recorded yet");
-  const base = await getEndpoint();
-  const har = buildHar();
-  const text = JSON.stringify(har);
-  // hand the capture straight to the service - no file to download and re-upload
-  const body = {
-    mode: "har",
-    options: Object.assign({traffic: "auto"}, options || {}),
-    file: {name: "recording.har", content: b64(text)},
-  };
-  let res;
-  try {
-    res = await fetch(base + "/api/author", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    throw new Error("cannot reach jmxgen at " + base + " - start it with: jmxgen console");
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  const text = JSON.stringify(buildHar());
+  const key = "har-" + Date.now().toString(36);
+  await chrome.storage.session.set({
+    [key]: { name: "recording.har", content: b64(text), count: state.entries.length },
+  });
+  // the capture has left the recorder intact, so it no longer counts as unsaved
   state.exported = true;
   await persist();
   broadcast();
-  const page = (options && options.open === "hyperexecute")
-    ? chrome.runtime.getURL("run.html") + "?session=" + data.session
-    : base + "/?session=" + data.session;
-  await chrome.tabs.create({url: page, active: true});
-  return {session: data.session, kept: (data.report || {}).kept,
-          total: (data.report || {}).total};
+
+  const q = new URLSearchParams({ mode: "har", har: key, go: "1" });
+  if (options && options.open === "hyperexecute") q.set("then", "hx");
+  await chrome.tabs.create({
+    url: chrome.runtime.getURL("author.html") + "?" + q.toString(),
+    active: true,
+  });
+  return { count: state.entries.length };
 }
 
 // Run on HyperExecute without a recording - straight to the form, where the user
@@ -731,8 +726,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await exportHar() });
         case "openHyperExecute":
           return sendResponse({ ok: true, data: await openHyperExecute() });
-        case "sendToConsole":
-          return sendResponse({ ok: true, data: await sendToConsole(msg.options) });
+        case "harHandoff":
+          return sendResponse({ ok: true, data: await harHandoff(msg.options) });
         case "ping":
           return sendResponse({ ok: true, data: await pingEndpoint() });
         case "guiAction": {

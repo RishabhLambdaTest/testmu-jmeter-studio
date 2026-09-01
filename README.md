@@ -1,159 +1,120 @@
-# jmxgen
+# TestMu Recorder — JMeter test plans, authored in the browser
 
-Author a ready-to-run JMeter `.jmx` from an OpenAPI spec, a Postman collection, a
-spreadsheet, a URL list, or a real browser session — with dynamic tokens wired up
-automatically, and proof it works before you put load on anything.
+Record a journey, or bring the cURL command / OpenAPI spec / Postman collection /
+spreadsheet you already have, and get a ready-to-run JMeter `.jmx` — with the
+dynamic tokens correlated, the noise stripped out, and proof it works before you
+put load on anything. Then run it on HyperExecute without leaving the browser.
 
-Two ways in: the **app** (console + CLI) and the **Chrome recorder extension**.
+Nothing to install. The engine ships inside the Chrome extension and runs in
+WebAssembly; the run is triggered straight against the HyperExecute API, so your
+access key never leaves the machine.
 
 ---
 
-## 1. Dependencies
+## Start here
 
-**To author a plan — nothing.** The bundle in `dist/` is self-contained: no Python, no
-pip, no virtualenv.
-
-**To run a plan** you need JMeter and Java:
-
-```bash
-brew install openjdk@11
-brew install jmeter
-```
-
-**Optional**, each unlocking one feature only:
-
-| Install | Unlocks |
+| I want to… | Read |
 |---|---|
-| `pip install playwright && python3 -m playwright install chromium` | `record` — headless / manual browser capture |
-| `pip install mitmproxy` | `capture` — Postman, mobile, desktop, backend traffic |
-| `export LAMBDATEST_USERNAME=... LAMBDATEST_ACCESS_KEY=...` | `ship` — running on HyperExecute |
-
-Check everything at once:
-
-```bash
-./dist/jmxgen-macos/jmxgen doctor
-```
-
-It prints what is present, what each thing unlocks, and the command to install anything
-missing. If the Chrome extension is your recorder, you do not need Playwright.
+| **install it and run my first test** | [docs/SETUP.md](docs/SETUP.md) — stepwise, with screenshots |
+| **see every way to author a plan, with samples I can run** | [docs/SOURCES.md](docs/SOURCES.md) |
+| **record a journey by hand, like BlazeMeter's recorder** | [docs/RECORDING.md](docs/RECORDING.md) |
+| **compare it to BlazeMeter, or pitch it** | [docs/COMPARISON.md](docs/COMPARISON.md) |
+| **use the CLI, or the full flag reference** | [JMXGEN_README.md](JMXGEN_README.md) |
 
 ---
 
-## 2. Run it locally
+## The 60-second version
 
-```bash
-# start the web console — opens your browser automatically
-./dist/jmxgen-macos/jmxgen console
-```
+1. Unzip `dist/testmu-recorder-<version>-share.zip`
+2. `chrome://extensions` → **Developer mode** → **Load unpacked** → pick the folder
+3. Click the toolbar icon → **cURL** → paste a request → **Generate plan**
+4. **Run on HyperExecute…** → credentials → **Create & trigger**
 
-Then: pick a source → **Generate plan** → review the **Correlations** tab →
-**Validate (single user)** → **Download .jmx**. Ctrl-C stops the console.
-
-Same thing on the CLI:
-
-```bash
-# author from a contract
-./dist/jmxgen-macos/jmxgen from-openapi api.yaml -o plan.jmx
-
-# author from a recording, with correlation
-./dist/jmxgen-macos/jmxgen from-har journey.har -o plan.jmx --mode web
-
-# run it once as a single user and diagnose what broke  <- the gate that matters
-./dist/jmxgen-macos/jmxgen replay plan.jmx
-
-# run the load test
-jmeter -n -t plan.jmx -l results.jtl -e -o report/
-```
-
-| Command | What it does |
-|---|---|
-| `doctor` | What is installed and what it unlocks |
-| `console` | Web console on port 8770 |
-| `from-openapi` / `from-postman` / `from-curl` | Contract or collection → `.jmx` |
-| `from-har` | Any browser recording → `.jmx`, with correlation |
-| `from-excel` | Spreadsheet → `.jmx` (`template` writes the sheet to fill in) |
-| `probe` | A list of page URLs and nothing else → `.jmx` |
-| `verify` | Valid and loadable? `--deep` asks JMeter itself |
-| `replay` | Run once as one user and diagnose failures |
-| `optimize` | Repair and slim a plan you already have |
-| `ship` | Author and run on HyperExecute in one step |
-
-The console releases the port on every exit — Ctrl-C, `kill`, or closing the terminal —
-and stops itself after 60 minutes with no requests so a forgotten window never blocks the
-next start. `--idle-timeout 0` keeps it up indefinitely; `--idle-timeout 15` is shorter.
-If the port is taken anyway, it names the process holding it and the command to stop it.
-The extension's endpoint is configurable to match under *Where jmxgen runs* in the popup.
+![A plan generated inside the extension](docs/screenshots/author-curl-result.png)
 
 ---
 
-## 3. Run the Chrome extension
+## What it covers
 
-**Install** — the console must be running first (step 2), because the extension hands its
-recording to it.
+**Seven ways in** — a browser recording, cURL, OpenAPI/Swagger, a Postman
+collection, an Excel/CSV sheet, a list of page URLs, or an existing `.jmx`.
 
-1. Open `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. **Load unpacked** → select the `jmxgen-recorder/` folder
-4. Pin it so the toolbar icon is visible
+**The parts people get wrong**, handled:
 
-**Record**
+- **Correlation** — tokens found in one response and wired into the next, with
+  the matching rule, a confidence and the exact hop shown, so you can disagree
+  with it.
+- **Auth under load** — the login runs once per user in a setUp Thread Group and
+  publishes a JMeter *property*, not a per-thread variable.
+- **Test data** — CSV per user, split across engines on HyperExecute.
+- **Transactions and assertions** — added while you record, on the request you
+  are looking at.
+- **Open and closed workloads** — normal Thread Groups, and arrival-rate groups
+  for the case where load must keep arriving as the system degrades.
+- **mTLS** — client certificates, with the JVM properties generated and checked
+  at build time.
+- **Verification** — `verify` for validity, `validate` for the heap/CPU lint,
+  and a single-user replay that reports per-request codes and any `${VARIABLE}`
+  that never resolved.
 
-1. Click the extension icon. It should say *jmxgen service found at localhost:8770*.
-2. **Type your target URL in the popup and press Go.** Do not use *Start recording this
-   tab* for a fresh journey — Go attaches before the first byte, so the page load and the
-   auth handshake are captured. Recording an already-open tab misses them.
-3. Click through your flow. Use the floating panel on the page to name transactions and
-   attach assertions, extractors and pauses as you go.
-4. Press **Generate test plan** — the console opens with correlations already computed.
-
-Shortcuts: `⌘⇧9` opens the popup, `⌘⇧8` starts/stops recording.
-
-**If the console is not running**, press **Export HAR instead** and finish on the CLI:
-
-```bash
-./dist/jmxgen-macos/jmxgen from-har jmxgen-session-*.har -o plan.jmx
-./dist/jmxgen-macos/jmxgen replay plan.jmx
-```
-
-**Expect this:** Chrome shows *"jmxgen recorder started debugging this browser"* while
-recording. That is the DevTools protocol attaching — the only API that exposes response
-bodies, which is what correlation reads. Closing that banner stops the recording.
-
-Firefox is not supported: it does not implement `chrome.debugger`, so response bodies
-cannot be captured at all. Use `record` or `capture` there.
+**Four artifacts out of one authoring pass** — the `.jmx`, a Taurus YAML, a
+Playwright browser test for the journey, and the HAR itself.
 
 ---
 
 ## Sharing it
 
-Hand someone `dist/jmxgen-macos.zip` (9.2 MB). They need nothing else to author:
+One file: `dist/testmu-recorder-<version>-share.zip` (~6 MB), built by
+`jmxgen-recorder/package.sh`. Send it with [docs/SETUP.md](docs/SETUP.md).
 
-```bash
-unzip jmxgen-macos.zip
-./jmxgen-macos/jmxgen console
-```
-
-If macOS blocks it, `xattr -dr com.apple.quarantine jmxgen-macos` clears the download
-quarantine once. First launch takes a few seconds while macOS scans the bundle; every run
-after that starts in ~0.2s.
-
-Rebuild with `./build_binary.sh`. Bundles are per-platform — build on macOS for macOS,
-Linux for Linux, Windows for the `.exe`. If the target machine already has Python 3.8+,
-`./build_bundle.sh` produces `dist/jmxgen`, a single 144 KB file that runs anywhere.
+For managed Chrome fleets, force-install by policy; for a team, upload the
+store-shaped zip as an **unlisted** Chrome Web Store item so updates arrive
+automatically. Both are covered in
+[jmxgen-recorder/STORE_LISTING.md](jmxgen-recorder/STORE_LISTING.md).
 
 ---
 
-## What's here
+## The CLI and the console (optional)
+
+Everything above works with no install. The command line exists for CI, for
+scripted authoring, and for the two things a browser cannot do: run JMeter, and
+record traffic that is not in a Chrome tab.
+
+```bash
+./dist/jmxgen-macos/jmxgen doctor           # what is installed, and what it unlocks
+./dist/jmxgen-macos/jmxgen console          # the web console on :8770
+./dist/jmxgen-macos/jmxgen from-har s.har -o plan.jmx
+./dist/jmxgen-macos/jmxgen replay plan.jmx  # one user, real target — the gate that matters
+jmeter -n -t plan.jmx -l results.jtl -e -o report/
+```
+
+| Command | What it does |
+|---|---|
+| `from-openapi` / `from-postman` / `from-curl` | contract or collection → `.jmx` |
+| `from-har` | any browser recording → `.jmx`, with correlation |
+| `from-excel` | spreadsheet → `.jmx` (`template` writes the sheet to fill in) |
+| `probe` | a list of page URLs and nothing else → `.jmx` |
+| `record` / `capture` | Playwright-driven recording; proxy capture for mobile, desktop, Postman |
+| `import-jmx` / `optimize` | turn a plan back into a spec; repair and slim it |
+| `to-taurus` / `to-playwright` | the same test as `bzt` YAML, or as a browser test |
+| `verify` / `validate` / `replay` | valid? sane? does it actually run? |
+| `ship` | author and run on HyperExecute in one step |
+
+Running a plan needs JMeter and Java (`brew install openjdk@11 jmeter`).
+Everything else is optional and each install unlocks exactly one thing —
+`doctor` prints the list.
+
+---
+
+## What's in the tree
 
 | Path | |
 |---|---|
-| `dist/jmxgen-macos/` | the built app — run `jmxgen` inside it |
-| `jmxgen-recorder/` | the Chrome extension — load this folder unpacked |
-| `docs/JMXGEN_GUIDE.html` | illustrated walkthrough with screenshots — open in a browser |
-| `docs/GETTING_STARTED.md` | the same, in markdown |
-| `JMXGEN_README.md` | full reference: every flag, the spec format, correlation rules |
-| `examples/` | a sample spec and a spreadsheet template |
-| `samples/` | real customer plans used for testing `optimize` |
-| `demo.sh` | end-to-end demo against self-started sample targets |
-| `run_tests.sh` | regression suite (`--live` to include network tests) |
-| `jmxgen.py` `jmxgen_server.py` `console.html` | the source the bundle is built from |
+| `jmxgen-recorder/` | the Chrome extension — this is the product |
+| `dist/testmu-recorder-*.zip` | the shareable builds |
+| `dist/jmxgen-macos/` | the optional CLI bundle |
+| `sample/` | one input for every source, plus CSV, workload and mTLS samples |
+| `docs/` | setup, sources, recording, comparison, screenshots |
+| `JMXGEN_README.md` | full reference: every flag, the spec format, the correlation rules |
+| `jmxgen.py` `jmxgen_server.py` `console.html` | the source the bundle and the extension engine share |
+| `run_tests.sh` | the regression suite (`--live` includes network tests) |

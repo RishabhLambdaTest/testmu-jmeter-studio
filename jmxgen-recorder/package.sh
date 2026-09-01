@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the two zips, which are not the same shape:
-#   dist/jmxgen-recorder-<version>.zip        files at the root - Chrome Web Store
-#   dist/jmxgen-recorder-<version>-share.zip  wrapped in a folder - Load unpacked
+#   dist/testmu-recorder-<version>.zip        files at the root - Chrome Web Store
+#   dist/testmu-recorder-<version>-share.zip  wrapped in a folder - Load unpacked
 # The store rejects a zip with a wrapper folder; a colleague unzipping the store
 # one gets loose files all over their Downloads. Hence both.
 set -euo pipefail
@@ -10,8 +10,8 @@ VERSION=$(python3 -c "import json;print(json.load(open('manifest.json'))['versio
 # Write OUTSIDE the extension folder. A dist/ inside it is loaded as part of
 # the extension when you "Load unpacked", which quietly doubles its size.
 OUTDIR="../dist"
-STORE="$OUTDIR/jmxgen-recorder-${VERSION}.zip"
-SHARE="$OUTDIR/jmxgen-recorder-${VERSION}-share.zip"
+STORE="$OUTDIR/testmu-recorder-${VERSION}.zip"
+SHARE="$OUTDIR/testmu-recorder-${VERSION}-share.zip"
 
 # only what the extension needs at runtime - no docs, no build output. Listed
 # explicitly so a stray file in the folder never rides along into a release.
@@ -51,9 +51,9 @@ zip -q -r "$STORE" "${FILES[@]}" -x "*.DS_Store"
 
 # the share zip needs the folder, so stage it under the name people will see
 STAGE=$(mktemp -d)
-mkdir -p "$STAGE/jmxgen-recorder"
-cp -R "${FILES[@]}" "$STAGE/jmxgen-recorder/"
-( cd "$STAGE" && zip -q -r - jmxgen-recorder -x "*.DS_Store" ) > "$SHARE"
+mkdir -p "$STAGE/testmu-recorder"
+cp -R "${FILES[@]}" "$STAGE/testmu-recorder/"
+( cd "$STAGE" && zip -q -r - testmu-recorder -x "*.DS_Store" ) > "$SHARE"
 rm -rf "$STAGE"
 
 echo "store  $STORE   ($(du -h "$STORE" | cut -f1))"

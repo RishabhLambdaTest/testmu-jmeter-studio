@@ -68,8 +68,9 @@
         <label class="jg-chk"><input type="checkbox" id="jg-gui" checked />
           record browser steps <span class="jg-count" id="jg-gui-count">0</span></label>
         <button class="jg-b jg-wide" id="jg-manual">+ Manual request…</button>
-        <button class="jg-b jg-wide jg-go" id="jg-export">Finish → export HAR</button>
-        <div class="jg-hint">then: <code>jmxgen from-har &lt;file&gt; -o plan.jmx</code></div>
+        <button class="jg-b jg-wide jg-go" id="jg-build">Finish → build the plan</button>
+        <button class="jg-b jg-wide" id="jg-export">Export HAR instead</button>
+        <div class="jg-hint">the plan opens in a new tab - nothing to install</div>
       </div>`;
     document.documentElement.appendChild(root);
     wire();
@@ -194,6 +195,13 @@
         step: { method, url, body: body || "", headers: body ? { "Content-Type": "application/json" } : {} },
       });
       toast(r.ok ? "manual step added" : r.error, !r.ok);
+    };
+
+    // the plan is built by the extension itself, so finishing means opening the
+    // authoring page with this recording already in it
+    q("#jg-build").onclick = async () => {
+      const r = await send({ type: "harHandoff", options: {} });
+      toast(r.ok ? `building a plan from ${r.data.count} requests` : r.error, !r.ok);
     };
 
     q("#jg-export").onclick = async () => {

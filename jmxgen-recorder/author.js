@@ -1,10 +1,8 @@
 /* Authoring from the extension.
  *
- * Everything here talks to the console's existing HTTP API - /api/modes,
- * /api/author, /api/plan, /api/replay - so the application is untouched. The
- * console stays the engine; this is a second front end for it that happens to
- * live inside the extension, which is what makes the whole flow shareable
- * without asking anyone to switch windows.
+ * The engine runs here, in WebAssembly, so every source in the dropdown works
+ * with nothing installed. A local console is optional and buys exactly one
+ * thing: Validate, which needs a real JMeter binary to run the plan once.
  */
 
 const $ = (id) => document.getElementById(id);
@@ -353,6 +351,28 @@ $("ship").onclick = async () => {
   });
 };
 
+/* ---- a recording handed over by the popup ------------------------------
+   The recorder puts the HAR in session storage and opens this page with its
+   key. Reading it is one-shot: a reload must not silently re-author a capture
+   the user has moved on from. */
+async function takeRecording() {
+  const key = new URLSearchParams(location.search).get("har");
+  if (!key) return false;
+  const got = await chrome.storage.session.get(key);
+  const rec = got && got[key];
+  await chrome.storage.session.remove(key);
+  if (!rec) {
+    addLog("warn", "the recording was already used - record again, or pick a HAR file");
+    return false;
+  }
+  FILE = { name: rec.name, content: rec.content };
+  $("mode").value = "har";
+  syncInputs();
+  addLog("ok", `recording loaded - ${rec.count} captured request(s)`);
+  say(`recording loaded - ${rec.count} request(s)`, "ok");
+  return true;
+}
+
 /* ---- boot -------------------------------------------------------------- */
 
 (async () => {
@@ -369,6 +389,15 @@ $("ship").onclick = async () => {
     return;
   }
   await ping();
+
+  // only now can anything be generated: the engine is up
+  const q = new URLSearchParams(location.search);
+  const handed = await takeRecording();
+  if (handed && q.get("go") === "1") {
+    await $("go").onclick();
+    // "Run on HyperExecute" from the popup means: build it, then take me there
+    if (STATE && q.get("then") === "hx") $("ship").onclick();
+  }
 })();
 
 /* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */

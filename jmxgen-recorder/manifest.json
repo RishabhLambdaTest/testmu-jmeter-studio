@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "jmxgen recorder",
-  "version": "1.0.0",
-  "description": "Record a browser journey and author test steps by hand, then export a HAR that jmxgen turns into a JMeter .jmx.",
+  "name": "TestMu AI — JMeter Recorder",
+  "version": "1.1.0",
+  "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
     "debugger",
     "tabs",
@@ -18,7 +18,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "jmxgen recorder",
+    "default_title": "TestMu AI — JMeter Recorder",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -48,7 +48,7 @@
         "default": "Ctrl+Shift+9",
         "mac": "Command+Shift+9"
       },
-      "description": "Open the jmxgen recorder popup"
+      "description": "Open the TestMu recorder"
     },
     "toggle-recording": {
       "suggested_key": {

@@ -69,36 +69,34 @@ $("txset").onclick = async () => {
   say(r.ok ? `transaction → ${name}` : r.error, !r.ok);
 };
 
-let SERVICE_UP = false;
-
+/* The console is optional and always has been optional here: the plan is built
+   by the engine inside the extension. A running console only adds Validate,
+   which needs a real JMeter binary, so its absence is a note and not a fault. */
 async function checkService() {
   const r = await send({ type: "ping" });
   const el = $("svc");
-  SERVICE_UP = !!(r.ok && r.data && r.data.up);
-  const where = (r.data && r.data.endpoint) || "http://localhost:8770";
-  $("endpoint").value = where;
-  if (SERVICE_UP) {
-    el.textContent = "jmxgen is running — plan opens in your browser";
-    el.className = "svc up";
-  } else {
-    el.textContent = "jmxgen not running — start it, or export the HAR";
-    el.className = "svc down";
-  }
+  const up = !!(r.ok && r.data && r.data.up);
+  $("endpoint").value = (r.data && r.data.endpoint) || "http://localhost:8770";
+  el.textContent = up
+    ? "local console found — single-user Validate is available too"
+    : "everything runs in this extension — no install needed";
+  el.className = "svc " + (up ? "up" : "note");
   refreshButtons();
 }
 
 function refreshButtons() {
   const hasCapture = Number($("count").textContent) > 0;
-  $("send").disabled = !(hasCapture && SERVICE_UP);
+  $("send").disabled = !hasCapture;
   $("export").disabled = !hasCapture;
 }
 
 $("send").onclick = async () => {
   $("send").disabled = true;
   say("generating the plan…");
-  const r = await send({ type: "sendToConsole", options: {} });
+  const r = await send({ type: "harHandoff", options: {} });
   if (r.ok) {
-    say(`plan ready — kept ${r.data.kept} of ${r.data.total} requests`, false);
+    say(`${r.data.count} requests handed to the authoring page`, false);
+    window.close();
   } else {
     say(r.error, true);
   }
@@ -233,9 +231,8 @@ $("hx").onclick = async () => {
   const st = (s && s.data) || {};
   if (st.count) {
     say("building the plan…");
-    const r = await send({ type: "sendToConsole", options: { open: "hyperexecute" } });
-    if (!r.ok) return say(r.error || "could not reach jmxgen", true);
-    say("opened HyperExecute");
+    const r = await send({ type: "harHandoff", options: { open: "hyperexecute" } });
+    if (!r.ok) return say(r.error, true);
   } else {
     await send({ type: "openHyperExecute" });
   }

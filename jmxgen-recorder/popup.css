@@ -59,6 +59,8 @@ body { margin:0; background:var(--bg); color:var(--text);
 .svc::before { content:""; width:5px; height:5px; border-radius:50%;
                background:currentColor; flex:none }
 .svc.up { color:var(--good) } .svc.down { color:var(--bad) }
+/* neutral: the console is absent but nothing is wrong */
+.svc.note { color:var(--text-dim) }
 
 .hint { color:var(--text-mute); font-size:10.5px; margin-top:10px; }
 code { display:block; background:var(--sunk); padding:6px 7px;
