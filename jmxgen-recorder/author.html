@@ -33,7 +33,7 @@
   <header>
     <h1>Author a test plan</h1>
     <p class="sub">Every source the console accepts, without leaving the extension.</p>
-    <p class="svc" id="svc">checking for jmxgen…</p>
+    <p class="svc" id="svc">starting the engine…</p>
   </header>
 
   <fieldset>
@@ -136,11 +136,23 @@
     <p class="hint" id="dualNote" hidden></p>
   </section>
 
+  <section class="logwrap">
+    <div class="loghead">
+      <span class="logtitle">Log</span>
+      <span class="logcount" id="logCount">0</span>
+      <button class="logbtn" id="logCopy">copy</button>
+      <button class="logbtn" id="logClear">clear</button>
+      <button class="logbtn" id="logToggle">hide</button>
+    </div>
+    <pre class="log" id="log"></pre>
+  </section>
+
   <details class="adv">
     <summary>Where jmxgen runs</summary>
     <input type="text" id="endpoint" placeholder="http://localhost:8770" />
   </details>
 </div>
+<script src="engine.js"></script>
 <script src="author.js"></script>
 </body>
 </html>

@@ -42,3 +42,33 @@ td.mono { font-family:var(--mono); font-size:11.5px }
 .pill.low { color:var(--bad); border-color:#5c2b2a }
 .pill.ok { color:var(--good); border-color:#255c43 }
 .pill.bad { color:var(--bad); border-color:#5c2b2a }
+
+/* ---- log ----
+   Everything the engine says lands here: Python's own stdout, progress lines,
+   and any traceback. A failure should be readable without opening a terminal
+   or the devtools console. */
+.logwrap { margin-top:26px; border:1px solid var(--line); border-radius:var(--r);
+           background:var(--sunk); overflow:hidden }
+.loghead { display:flex; align-items:center; gap:8px; padding:8px 12px;
+           background:var(--surface); border-bottom:1px solid var(--line) }
+.logtitle { font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+            color:var(--text-dim) }
+.logcount { font-family:var(--mono); font-size:10.5px; color:var(--brand-hi);
+            background:var(--brand-wash); border:1px solid var(--line);
+            border-radius:99px; padding:1px 8px; font-variant-numeric:tabular-nums }
+.logbtn { margin-left:auto; background:none; border:0; color:var(--text-mute);
+          font-size:11px; cursor:pointer; padding:2px 4px }
+.logbtn + .logbtn { margin-left:0 }
+.logbtn:hover { color:var(--text) }
+.logbtn:focus-visible { outline:none; box-shadow:var(--ring); border-radius:3px }
+.log { margin:0; padding:10px 12px; max-height:230px; overflow:auto;
+       font-family:var(--mono); font-size:11.5px; line-height:1.65;
+       white-space:pre-wrap; word-break:break-word; color:var(--text-dim) }
+.log:empty::before { content:"nothing yet"; color:var(--text-mute) }
+.log .t { color:var(--text-mute) }
+.log .info  { color:var(--text-dim) }
+.log .py    { color:var(--text) }
+.log .warn  { color:var(--warn) }
+.log .error,.log .pyerr { color:var(--bad) }
+.log .ok    { color:var(--good) }
+.logwrap.collapsed .log { display:none }

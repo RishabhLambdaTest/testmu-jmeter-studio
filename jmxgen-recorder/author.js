@@ -45,31 +45,87 @@ async function save() {
 }
 document.addEventListener("input", save);
 
-/* ---- the console has to be up ------------------------------------------ */
+
+/* ---- log ---------------------------------------------------------------
+   One place where everything shows up: engine progress, Python's own output,
+   and any traceback. The whole point of running in the extension is that
+   nobody should have to open a terminal to find out what went wrong. */
+const LOG = [];
+function addLog(level, text) {
+  const at = new Date();
+  LOG.push({ level, text, at });
+  const el = $("log");
+  if (!el) return;
+  const stamp = at.toTimeString().slice(0, 8);
+  const line = document.createElement("div");
+  line.innerHTML = `<span class="t">${stamp}</span> ` +
+                   `<span class="${level}">${esc(text)}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  $("logCount").textContent = LOG.length;
+}
+chrome.runtime.onMessage.addListener((m) => {
+  if (m && m.type === "engine-log") addLog(m.level, m.text);
+});
+$("logCopy").onclick = async () => {
+  const text = LOG.map((l) => l.at.toTimeString().slice(0, 8) + "  [" + l.level + "] " + l.text)
+                  .join("\n");
+  await navigator.clipboard.writeText(text);
+  say("log copied - paste it into a bug report", "ok");
+};
+$("logClear").onclick = () => {
+  LOG.length = 0; $("log").innerHTML = ""; $("logCount").textContent = "0";
+};
+$("logToggle").onclick = (e) => {
+  const hidden = document.querySelector(".logwrap").classList.toggle("collapsed");
+  e.currentTarget.textContent = hidden ? "show" : "hide";
+};
+
+/* ---- where the work happens -------------------------------------------
+   The engine runs inside the extension, so nothing needs installing. The local
+   console is looked for anyway: it is the only thing that can run JMeter, so
+   when it is there Validate works too. */
+
+let CONSOLE_UP = false;
 
 async function ping() {
   const el = $("svc");
   try {
     const r = await fetch(base() + "/api/ping", { cache: "no-store" });
-    if (!r.ok) throw new Error();
-    el.textContent = "jmxgen is running at " + base();
-    el.className = "svc up";
-    return true;
+    CONSOLE_UP = r.ok;
   } catch (e) {
-    el.textContent = "jmxgen is not running - start it with: jmxgen console";
-    el.className = "svc down";
-    return false;
+    CONSOLE_UP = false;
   }
+  $("validate").disabled = !CONSOLE_UP;
+  $("validate").title = CONSOLE_UP
+    ? "Run the plan once against the real target"
+    : "Needs the local console - it is the only thing that can run JMeter";
+  if (window.JmxgenEngine && window.JmxgenEngine.isReady()) {
+    el.textContent = CONSOLE_UP
+      ? "engine ready - local console found, so Validate is available too"
+      : "engine ready - everything runs in this extension";
+    el.className = "svc up";
+  }
+  return CONSOLE_UP;
 }
 $("endpoint").onchange = () => { save(); ping().then(loadModes); };
 
 /* ---- source picker ----------------------------------------------------- */
 
+const BUILTIN_MODES = {
+  openapi: { label: "OpenAPI / Swagger", input: "file_or_url", ext: ".yaml,.json" },
+  postman: { label: "Postman collection", input: "file", ext: ".json" },
+  har:     { label: "Recording (HAR)", input: "file", ext: ".har,.json" },
+  curl:    { label: "cURL command(s)", input: "text" },
+  excel:   { label: "Excel / CSV sheet", input: "file", ext: ".xlsx,.csv" },
+  urls:    { label: "Page URL list (probe)", input: "text" },
+  jmx:     { label: "Existing .jmx (import)", input: "file", ext: ".jmx" },
+};
+
 async function loadModes() {
-  try {
-    const r = await fetch(base() + "/api/modes", { cache: "no-store" });
-    MODES = await r.json();
-  } catch (e) { return; }
+  // the list is the engine's, so the dropdown is right whether or not a
+  // console is running
+  MODES = BUILTIN_MODES;
   const want = $("mode").value;
   $("mode").innerHTML = Object.entries(MODES)
     .map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
@@ -135,19 +191,20 @@ $("go").onclick = async () => {
 
   $("go").disabled = true;
   say("generating…", "info");
+  addLog("info", "authoring from " + mode);
   try {
-    const r = await fetch(base() + "/api/author", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
+    const data = await window.JmxgenEngine.author(body);
     STATE = data;
+    STATE.session = null;          // there is no server session to refer to
+    addLog("ok", `plan built - ${data.steps.length} request(s), ${data.size_kb} KB, ` +
+                 `${(data.correlations || []).length} correlated`);
+    for (const w of (data.verify && data.verify.warnings) || []) addLog("warn", w);
+    for (const e of (data.verify && data.verify.errors) || []) addLog("error", e);
     render();
     say("plan ready - " + data.steps.length + " request(s), " +
         data.size_kb + " KB", "ok");
   } catch (e) {
+    addLog("error", String(e.message || e));
     say(String(e.message || e), "err");
   } finally {
     $("go").disabled = false;
@@ -170,7 +227,7 @@ function render() {
     `<div class="card"><div class="n">${esc(n)}</div><div class="k">${k}</div></div>`).join("");
   if (!$("planName").value) $("planName").value = "plan.jmx";
 
-  const browser = (STATE.steps || []).some((s) => s.kind === "webdriver");
+  const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
   if (browser) {
@@ -224,32 +281,32 @@ document.querySelectorAll(".tabs button").forEach((b) =>
 
 /* ---- what to do with the plan ------------------------------------------ */
 
+/* The plan is already in memory - it never went near a server - so a download
+   is a blob, not a fetch. */
+function saveText(text, filename, kind) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
+  chrome.downloads.download({ url, filename }, () => {
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  });
+  addLog("ok", "saved " + filename);
+  say("saved " + filename + (kind ? " - " + kind : ""), "ok");
+}
+
+const stem = () => ($("planName").value.trim() || "plan").replace(/\.[^.]+$/, "");
+
 $("download").onclick = () => {
   if (!STATE) return;
-  const name = $("planName").value.trim();
-  const url = base() + "/api/plan/" + STATE.session +
-              (name ? "?name=" + encodeURIComponent(name) : "");
-  chrome.downloads.download({ url: url, filename: name || "plan.jmx" });
-  say("saved " + (name || "plan.jmx"), "ok");
+  saveText(STATE.jmx, stem() + ".jmx", "");
 };
 
 /* One recording yields two artifacts, and the split matters enough to say it
    in the page rather than leave people to discover it: the .jmx carries the
    load, the browser test proves the journey. */
-function saveFrom(path, ext, kind) {
-  const stem = ($("planName").value.trim() || "plan").replace(/\.[^.]+$/, "");
-  const name = stem + ext;
-  chrome.downloads.download({
-    url: base() + path + STATE.session + "?name=" + encodeURIComponent(name),
-    filename: name,
-  });
-  say("saved " + name + " - " + kind, "ok");
-}
-
-$("taurus").onclick = () => STATE && saveFrom("/api/taurus/", ".taurus.yml",
-                                              "runs under bzt or BlazeMeter");
-$("playwright").onclick = () => STATE && saveFrom("/api/browser/", "_browser_test.py",
-                                                  "one browser, functional check");
+$("taurus").onclick = () =>
+  STATE && saveText(STATE.taurus, stem() + ".taurus.yml", "runs under bzt or BlazeMeter");
+$("playwright").onclick = () =>
+  STATE && saveText(STATE.playwright, stem() + "_browser_test.py",
+                    "one browser, functional check");
 
 $("validate").onclick = async () => {
   if (!STATE) return;

@@ -19,6 +19,7 @@ FILES=(
     popup.html popup.css popup.js
     run.html run.css run.js
     author.html author.css author.js
+    engine.js hx.js jmxgen.py vendor
     icons
 )
 

@@ -99,13 +99,17 @@ def _safe_jmx_name(name):
     return stem + ".jmx"
 
 
-def _write_upload(sid, filename, content_b64):
-    d = _session_dir(sid)
-    os.makedirs(d, exist_ok=True)
-    path = os.path.join(d, os.path.basename(filename or "input"))
+def _write_upload_to(directory, filename, content_b64):
+    """Write one base64 upload into a directory that already exists."""
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, os.path.basename(filename or "input"))
     with open(path, "wb") as fh:
         fh.write(base64.b64decode(content_b64 or ""))
     return path
+
+
+def _write_upload(sid, filename, content_b64):
+    return _write_upload_to(_session_dir(sid), filename, content_b64)
 
 
 def _build_from_source(sid, payload):
@@ -210,6 +214,10 @@ def _build_from_source(sid, payload):
     return spec, report
 
 
+_flatten = jmxgen._flatten
+_plan_load = jmxgen._plan_load
+
+
 def _emit(sid, spec, report):
     d = _session_dir(sid)
     os.makedirs(d, exist_ok=True)
@@ -232,49 +240,6 @@ def _emit(sid, spec, report):
         # so the HyperExecute form can prefill the load it is about to override
         "load": _plan_load(spec),
     }
-
-
-def _plan_load(spec):
-    """The first thread group's load, for prefilling the run form."""
-    tgs = spec.get("thread_groups") or []
-    tg = tgs[0] if tgs else {}
-    return {"threads": tg.get("threads") or 1,
-            "ramp_up": tg.get("ramp_up") or 1,
-            "duration": tg.get("duration") or ""}
-
-
-def _flatten(spec, depth=0, out=None, group=""):
-    """A flat, display-friendly view of the plan's steps."""
-    if out is None:
-        out = []
-    for tg in spec.get("thread_groups", []):
-        _walk_steps(tg.get("steps", []), out, tg.get("name", "Thread Group"))
-    return out
-
-
-def _walk_steps(steps, out, group):
-    for st in steps:
-        if "transaction" in st or "parallel" in st:
-            label = st.get("transaction") or st.get("parallel")
-            _walk_steps(st.get("steps", []), out, label)
-            continue
-        if "steps" in st:
-            _walk_steps(st["steps"], out, group)
-            continue
-        if "pause" in st:
-            out.append({"group": group, "name": "pause %sms" % st["pause"],
-                        "method": "", "path": "", "kind": "pause"})
-            continue
-        out.append({
-            "group": group,
-            "name": st.get("name", ""),
-            "method": st.get("method", st.get("type", "")),
-            "path": str(st.get("path", ""))[:120],
-            "asserts": len(st.get("assert", []) or []),
-            "extracts": [e.get("var") for e in (st.get("extract", []) or [])],
-            "think_time": st.get("think_time"),
-            "kind": st.get("type", "http"),
-        })
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -401,6 +366,22 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/apply":
                 return self._send(200, self._apply(payload))
             if self.path == "/api/replay":
+                # The extension authors in-process and has no session here, so a
+                # plan can be posted directly: this endpoint is now just "run
+                # this .jmx once", which is the only thing that needs JMeter.
+                if payload.get("jmx"):
+                    d = _session_dir("posted-" + uuid.uuid4().hex[:8])
+                    os.makedirs(d, exist_ok=True)
+                    path = os.path.join(d, _safe_jmx_name(payload.get("name")))
+                    with open(path, "w", encoding="utf-8") as fh:
+                        fh.write(payload["jmx"])
+                    for extra in payload.get("files") or []:
+                        name = os.path.basename(extra.get("name") or "")
+                        if name and extra.get("content"):
+                            _write_upload_to(d, name, extra["content"])
+                    result = jmxgen.replay(path, quiet=True)
+                    result.pop("dir", None)
+                    return self._send(200, result)
                 sess = SESSIONS.get(payload.get("session"))
                 if not sess:
                     return self._send(404, {"error": "no such session"})
