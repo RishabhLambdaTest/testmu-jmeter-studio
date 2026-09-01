@@ -652,6 +652,36 @@ thread_groups:
             think_time: {min: 500, max: 1500}     # or think_time: 1000
 ```
 
+### Client certificates (mutual TLS)
+
+```yaml
+tls:
+  keystore: client.p12
+  password: changeit           # a literal - see below
+  type: PKCS12
+  truststore: truststore.jks
+  truststore_password: changeit
+  alias_variable: CERT_ALIAS   # optional: a different client identity per thread
+```
+
+`build` emits a **system.properties** next to the plan, because JMeter reads the
+certificate from JVM system properties — the `.jmx` cannot carry them:
+
+```bash
+jmxgen build spec.yaml -o plan.jmx
+jmeter -n -t plan.jmx -S system.properties -l r.jtl
+```
+
+`-S`, not `-p`. `-p` loads *JMeter* properties and the JVM never sees these, so
+the handshake fails with a confusing socket error. On HyperExecute, upload
+`system.properties` with the plan and add `-S system.properties` to the args.
+
+The password must be a literal: `system.properties` is read by the JVM as plain
+`java.util.Properties`, so `${__P(...)}` is never expanded and would be sent
+verbatim. jmxgen rejects that at build time rather than letting it fail at run
+time. To keep the password out of the file, leave it blank and pass
+`-Djavax.net.ssl.keyStorePassword=...` on the command line.
+
 ### Workload models — `model:` on a thread group
 
 ```yaml

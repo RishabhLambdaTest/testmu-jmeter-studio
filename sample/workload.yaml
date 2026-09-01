@@ -1,0 +1,29 @@
+# Two workload models side by side. `arrivals` states the rate you want to
+# apply; `closed` states how many users are looping. Under load they answer
+# different questions - see JMXGEN_README.md, "Workload models".
+name: DummyJSON workload
+defaults: {protocol: https, domain: dummyjson.com}
+headers: {Accept: application/json}
+thread_groups:
+- name: Steady browsing
+  model: closed
+  threads: 10
+  ramp_up: 10
+  duration: 60
+  steps:
+  - transaction: Browse
+    steps:
+    - {name: GET /products, method: GET, path: "/products?limit=10",
+       assert: [{field: code, match: equals, pattern: "200"}], think_time: {min: 400, max: 1200}}
+    - {name: GET /products/1, method: GET, path: /products/1, think_time: 800}
+
+- name: Order rate
+  model: arrivals          # 5 iterations start every second, whatever the latency
+  rate: 5
+  unit: S
+  ramp_up: 10
+  duration: 60
+  max_concurrency: 200     # a struggling target cannot open unbounded threads
+  steps:
+  - {name: GET /carts/1, method: GET, path: /carts/1,
+     assert: [{field: code, match: equals, pattern: "200"}]}

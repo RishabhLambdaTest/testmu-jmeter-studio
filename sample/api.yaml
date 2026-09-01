@@ -1,0 +1,26 @@
+openapi: 3.0.0
+info: {title: DummyJSON, version: "1"}
+servers: [{url: https://dummyjson.com}]
+paths:
+  /products:
+    get:
+      operationId: listProducts
+      responses: {"200": {description: ok}}
+  /products/{id}:
+    get:
+      operationId: getProduct
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer, example: 1}}
+      responses: {"200": {description: ok}}
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: {type: string, example: emilys}
+                password: {type: string, example: emilyspass}
+      responses: {"200": {description: ok}}

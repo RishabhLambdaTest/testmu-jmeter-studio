@@ -1,0 +1,36 @@
+# Mutual TLS: the API demands a client certificate.
+#
+# JMeter reads the certificate from SYSTEM properties, not from the .jmx, so
+# `jmxgen build` writes a system.properties next to the plan. Run with -S:
+#
+#   jmxgen build sample/mtls.yaml -o mtls.jmx
+#   jmeter -n -t mtls.jmx -S system.properties -l r.jtl
+#
+# -S, not -p: -p loads JMeter properties and the JVM never sees these.
+# On HyperExecute, upload system.properties with the plan and add -S to the args.
+#
+# To try it you need a keystore. Generate a throwaway set:
+#   openssl req -x509 -newkey rsa:2048 -keyout ca.key -out ca.crt -days 2 -nodes -subj "/CN=demo-CA"
+#   openssl req -newkey rsa:2048 -keyout client.key -out client.csr -nodes -subj "/CN=demo-client"
+#   openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 2
+#   openssl pkcs12 -export -in client.crt -inkey client.key -out client.p12 -name demo -passout pass:changeit
+#   keytool -import -trustcacerts -alias demoCA -file ca.crt -keystore truststore.jks -storepass changeit -noprompt
+name: mTLS API
+defaults: {protocol: https, domain: localhost, port: 8443}
+tls:
+  keystore: client.p12
+  password: changeit          # a literal - ${...} is never expanded in system.properties
+  type: PKCS12
+  truststore: truststore.jks
+  truststore_password: changeit
+  # alias_variable: CERT_ALIAS   # per-thread client identities, for a cert estate
+thread_groups:
+- name: Secure
+  threads: 2
+  loops: 2
+  steps:
+  - name: GET /secure
+    method: GET
+    path: /secure
+    assert:
+    - {field: code, match: equals, pattern: "200"}

@@ -116,6 +116,34 @@ echo "== think times from recording =="
 $JG from-har "$FIX/mixed.har" --real-think-time --spec "$WORK/t.yaml" -o "$WORK/t.jmx" >/dev/null 2>&1
 grep -q "think_time: 3000" "$WORK/t.yaml" && ok "3s gap became think time" || bad "3s gap became think time" "not found"
 
+echo "== mutual TLS =="
+cat > "$FIX/mtls.yaml" <<'YAML'
+name: mTLS
+defaults: {protocol: https, domain: localhost, port: 8443}
+tls: {keystore: client.p12, password: changeit, type: PKCS12,
+      truststore: ca.jks, truststore_password: changeit}
+thread_groups:
+- {name: Secure, threads: 1, steps: [{name: GET /s, method: GET, path: /s}]}
+YAML
+$JG build "$FIX/mtls.yaml" -o "$WORK/mtls.jmx" >"$WORK/mtls.log" 2>&1
+grep -q "KeystoreConfig" "$WORK/mtls.jmx" \
+  && ok "keystore element emitted" || bad "keystore element emitted" "missing"
+[ -f "$WORK/system.properties" ] \
+  && ok "system.properties written beside the plan" \
+  || bad "system.properties written beside the plan" "not written"
+grep -q "javax.net.ssl.keyStore=client.p12" "$WORK/system.properties" 2>/dev/null \
+  && ok "keystore path in system.properties" || bad "keystore path in system.properties" "missing"
+grep -q -- "-S system.properties" "$WORK/mtls.log" \
+  && ok "tells you to use -S, not -p" || bad "tells you to use -S, not -p" "wrong flag advised"
+
+# JMeter functions are never expanded in system.properties - catching this at
+# build time beats a confusing handshake failure at run time
+printf 'name: x\ntls: {keystore: c.p12, password: "${__P(pw,x)}"}\nthread_groups: []\n' \
+  > "$FIX/mtls_bad.yaml"
+$JG build "$FIX/mtls_bad.yaml" -o "$WORK/mtls_bad.jmx" >"$WORK/mtls_bad.log" 2>&1
+grep -q "cannot use \${...}" "$WORK/mtls_bad.log" \
+  && ok "rejects an unexpandable password" || bad "rejects an unexpandable password" "accepted it"
+
 echo "== workload models =="
 cat > "$FIX/arrivals.yaml" <<'YAML'
 name: Arrival rate

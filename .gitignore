@@ -38,3 +38,8 @@ venv/
 
 # Local editor/agent config (references customer filenames)
 .claude/
+
+# sample plans generated while trying things out
+sample/out/
+sample/*.jmx
+sample/system.properties

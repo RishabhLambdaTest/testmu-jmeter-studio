@@ -210,6 +210,92 @@ def build_cache_manager(cfg):
     return node("CacheManager", gui("CacheManagerGui", "CacheManager", "HTTP Cache Manager"), body)
 
 
+def build_keystore(cfg):
+    """Keystore Configuration - client certificates for mutual TLS.
+
+    JMeter reads the keystore itself from SYSTEM properties, not from the .jmx:
+    this element only controls which alias a thread picks and whether the store
+    is preloaded. So a plan needing mTLS is not self-contained - it travels with
+    a system.properties, which `write_system_properties` emits alongside it.
+    """
+    cfg = {} if cfg is True else cfg
+    body = [
+        # a variable here lets each thread use a different client identity,
+        # which is how you load-test a per-customer certificate estate
+        sp("clientCertAliasVarName", cfg.get("alias_variable", "")),
+        sp("startIndex", cfg.get("start_index", 0)),
+        sp("endIndex", cfg.get("end_index", 0)),
+        bp("preload", cfg.get("preload", True)),
+    ]
+    return node("KeystoreConfig", gui("TestBeanGUI", "KeystoreConfig",
+                                      "Keystore Configuration"), body)
+
+
+def system_properties_for(spec):
+    """The system.properties a plan needs, or None.
+
+    HyperExecute rejects -D and -J in the args array, so a property that must
+    reach the JVM has to arrive as a file. This is that file.
+    """
+    tls = spec.get("tls")
+    if not tls:
+        return None
+    tls = {} if tls is True else tls
+    if not tls.get("keystore"):
+        raise ValueError("tls: needs a 'keystore' path (a .p12 or .jks)")
+    # system.properties is read by the JVM as plain java.util.Properties, so
+    # JMeter functions are NOT expanded here - a ${__P(...)} password would be
+    # sent literally and the handshake would fail with a confusing error
+    for key in ("password", "truststore_password"):
+        if "${" in str(tls.get(key) or ""):
+            raise ValueError(
+                "tls.%s cannot use ${...} - system.properties is read by the JVM, "
+                "not by JMeter, so functions are never expanded there. Put the "
+                "literal password here, or leave it blank and pass "
+                "-Djavax.net.ssl.keyStorePassword=... on the command line." % key)
+
+    lines = [
+        "# Written by jmxgen. JMeter reads the client certificate from these",
+        "# system properties - the .jmx cannot carry them.",
+        "#",
+        "#   jmeter -n -t plan.jmx -S system.properties ...",
+        "#",
+        "# -S, not -p: -p loads JMeter properties, and the JVM never sees these.",
+        "#",
+        "# On HyperExecute, upload this file with the plan; -D flags are rejected",
+        "# in the args array.",
+        "",
+        "javax.net.ssl.keyStore=%s" % tls["keystore"],
+        "javax.net.ssl.keyStorePassword=%s" % tls.get("password", ""),
+    ]
+    if tls.get("type"):
+        lines.append("javax.net.ssl.keyStoreType=%s" % tls["type"])
+    if tls.get("truststore"):
+        lines += [
+            "",
+            "javax.net.ssl.trustStore=%s" % tls["truststore"],
+            "javax.net.ssl.trustStorePassword=%s" % tls.get("truststore_password", ""),
+        ]
+    if tls.get("protocols"):
+        lines += ["", "https.socket.protocols=%s" % tls["protocols"]]
+    # JMeter reuses one SSL context per thread by default, which means the first
+    # certificate wins for the life of that thread
+    lines += ["", "https.use.cached.ssl.context=%s"
+              % str(bool(tls.get("cache_ssl_context", False))).lower()]
+    return "\n".join(lines) + "\n"
+
+
+def write_system_properties(spec, jmx_path):
+    """Emit system.properties next to the plan when the spec needs it."""
+    text = system_properties_for(spec)
+    if not text:
+        return None
+    out = os.path.join(os.path.dirname(os.path.abspath(jmx_path)) or ".",
+                       "system.properties")
+    open(out, "w", encoding="utf-8").write(text)
+    return out
+
+
 def build_auth_manager(entries):
     """HTTP Authorization Manager - BASIC / DIGEST / KERBEROS / NTLM."""
     body = ['<collectionProp name="AuthManager.auth_list">']
@@ -1192,6 +1278,12 @@ def suggest_parameters(spec):
 
 
 def build_plan(spec):
+    # Validate the TLS block here rather than at the point the properties file
+    # is written: otherwise a bad password expression fails AFTER the .jmx has
+    # been written, leaving a broken plan on disk that looks like a build.
+    if spec.get("tls"):
+        system_properties_for(spec)
+
     plat = resolve_platform(spec)
     name = spec.get("name", "Test Plan")
 
@@ -1227,6 +1319,8 @@ def build_plan(spec):
     children += build_cache_manager(spec.get("cache", False))
     if spec.get("http_auth"):
         children += build_auth_manager(spec["http_auth"])
+    if spec.get("tls"):
+        children += build_keystore(spec["tls"])
     for pool in spec.get("jdbc", []):
         children += build_jdbc_pool(pool)
     for csv in spec.get("csv", []):
@@ -5524,6 +5618,13 @@ def main():
         out = a.out or (re.sub(r"[^\w.-]+", "_", spec.get("name", "testplan")) + ".jmx")
         open(out, "w", encoding="utf-8").write(jmx)
         print("wrote %s (%.1f KB)" % (out, len(jmx) / 1024.0))
+        props = write_system_properties(spec, out)
+        if props:
+            print("wrote %s - the client certificate lives here, not in the .jmx"
+                  % props)
+            print("  run:    jmeter -n -t %s -S %s ..." % (out, os.path.basename(props)))
+            print("  on HX:  upload it with the plan and add -S %s to the args"
+                  % os.path.basename(props))
         errors, _ = verify(out, deep=a.deep)
         validate(out)
         return 1 if errors else 0
@@ -5554,6 +5655,13 @@ def main():
         out = out_arg or (re.sub(r"[^\w.-]+", "_", spec["name"]) + ".jmx")
         open(out, "w", encoding="utf-8").write(build_plan(spec))
         print("wrote %s%s" % (out, (" - " + note) if note else ""))
+        props = write_system_properties(spec, out)
+        if props:
+            print("wrote %s - the client certificate lives here, not in the .jmx"
+                  % props)
+            print("  run:    jmeter -n -t %s -S %s ..." % (out, os.path.basename(props)))
+            print("  on HX:  upload it with the plan and add -S %s to the args"
+                  % os.path.basename(props))
         errors, _ = verify(out, deep=deep)
         validate(out)
         if getattr(a, "replay", False) and not errors:
