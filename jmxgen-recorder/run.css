@@ -1,7 +1,7 @@
+/* Aliases onto the shared TestMu tokens in brand.css, so the older rules in
+   this file keep working while the palette lives in one place. */
 :root {
-  --bg:#0e1013; --panel:#14161a; --line:#262a31; --text:#e8eaed; --dim:#9aa0a6;
-  --accent:#4c8dff; --good:#3ecf8e; --bad:#f0605d;
-  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --panel:var(--surface); --dim:var(--text-dim); --accent:var(--brand);
 }
 * { box-sizing:border-box }
 body { margin:0; background:var(--bg); color:var(--text);
@@ -33,8 +33,15 @@ button { background:#22262e; border:1px solid var(--line); color:var(--text);
          border-radius:7px; padding:9px 12px; cursor:pointer; font:inherit }
 button:hover:not(:disabled) { background:#2c313a }
 button:disabled { opacity:.45; cursor:default }
-button.go { background:#1d6f42; border-color:#24894f; font-weight:600 }
-button.go:hover:not(:disabled) { background:#24894f }
+/* the primary action is brand violet on every surface, so "the button that
+   does the thing" looks the same in the popup, the panel and here */
+button.go { background:linear-gradient(180deg, var(--brand), var(--brand-lo));
+            border-color:var(--brand-lo); color:#fff; font-weight:600 }
+button.go:hover:not(:disabled) {
+  background:linear-gradient(180deg, var(--brand-hi), var(--brand)) }
+button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible { outline:none; box-shadow:var(--ring) }
+input:focus, select:focus, textarea:focus { border-color:var(--brand) }
 .acts { display:flex; gap:10px; margin-top:20px }
 .acts button { flex:1 }
 .banner, .msg { margin:14px 0 0; padding:9px 11px; border-radius:7px; font-size:12.5px; display:none; white-space:pre-line }
@@ -48,3 +55,10 @@ button.go:hover:not(:disabled) { background:#24894f }
 .fchk input { width:auto }
 .fchk span { font-family:var(--mono); font-size:11.5px }
 .fchk em { color:var(--dim); font-style:normal; font-size:11px }
+
+/* ---- page chrome ----
+   These are real tabs, so the controls act on the tab: go back, widen, close. */
+.pagebar { display:flex; align-items:center; gap:10px; margin:0 0 22px;
+           padding-bottom:14px; border-bottom:1px solid var(--line-soft) }
+.page.wide { max-width:none; padding-left:6vw; padding-right:6vw }
+header h1 { letter-spacing:-.02em }

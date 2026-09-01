@@ -1,26 +1,57 @@
 #jmxgen-overlay {
   position: fixed; top: 16px; right: 16px; z-index: 2147483647;
-  width: 262px; background: #14161a; color: #e8eaed;
+  width: 268px; background: #14121C; color: #ECEAF2;
   font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  border: 1px solid #2c3038; border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.45); display: none;
+  border: 1px solid #2A2636; border-radius: 13px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04) inset;
+  display: none;
 }
+#jmxgen-overlay.jg-big { width: 372px; }
+#jmxgen-overlay.jg-big .jg-body { max-height: 68vh; overflow-y: auto; }
 #jmxgen-overlay * { box-sizing: border-box; }
 #jmxgen-overlay .jg-head {
   display: flex; align-items: center; gap: 7px; padding: 9px 10px;
-  border-bottom: 1px solid #2c3038; cursor: move; user-select: none;
+  border-bottom: 1px solid #201D2B; cursor: move; user-select: none;
+  background: linear-gradient(180deg, #1C1926, #14121C);
+  border-radius: 12px 12px 0 0;
 }
+#jmxgen-overlay .jg-mark {
+  width: 19px; height: 19px; flex: none; border-radius: 6px;
+  background: linear-gradient(145deg, #9B82FF, #5B3FD9);
+  display: grid; place-items: center;
+  box-shadow: 0 2px 7px rgba(124,92,255,.35);
+}
+#jmxgen-overlay .jg-mark svg { width: 11px; height: 11px; display: block; }
+#jmxgen-overlay .jg-title b { font-weight: 650; }
+#jmxgen-overlay .jg-title i { font-style: normal; color: #9B82FF; font-weight: 600; }
+#jmxgen-overlay .jg-min:hover  { background: #F5B544; color: #0B0A10; }
+#jmxgen-overlay .jg-max:hover  { background: #3ECF8E; color: #0B0A10; }
 #jmxgen-overlay .jg-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+  width: 7px; height: 7px; border-radius: 50%; background: #FF4A4A;
+  box-shadow: 0 0 0 3px rgba(255,74,74,.18); flex: none;
   animation: jg-pulse 1.4s infinite;
 }
 @keyframes jg-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
-#jmxgen-overlay .jg-title { font-weight: 600; flex: 1; }
+#jmxgen-overlay .jg-title { font-weight: 600; flex: 1; letter-spacing: -.01em; }
 #jmxgen-overlay .jg-count {
-  background: #2c3038; border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
+  background: #1A1430; color: #9B82FF; border: 1px solid #2A2636;
+  border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
 }
+/* Three quiet dots that reveal their glyph on hover - the chrome stays out of
+   the way until you reach for it. */
 #jmxgen-overlay .jg-x {
-  background: none; border: 0; color: #9aa0a6; cursor: pointer; font-size: 15px; padding: 0 3px;
+  width: 15px; height: 15px; flex: none; border: 0; border-radius: 50%;
+  padding: 0; cursor: pointer; display: grid; place-items: center;
+  background: #241F30; color: transparent;
+  font: 600 9px/1 inherit; transition: background .12s, color .12s;
+}
+#jmxgen-overlay .jg-x:hover { color: rgba(0,0,0,.72); }
+#jmxgen-overlay .jg-x:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px rgba(124,92,255,.28);
+}
+@media (prefers-reduced-motion: reduce) {
+  #jmxgen-overlay .jg-x { transition: none; }
+  #jmxgen-overlay .jg-dot { animation: none; }
 }
 #jmxgen-overlay .jg-body { padding: 10px; }
 #jmxgen-overlay .jg-l { display: block; color: #9aa0a6; margin-bottom: 4px; }
@@ -50,8 +81,7 @@
 #jmxgen-overlay .jg-hint { color: #6b7076; font-size: 10.5px; margin-top: 8px; }
 #jmxgen-overlay code { background: #0e1013; padding: 1px 4px; border-radius: 4px; }
 
-#jmxgen-overlay .jg-close { color: #f0a3a3; font-size: 13px; }
-#jmxgen-overlay .jg-close:hover { color: #ff6b6b; }
+#jmxgen-overlay .jg-close:hover { background: #FF6B63; color: #0B0A10; }
 #jmxgen-overlay .jg-confirm { padding: 12px 10px; }
 #jmxgen-overlay .jg-ctext { color: #e8eaed; margin-bottom: 10px; line-height: 1.5; }
 

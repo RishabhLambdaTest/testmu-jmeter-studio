@@ -1,0 +1,87 @@
+/* TestMu AI — one design system for every surface of the extension.
+ *
+ * The popup, the in-page panel, the authoring page and the run page all pull
+ * from these tokens, so a colour is changed in one place and the whole
+ * extension moves with it. Swap the values here for the official palette when
+ * you have it; nothing downstream hard-codes a hex.
+ */
+
+:root {
+  /* ground — a near-black carrying a slight violet bias, so it reads as chosen
+     rather than as the default #111 every dark UI ships with */
+  --bg:        #0B0A10;
+  --surface:   #14121C;
+  --raised:    #1C1926;
+  --sunk:      #08070C;
+  --line:      #2A2636;
+  --line-soft: #201D2B;
+
+  --text:      #ECEAF2;
+  --text-dim:  #9A94AC;
+  --text-mute: #6B6580;
+
+  /* brand — violet is the TestMu register; the cyan is its cooler partner,
+     used only where two accents genuinely carry different meaning */
+  --brand:      #7C5CFF;
+  --brand-hi:   #9B82FF;
+  --brand-lo:   #5B3FD9;
+  --brand-wash: #1A1430;
+  --cyan:       #34D2E0;
+
+  /* semantic — deliberately separate from the brand hue, so "it worked" never
+     competes with "this is a TestMu product" */
+  --good: #3ECF8E;
+  --good-wash: #0F2A1F;
+  --warn: #F5B544;
+  --bad:  #FF6B63;
+  --bad-wash: #2C1416;
+  --rec:  #FF4A4A;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  --r-sm: 6px;
+  --r:    9px;
+  --r-lg: 13px;
+
+  --shadow: 0 8px 28px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04) inset;
+  --ring: 0 0 0 3px rgba(124,92,255,.28);
+}
+
+/* ---- brand mark -------------------------------------------------------
+   A monogram, not an image file: it stays crisp at any size, needs no asset
+   loading inside the extension, and recolours from the tokens above. */
+.tm-logo { display:flex; align-items:center; gap:8px; min-width:0 }
+.tm-mark {
+  width:22px; height:22px; flex:none; border-radius:7px;
+  background: linear-gradient(145deg, var(--brand-hi), var(--brand-lo));
+  display:grid; place-items:center;
+  box-shadow: 0 2px 8px rgba(124,92,255,.35);
+}
+.tm-mark svg { width:13px; height:13px; display:block }
+.tm-name { font-weight:650; letter-spacing:-.01em; white-space:nowrap }
+.tm-name b { font-weight:650 }
+.tm-name span { color:var(--brand-hi); font-weight:600 }
+.tm-sub { color:var(--text-mute); font-size:10px; letter-spacing:.08em;
+          text-transform:uppercase; white-space:nowrap }
+
+/* ---- window controls --------------------------------------------------
+   Close / minimise / expand. Shown as three dots that reveal their glyph on
+   hover, so the chrome stays quiet until you reach for it. */
+.tm-controls { display:flex; align-items:center; gap:6px; margin-left:auto }
+.tm-ctl {
+  width:15px; height:15px; flex:none; border:0; border-radius:50%;
+  padding:0; cursor:pointer; position:relative;
+  display:grid; place-items:center;
+  font: 600 9px/1 var(--sans); color:transparent;
+  background:var(--raised); transition: background .12s, color .12s;
+}
+.tm-ctl:hover  { color:rgba(0,0,0,.72) }
+.tm-ctl:focus-visible { outline:none; box-shadow:var(--ring) }
+.tm-ctl.min:hover    { background:var(--warn) }
+.tm-ctl.max:hover    { background:var(--good) }
+.tm-ctl.close:hover  { background:var(--bad) }
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-ctl { transition:none }
+}

@@ -29,10 +29,20 @@
     root.innerHTML = `
       <div class="jg-head">
         <span class="jg-dot"></span>
-        <span class="jg-title">jmxgen recorder</span>
+        <span class="jg-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0B0A10" stroke-width="2.6"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 14 L7 14 L10 5 L14 19 L17 10 L19 14 L22 14"/>
+          </svg>
+        </span>
+        <span class="jg-title"><b>TestMu</b> <i>AI</i></span>
         <span class="jg-count" id="jg-count">0</span>
-        <button class="jg-x" id="jg-hide" title="minimise (keeps recording)">&#8211;</button>
-        <button class="jg-x jg-close" id="jg-close" title="stop and close">&#10005;</button>
+        <button class="jg-x jg-min" id="jg-hide"
+                title="minimise - keeps recording">&#8211;</button>
+        <button class="jg-x jg-max" id="jg-expand"
+                title="expand the panel">&#9723;</button>
+        <button class="jg-x jg-close" id="jg-close"
+                title="stop and close">&#10005;</button>
       </div>
       <div class="jg-confirm" id="jg-confirm" hidden>
         <div class="jg-ctext" id="jg-ctext"></div>
@@ -77,6 +87,14 @@
     const q = (id) => root.querySelector(id);
 
     q("#jg-hide").onclick = () => setVisible(false);
+
+    // expand gives the panel room when a recording gets long, without ever
+    // covering the page entirely - you still have to click the app
+    q("#jg-expand").onclick = () => {
+      const big = root.classList.toggle("jg-big");
+      q("#jg-expand").innerHTML = big ? "&#9724;" : "&#9723;";
+      q("#jg-expand").title = big ? "shrink the panel" : "expand the panel";
+    };
 
     q("#jg-close").onclick = async () => {
       const st = await send({ type: "status" });
@@ -345,6 +363,10 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg) return;
     if (msg.type === "status") render(msg.status);
+    if (msg.type === "panel") {
+      if (!root) build();
+      setVisible(!!msg.visible);
+    }
     if (msg.type === "toast") {
       if (!root) build();
       toast(msg.text);

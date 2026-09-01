@@ -160,6 +160,19 @@ async function saveRecordingOptions() {
                       ? "change" : "input", saveRecordingOptions);
 });
 
+/* Window controls. A Chrome popup has no real chrome of its own, so these act
+   on the things the user actually thinks of as the window: the on-page panel,
+   the full authoring page, and the popup itself. */
+$("winMin").onclick = async () => {
+  await send({ type: "toggleOverlay", visible: false });
+  window.close();
+};
+$("winMax").onclick = async () => {
+  await chrome.tabs.create({ url: chrome.runtime.getURL("author.html"), active: true });
+  window.close();
+};
+$("winClose").onclick = () => window.close();
+
 $("saveEndpoint").onclick = async () => {
   const r = await send({ type: "setEndpoint", endpoint: $("endpoint").value.trim() });
   say(r.ok ? "saved" : r.error, !r.ok);

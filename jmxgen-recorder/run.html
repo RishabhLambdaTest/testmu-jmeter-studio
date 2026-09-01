@@ -3,8 +3,30 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Run on HyperExecute — jmxgen</title>
+<link rel="stylesheet" href="brand.css" />
 <link rel="stylesheet" href="run.css" />
 <div class="page">
+  <div class="pagebar">
+    <span class="tm-logo">
+      <span class="tm-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0B0A10" stroke-width="2.6"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 14 L7 14 L10 5 L14 19 L17 10 L19 14 L22 14"/>
+        </svg>
+      </span>
+      <span class="tm-name"><b>TestMu</b> <span>AI</span></span>
+      <span class="tm-sub">Run</span>
+    </span>
+    <span class="tm-controls">
+      <button class="tm-ctl min" id="pgMin" title="Back to the previous tab"
+              aria-label="Back to the previous tab">&minus;</button>
+      <button class="tm-ctl max" id="pgMax" title="Full width"
+              aria-label="Full width">&plus;</button>
+      <button class="tm-ctl close" id="pgClose" title="Close this tab"
+              aria-label="Close this tab">&times;</button>
+    </span>
+  </div>
+
   <header>
     <h1>Run on HyperExecute</h1>
     <p class="sub">Creates the project, uploads the files, and triggers the job.

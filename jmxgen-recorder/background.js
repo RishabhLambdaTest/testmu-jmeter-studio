@@ -751,6 +751,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           await persist();
           return sendResponse({ ok: true, data: { actions: state.actions.length } });
         }
+        case "toggleOverlay": {
+          // the popup's minimise acts on the on-page panel, which is the thing
+          // the user is actually looking at
+          const tabs = state && state.tabIds && state.tabIds.length
+            ? state.tabIds
+            : [(await chrome.tabs.query({ active: true, currentWindow: true }))[0].id];
+          for (const id of tabs) {
+            chrome.tabs.sendMessage(id, { type: "panel", visible: !!msg.visible })
+              .catch(() => {});
+          }
+          return sendResponse({ ok: true });
+        }
         case "getRecordingOptions":
           return sendResponse({ ok: true, data: await recordingOptions() });
         case "setRecordingOptions":

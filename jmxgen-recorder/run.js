@@ -228,3 +228,14 @@ $("uploadOnly").onclick = () => submit(false);
   ping();
   prefillLoad();
 })();
+
+/* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */
+const pg = (id) => document.getElementById(id);
+if (pg("pgMin")) {
+  pg("pgMin").onclick = () => history.length > 1 ? history.back() : window.close();
+  pg("pgMax").onclick = (e) => {
+    const wide = document.querySelector(".page").classList.toggle("wide");
+    e.currentTarget.title = wide ? "Normal width" : "Full width";
+  };
+  pg("pgClose").onclick = () => window.close();
+}

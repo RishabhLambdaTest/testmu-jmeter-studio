@@ -1,12 +1,31 @@
 <!doctype html>
 <meta charset="utf-8" />
 <title>jmxgen recorder</title>
+<link rel="stylesheet" href="brand.css" />
 <link rel="stylesheet" href="popup.css" />
 <div class="wrap">
-  <div class="head">
+  <div class="bar">
     <span class="dot" id="dot"></span>
-    <span class="title">jmxgen recorder</span>
+    <span class="tm-logo">
+      <span class="tm-mark" aria-hidden="true">
+        <!-- a waveform under load: the mark says "measurement", not "generic app" -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0B0A10" stroke-width="2.6"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 14 L7 14 L10 5 L14 19 L17 10 L19 14 L22 14" />
+        </svg>
+      </span>
+      <span class="tm-name"><b>TestMu</b> <span>AI</span></span>
+    </span>
+    <span class="tm-controls">
+      <button class="tm-ctl min" id="winMin" title="Minimise the on-page panel"
+              aria-label="Minimise the on-page panel">&minus;</button>
+      <button class="tm-ctl max" id="winMax" title="Open the full authoring page"
+              aria-label="Open the full authoring page">&plus;</button>
+      <button class="tm-ctl close" id="winClose" title="Close"
+              aria-label="Close">&times;</button>
+    </span>
   </div>
+  <div class="body">
 
   <div class="stat">
     <div class="big" id="count">0</div>
@@ -66,5 +85,6 @@
     <button id="saveEndpoint" class="b wide">Save</button>
   </details>
   <div class="msg" id="msg"></div>
+  </div>
 </div>
 <script src="popup.js"></script>
