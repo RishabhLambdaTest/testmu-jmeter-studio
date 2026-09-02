@@ -156,7 +156,14 @@ kept 3 of 58 recorded requests across 1 page(s)
   (dropped 42 static, 13 third-party, 0 filtered)
 ```
 
-Static assets go first: images, fonts, CSS. A CDN serving a logo 500 times tells
+CORS preflights go first. A browser sends `OPTIONS` before a cross-origin call
+because its security model requires it; JMeter has no such model and never
+sends one, so a preflight sampler would measure a request that does not happen
+and double the request count of every cross-origin API. They are recognised by
+the `Access-Control-Request-*` header, so a real `OPTIONS` endpoint you mean to
+test is still kept.
+
+Static assets go next: images, fonts, CSS. A CDN serving a logo 500 times tells
 you nothing about your API, and it drags the average response time down until the
 report is flattering and useless. Third-party requests follow: analytics, tag
 managers, chat. Load-testing someone else's service is noise at best. Anything

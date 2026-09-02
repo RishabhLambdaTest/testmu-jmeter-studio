@@ -2421,7 +2421,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             if loc:
                 redirect_targets.add(
                     urllib.parse.urljoin(e.get("request", {}).get("url", ""), loc))
-    skipped = {"static": 0, "third_party": 0, "filtered": 0}
+    skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0}
 
     for idx, e in enumerate(entries):
         req = e.get("request") or {}
@@ -2443,6 +2443,15 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
 
         if want_methods and method_ not in want_methods:
             skipped["filtered"] += 1
+            continue
+
+        # A CORS preflight belongs to the browser, not to the test. The browser
+        # sends OPTIONS before a cross-origin call because its security model
+        # requires it; JMeter has no such model and will never send one, so a
+        # preflight sampler measures a request that would not happen and
+        # doubles the apparent request count of every cross-origin API.
+        if method_ == "OPTIONS" and _is_cors_preflight(req):
+            skipped["preflight"] += 1
             continue
 
         if mode == "api":
@@ -3703,6 +3712,16 @@ TRACKER_HINTS = (
     "linkedin", "licdn", "twitter", "t.co", "pinterest", "cloudflareinsights",
     "hubspot", "intercom", "zendesk", "cdn.jsdelivr", "unpkg", "recaptcha",
 )
+
+
+def _is_cors_preflight(req):
+    """A preflight is an OPTIONS carrying Access-Control-Request-*, which only a
+    browser sends. Recognised by the header rather than the method alone, so a
+    genuine OPTIONS endpoint someone means to test is still kept."""
+    for h in req.get("headers") or []:
+        if str(h.get("name", "")).lower().startswith("access-control-request-"):
+            return True
+    return False
 
 
 def _is_third_party(host, keep_hosts):
@@ -5791,9 +5810,10 @@ def main():
                                  rules=load_rules(getattr(a, "rules", None)))
         sk = info["skipped"]
         print("kept %d of %d recorded requests across %d page(s) "
-              "(dropped %d static, %d third-party, %d filtered)"
+              "(dropped %d static, %d third-party, %d filtered%s)"
               % (info["kept"], info["total"], info["pages"],
-                 sk["static"], sk["third_party"], sk["filtered"]))
+                 sk["static"], sk["third_party"], sk["filtered"],
+                 ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
         _report_correlations(info["correlated"], getattr(a, "correlation_report", None))
         if not info["kept"]:
             sys.exit("nothing left after filtering - loosen --include/--exclude "
@@ -5831,9 +5851,10 @@ def main():
                                  rules=load_rules(getattr(a, "rules", None)))
         sk = info["skipped"]
         print("kept %d of %d captured requests across %d page(s) "
-              "(dropped %d static, %d third-party, %d filtered)"
+              "(dropped %d static, %d third-party, %d filtered%s)"
               % (info["kept"], info["total"], info["pages"],
-                 sk["static"], sk["third_party"], sk["filtered"]))
+                 sk["static"], sk["third_party"], sk["filtered"],
+                 ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
         _report_correlations(info["correlated"], getattr(a, "correlation_report", None))
         if not info["kept"]:
             sys.exit("nothing was captured that looks like application traffic")
@@ -5854,8 +5875,9 @@ def main():
                                  real_think_time=a.real_think_time,
                                  rules=load_rules(a.rules))
         sk = info["skipped"]
-        print("kept %d of %d captured requests (dropped %d static, %d third-party, %d filtered)"
-              % (info["kept"], info["total"], sk["static"], sk["third_party"], sk["filtered"]))
+        print("kept %d of %d captured requests (dropped %d static, %d third-party, %d filtered%s)"
+              % (info["kept"], info["total"], sk["static"], sk["third_party"], sk["filtered"],
+                 ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
         _report_correlations(info["correlated"], a.correlation_report)
         if not info["kept"]:
             sys.exit("nothing captured looked like application traffic")
