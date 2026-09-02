@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.3.4-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.5-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.3.4.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.5.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.3.4-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.5-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -347,6 +347,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "pick at least one region" | Regions is empty. `eastus` is a safe default |
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
 | The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
+| The job runs but the report is empty, and JMeter logged `Error generating the report: NullPointerException` | Zero samplers ran, so there is no data to report and HyperExecute still marks the job passed. Before 1.3.5 a recording with browser steps put a Chrome driver config at plan level, which runs for every thread in every group: with no chromedriver on the runner it killed the protocol samplers too. From 1.3.5 the `.jmx` is protocol-only and the journey ships as the Playwright script instead. Re-author the recording on 1.3.5 |
 | The job runs but the report is empty | The plan ran and every request failed. Validate at one user first, since that is the failure it catches cheaply |
 
 ### If none of that covers it

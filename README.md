@@ -13,7 +13,7 @@ API, so your access key never leaves the machine.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.3.4-share.zip
+1. unzip dist/testmu-jmeter-studio-1.3.5-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. toolbar icon  →  cURL  →  paste a request  →  Generate plan
 4. Run on HyperExecute…  →  credentials  →  Create & trigger
@@ -78,8 +78,8 @@ Playwright test covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.3.4-share.zip     6.3 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.3.4.zip           6.3 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.3.5-share.zip     6.3 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.3.5.zip           6.3 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`
@@ -113,6 +113,7 @@ nobody has to guess what is proven and what is merely written.
 | An hour-shaped recording | 40,000 requests written in 1.1 s; survives worker eviction and a browser restart |
 | Test data | a `CSVDataSet` referencing the file, split across engines at run time |
 | A live HyperExecute run | create, upload and trigger from the extension against the real API; the job completed and the plan's requests reached the target |
+| A recorded web journey, end to end | protocol-only `.jmx` plus a Playwright script; the plan ran 674 samples on HyperExecute where the previous build ran 0 |
 | The run-time overrides | a job sent as 1 user starts JMeter with `threads=1`, and 4 users at 2 per engine starts 2 engines |
 | Regression suite | 56 of 56, in the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) repository, which shares this engine |
 

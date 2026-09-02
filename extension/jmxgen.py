@@ -1030,6 +1030,28 @@ def auth_header(auth):
             else "${__P(%s)}" % var}
 
 
+def _group_uses_webdriver(tg):
+    """Does this group contain a browser step, at any nesting depth?
+
+    Only such a group gets the driver config, so a plan that mixes protocol and
+    browser groups cannot have the browser half break the protocol half.
+    """
+    if tg.get("browser"):
+        return True
+
+    def walk(steps):
+        for s in steps or []:
+            if not isinstance(s, dict):
+                continue
+            if s.get("type") in ("webdriver", "wd", "browser"):
+                return True
+            if walk(s.get("steps")):
+                return True
+        return False
+
+    return walk(tg.get("steps"))
+
+
 def build_thread_group(tg, defaults):
     """Emit the thread group the spec asked for.
 
@@ -1087,6 +1109,12 @@ def build_thread_group(tg, defaults):
         children += build_csv(csv)
     if tg.get("headers"):
         children += build_header_manager(tg["headers"], "Headers - %s" % name)
+    # The browser driver config belongs to the group that uses it, never to the
+    # plan. A config element at plan level runs threadStarted for every thread
+    # in every group, so a runner with no chromedriver takes down the protocol
+    # samplers too - a test that reports zero samples and still exits zero.
+    if tg.get("webdriver"):
+        children += build_chrome_config(tg["webdriver"], tg.get("proxy"))
     children += build_steps(tg.get("steps", []))
 
     return node("ThreadGroup", gui("ThreadGroupGui", "ThreadGroup", name, tg.get("enabled", True)),
@@ -1332,12 +1360,20 @@ def build_plan(spec):
         wd.setdefault("driver_path", plat["driver_path"])
         wd.setdefault("binary_path", plat["binary_path"])
         wd.setdefault("headless", plat["headless"])
-        children += build_chrome_config(wd, proxy)
+        wd.setdefault("proxy", proxy)
 
     if auth:
         children += build_auth_setup(auth)
 
     for tg in spec.get("thread_groups", []):
+        # A recorded browser group is emitted only when the spec asks for
+        # WebDriver samplers. Without that it still leaves as a Playwright
+        # script, which is the better artifact for a journey and needs nothing
+        # installed on the runner.
+        if tg.get("browser") and not wd:
+            continue
+        if wd and _group_uses_webdriver(tg):
+            tg = dict(tg, webdriver=wd, proxy=wd.get("proxy"))
         children += build_thread_group(tg, spec.get("defaults"))
 
     if spec.get("backend_listener"):
@@ -2595,12 +2631,16 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     # a real browser, next to the protocol group that carries the load.
     recorded = ((log.get("_jmxgen") or {}).get("actions")) or []
     if recorded:
+        # Tagged as a browser group, and emitted into the .jmx only when the
+        # spec explicitly asks for WebDriver samplers. It is always available
+        # to the Playwright export, which is where a recorded journey belongs:
+        # a WebDriver sampler needs a Chrome per thread, so any run-time user
+        # count applies to this group as well and multiplies the browsers.
         spec["thread_groups"].append({
-            "name": "Browser journey",
+            "name": "Browser journey", "browser": True,
             "threads": 1, "ramp_up": 1, "loops": 1,
             "steps": actions_to_steps(recorded),
         })
-        spec.setdefault("webdriver", {"headless": True})
 
     return spec, {"kept": len(kept), "total": len(entries), "skipped": skipped,
                   "correlated": correlated, "pages": len(order),
