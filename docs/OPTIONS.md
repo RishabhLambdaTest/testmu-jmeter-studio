@@ -210,20 +210,97 @@ what you set here is what a local JMeter run would use.
 
 ## What comes out
 
-| Button | What you get | Needs |
-|---|---|---|
-| Download .jmx | the plan | nothing |
-| Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console |
+*Plan file name* is the filename the `.jmx` is saved and uploaded under. It
+matters more than it looks: it is the name the run form offers as the entry
+point, so `checkout-load.jmx` is easier to pick out of a project than `plan.jmx`
+for the fourth time.
 
-| Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials |
-| Download Taurus .yml | the same test as a `bzt` config | `bzt`, if you use it |
-| Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it |
+| Button | What you get | Needs | When to use it |
+|---|---|---|---|
+| Download .jmx | the plan | nothing | always, if you want to keep it or open it in JMeter |
+| Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console | before any run that costs money |
+| Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials | when the plan is ready to carry load |
+| Download Taurus .yml | the same test as a `bzt` config | `bzt`, if you use it | when your CI already speaks Taurus |
+| Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
+
+Download and *Run on HyperExecute…* both parse the plan first. A plan that no
+XML parser will read is refused here, with the line and column, rather than
+failing on a runner ten minutes later.
+
+Three tabs sit above them. *Requests* is every sampler with its group, method,
+path and checks: read it to confirm the plan contains what you meant to test.
+*Correlations* is every dynamic value that was wired between requests, with the
+rule, a confidence and the hop, so you can disagree with one. *Checks* holds
+validation results once you have run one.
 
 The Log panel underneath holds everything the engine did. **copy** puts it on the
 clipboard, **clear** empties it, **hide** collapses it.
 
 *Where jmxgen runs* is the address of the optional local console, and only
 Validate uses it. Everything else runs inside the extension.
+
+---
+
+# The run page
+
+Reached with *Run on HyperExecute…*, from either the popup or the authoring
+page. [SETUP.md](SETUP.md#5-running-it-on-hyperexecute) walks the five steps it
+performs in order; this is what each control is for.
+
+## Credentials
+
+| Control | What it does | When to use it |
+|---|---|---|
+| Username | your LambdaTest **username**, not the sign-in email | always. Both are on `accounts.lambdatest.com/detail/profile` |
+| Access key | from the same page | always |
+| Remember on this machine | keeps both in extension storage, this browser profile only | leave it on unless the machine is shared |
+
+## Project
+
+A job lives inside a project. Fill in one field or the other, never both.
+
+| Control | What it does | When to use it |
+|---|---|---|
+| New project name | creates a project and uses it | the first run for a given service |
+| …or existing project id | adds this run to a project you have | every run after that. The id is written back after a create, so a retry reuses it |
+
+Creating a name that already exists is an error rather than a silent reuse,
+because two projects with the same name is worse than a message.
+
+## Files
+
+| Control | What it does | When to use it |
+|---|---|---|
+| Name for the recorded plan | the filename the plan is uploaded as | when a project holds several plans |
+| Add .jmx, .jar, .properties or data files | attaches anything else the run needs | a CSV of test data, a plugin jar the log named, a `system.properties` for mTLS |
+| Which .jmx should the job run | the entry point | only when more than one `.jmx` is in the list |
+
+Every `.jmx` here is parsed before upload, attached ones included.
+
+## Run configuration
+
+These override the plan. Whatever users, ramp-up and duration the `.jmx`
+carries, what is set here is what runs; **an empty field means "whatever the
+plan says"**, which is not the same as a default.
+
+| Control | What it does | When to use it |
+|---|---|---|
+| Regions | one job per region named | one region normally; several to test from where your users are |
+| Max users (total VU) | total virtual users across the job | whenever you want a number other than the plan's |
+| Max users per engine | how many each machine carries | to control engine count: total ÷ this = machines. The line underneath does the arithmetic as you type |
+| Ramp-up (s) | seconds to reach full load | a ramp long enough that autoscaling behaves as it would in life |
+| Duration (s) | how long to hold | a soak needs minutes; a smoke test needs one |
+| Global timeout (min) | hard stop for the whole job | when a hung run would otherwise burn the budget |
+| Job label | shows on the dashboard | to find this run again among fifty |
+| Split CSV rows across engines | each machine gets its own slice | whenever the data must be unique per user, such as one login per row |
+
+The counts reach JMeter itself, not just the infrastructure: a job sent as
+4 users at 2 per engine starts two engines, each logging `threads=2`.
+
+| Button | What it does | When to use it |
+|---|---|---|
+| Upload only | steps 1 to 3, no job | staging files, or when someone else triggers runs |
+| Create & trigger | the whole sequence, then opens the dashboard | the normal path |
 
 ---
 
@@ -329,6 +406,10 @@ session back:
 > A recording from 20:32 is on disk: 241 requests. Chrome was closed before it
 > was used.
 
+**Build the plan** authors from it as though nothing had happened. **Discard**
+deletes it and frees the space. Neither is offered until there is something to
+offer, so an empty popup means there is genuinely nothing waiting.
+
 ## Finishing
 
 **Generate test plan** hands the recording to the authoring page and builds it
@@ -369,3 +450,8 @@ the recording loaded. **Export HAR instead** saves the raw file.
 
 Drag the panel by its title bar, hide it with `–`, and expand it with the square
 when a long recording needs the room.
+
+Closing the tab while it is still recording asks first, because a session is
+work rather than a side effect: **Save HAR, then close** keeps the recording as
+a file, **Close without saving** throws it away, and **Keep recording** leaves
+everything as it was.
