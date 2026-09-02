@@ -161,7 +161,8 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
     if (cfg.rampup != null) e.rampup = cfg.rampup;
     // "users" is the wire name; "vusers" is silently dropped
     if (cfg.users != null) e.users = cfg.users;
-    if (cfg.platform) e.platform = cfg.platform;
+    // no "platform": HyperExecute picks the cloud that backs the region, and
+    // the job context echoes it back. Sending one only ever contradicts it.
     return e;
   });
 

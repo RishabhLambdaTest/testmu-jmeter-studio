@@ -7,7 +7,7 @@
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_ENDPOINT = "http://localhost:8770";
-const KEYS = ["user", "project", "projectId", "regions", "platform",
+const KEYS = ["user", "project", "projectId", "regions",
               "vusers", "maxVusers", "rampup", "duration", "timeout", "label", "planName", "endpoint"];
 const CHECKS = ["remember", "splitcsv"];
 
@@ -254,6 +254,19 @@ async function submit(trigger) {
     }
     if (!files.length) throw new Error("nothing to upload - author a plan or add a file");
 
+    /* Parse every .jmx before it is uploaded. A plan that no XML parser will
+       read is not worth a runner's ten minutes, and the failure it produces up
+       there names an XML offset rather than the cause. */
+    for (const f of files) {
+      if (!/\.jmx$/i.test(f.name)) continue;
+      const g = jmxGate(f.content, f.name);
+      if (!g.ok) {
+        g.problems.forEach((p) => addLog("error", p));
+        throw new Error(g.problems[0]);
+      }
+      addLog("ok", `${f.name} parses as a JMeter plan`);
+    }
+
     const primary = $("primary").value ||
       (files.find((f) => f.name.toLowerCase().endsWith(".jmx")) || {}).name;
     if (!primary) throw new Error("choose which .jmx the job should run");
@@ -290,7 +303,6 @@ async function submit(trigger) {
       args: ["-e", "-o", "report"], reportDir: "report",
       duration: num("duration"), rampup: num("rampup"), users: num("vusers"),
       maxVusersPerVm: num("maxVusers"), globalTimeout: num("timeout"),
-      platform: $("platform").value.trim() || null,
       splitcsv: $("splitcsv").checked,
       jobLabel: $("label").value.trim() || null,
       concurrency: 1,

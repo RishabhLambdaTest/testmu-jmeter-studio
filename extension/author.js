@@ -302,8 +302,20 @@ function saveText(text, filename, kind) {
 
 const stem = () => ($("planName").value.trim() || "plan").replace(/\.[^.]+$/, "");
 
+/* Nothing leaves this page without parsing. jmxGate is a second opinion on top
+   of the engine's own verify(): that one reports, this one refuses. */
+function gateOrExplain(xml, label) {
+  const g = jmxGate(xml, label);
+  if (g.ok) return true;
+  g.problems.forEach((p) => addLog("error", p));
+  say(g.problems[0], "err");
+  showTab("checks");
+  return false;
+}
+
 $("download").onclick = () => {
   if (!STATE) return;
+  if (!gateOrExplain(STATE.jmx, "the plan")) return;
   saveText(STATE.jmx, stem() + ".jmx", "");
 };
 
@@ -363,6 +375,7 @@ $("validate").onclick = async () => {
 
 $("ship").onclick = async () => {
   if (!STATE) return;
+  if (!gateOrExplain(STATE.jmx, "the plan")) return;
   // hand the plan over in session storage: it was built in this page, so there
   // is no server session for the run page to look up
   const keyName = "handoff-" + Date.now().toString(36);

@@ -13,7 +13,7 @@ API, so your access key never leaves the machine.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.3.3-share.zip
+1. unzip dist/testmu-jmeter-studio-1.3.4-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. toolbar icon  →  cURL  →  paste a request  →  Generate plan
 4. Run on HyperExecute…  →  credentials  →  Create & trigger
@@ -78,8 +78,8 @@ Playwright test covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.3.3-share.zip     6.3 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.3.3.zip           6.3 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.3.4-share.zip     6.3 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.3.4.zip           6.3 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`
@@ -107,17 +107,21 @@ nobody has to guess what is proven and what is merely written.
 | Record a logged-in journey against a live public API | 8 requests, transactions preserved, the JWT from `POST /auth/login` correlated at high confidence |
 | All seven sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, existing `.jmx` |
 | The four artifacts | `.jmx` valid, Taurus YAML, Playwright with ranked locators, HAR |
+| The XML gate | a real plan passes; truncated, unclosed, non-JMeter, sampler-less, control-character and empty inputs are each refused by name |
 | Annotating while recording | assertions, extractors, transactions and drops all reach the plan |
 | Validate against real JMeter | pass, failure and nothing-ran each reported distinctly (needs the optional local console) |
 | An hour-shaped recording | 40,000 requests written in 1.1 s; survives worker eviction and a browser restart |
 | Test data | a `CSVDataSet` referencing the file, split across engines at run time |
+| A live HyperExecute run | create, upload and trigger from the extension against the real API; the job completed and the plan's requests reached the target |
+| The run-time overrides | a job sent as 1 user starts JMeter with `threads=1`, and 4 users at 2 per engine starts 2 engines |
 | Regression suite | 56 of 56, in the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) repository, which shares this engine |
 
-**Not yet exercised: a live HyperExecute create, upload and trigger.** There are
-no credentials in the development environment, so everything up to that API call
-is tested and the call itself is not. The wire format matches the Python client
-that does work, and every failure names its actual cause, but the first real run
-is the first proof.
+The HyperExecute path was the last untested one, and testing it found a real
+bug. HyperExecute refuses a request carrying `Origin: chrome-extension://…`
+while accepting the identical request with the dashboard's own origin, and those
+headers are ones a browser will not let a script set. 1.3.3 sets them through
+`declarativeNetRequest`. It was confirmed in both directions: the fix triggers a
+job, and a build with the rule disabled reproduces the 403 exactly.
 
 ## What is in here
 

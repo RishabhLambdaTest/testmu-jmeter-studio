@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.3.3-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.4-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.3.3.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.4.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.3.3-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.4-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -214,10 +214,13 @@ tells you to switch to the id. The log prints `project <id>` either way, and the
 id is written back into the form so a retry reuses it rather than trying to
 create it twice.
 
-**3. The upload.** Every file in the list is sent to that project: the plan
-itself, plus any CSV, plugin jar or `system.properties` you attached. The log
-prints each filename as it goes. This is the step that proves your credentials
-work, because it is authenticated exactly like the trigger that follows.
+**3. The upload.** Every `.jmx` in the list is parsed before anything is sent,
+and an upload that would carry a plan no XML parser can read is refused here
+rather than failing on a runner ten minutes later. The log says
+`plan.jmx parses as a JMeter plan` for each one. Then the files go up: the plan,
+plus any CSV, plugin jar or `system.properties` you attached, each named in the
+log as it goes. This is also the step that proves your credentials work, since
+it is authenticated exactly like the trigger that follows.
 
 **4. The trigger.** The run configuration is turned into one job request, which
 the log prints in full before sending it. That line is worth reading — it is the
@@ -246,7 +249,6 @@ when you are staging files for a scheduled one.
 | Add .jmx, .jar, .properties or data files | Anything else the run needs: a CSV of test data, a plugin jar the log asked for, a `system.properties` |
 | Which .jmx should the job run | Pick one, when more than one was uploaded |
 | Regions | `eastus` by default. Comma-separate them for a multi-region run, and each region gets its own copy of the job |
-| Platform | **Leave it empty.** It exists for accounts whose regions span more than one cloud; empty means HyperExecute uses whichever cloud backs the region you named, which is what almost every account wants. Fill it in only if your own Projects dashboard offers the choice |
 | Max users (total VU) | Total virtual users across the whole job |
 | Max users per engine | How many each machine carries. Total divided by this is how many machines start |
 | Ramp-up, Duration | Seconds. Both override whatever the `.jmx` says |
@@ -336,7 +338,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | What you see | What it means |
 |---|---|
 | "HyperExecute rejected the credentials (HTTP 401)" | Nearly always the email in the username field. It wants the username; both are on `accounts.lambdatest.com/detail/profile`. HyperExecute answers every credential problem with the same `1002 - Invalid Authentication Token`, which is why the message spells out the likely cause |
-| "the trigger failed: HTTP 403" *after the upload succeeded* | Not your credentials, whatever the wording of an older build said: the upload one step earlier used the same ones. Fixed in 1.3.3. The trigger endpoint requires the `Origin` and `Referer` of the HyperExecute dashboard, and those two are headers a browser refuses to let a script set. 1.3.3 sets them through `declarativeNetRequest`, which is the only route available. If you are on 1.3.2 or earlier, update; if you are on 1.3.3 and still see it, the message now carries the server's own reason, and the project id is the next thing to check |
+| "the trigger failed: HTTP 403" | Not your credentials, whatever an older build's wording said. HyperExecute refuses a request carrying `Origin: chrome-extension://…`, while accepting the identical request with the dashboard's own origin, and `Origin` and `Referer` are two headers a browser will not let a script set. Fixed in 1.3.3, which sets them through `declarativeNetRequest`. Verified both ways against the live API: with the rule the job triggers, and a build with the rule disabled reproduces the 403 exactly. If you are on 1.3.2 or earlier, update |
 | A 403 *before* anything uploaded | This one really is the credentials. See the 401 row |
 | "A project named X already exists" | Open it on the Projects dashboard, copy its id into *existing project ID*, and leave the name blank. Or choose a different name |
 | "username and access key are both needed" | One of the two fields is empty |
@@ -344,7 +346,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "choose which .jmx the job should run" | More than one `.jmx` was uploaded, so pick the entry point |
 | "pick at least one region" | Regions is empty. `eastus` is a safe default |
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
-| The dashboard shows 1 user despite what you set | The user count never reached the trigger. Check that *Max users (total VU)* was actually filled in, because an empty field means "whatever the `.jmx` says", which is usually 1 |
+| The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
 | The job runs but the report is empty | The plan ran and every request failed. Validate at one user first, since that is the failure it catches cheaply |
 
 ### If none of that covers it
