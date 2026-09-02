@@ -7,6 +7,9 @@
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_ENDPOINT = "http://localhost:8770";
+/* [storage key, element id]. realThink moved key when its default became on,
+   so an "off" saved by an older build is not inherited silently. */
+const CHECKS = [["realThink2", "realThink"], ["noCorrelate", "noCorrelate"]];
 const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
               "loginBody", "loginToken", "csvFile", "csvCols", "threads", "ramp",
               "dur", "endpoint", "planName"];
@@ -32,14 +35,17 @@ async function load() {
   const saved = await chrome.storage.local.get("jmxgen.author");
   const v = saved["jmxgen.author"] || {};
   KEYS.forEach((k) => { if (v[k] !== undefined && $(k)) $(k).value = v[k]; });
-  ["realThink", "noCorrelate"].forEach((k) => { if (v[k] !== undefined) $(k).checked = v[k]; });
+  // realThink is stored under a new key: it used to default to off, and a
+  // saved "off" from before would otherwise keep handing people a plan with no
+  // pacing, which is the setting this rename exists to stop inheriting.
+  CHECKS.forEach(([key, id]) => { if (v[key] !== undefined) $(id).checked = v[key]; });
   if (!$("endpoint").value) $("endpoint").value = DEFAULT_ENDPOINT;
 }
 
 async function save() {
   const out = {};
   KEYS.forEach((k) => { if ($(k)) out[k] = $(k).value; });
-  ["realThink", "noCorrelate"].forEach((k) => out[k] = $(k).checked);
+  CHECKS.forEach(([key, id]) => out[key] = $(id).checked);
   await chrome.storage.local.set({ "jmxgen.author": out });
 }
 document.addEventListener("input", save);
@@ -148,6 +154,10 @@ function syncInputs() {
     $("mode").value === "urls" ? "One URL per line" : "Input";
   // filters only bite on sources that carry more than you asked for
   $("filters").hidden = !["har", "urls"].includes($("mode").value);
+  // think times only exist in a recording, and they are the difference between
+  // a load test and a spin loop, so the control sits with the load profile
+  // rather than folded away under filters
+  $("thinkRow").hidden = $("mode").value !== "har";
 }
 $("mode").onchange = () => { syncInputs(); save(); };
 

@@ -77,7 +77,6 @@
       <div><label for="exclude">Exclude (regex)</label>
            <input type="text" id="exclude" placeholder="analytics|beacon" /></div>
     </div>
-    <label class="chk"><input type="checkbox" id="realThink" /> Use recorded think times</label>
     <label class="chk"><input type="checkbox" id="noCorrelate" /> Skip correlation</label>
   </details>
 
@@ -112,6 +111,13 @@
            <input type="text" id="dur" placeholder="blank = loop once" /></div>
     </div>
     <p class="hint">HyperExecute overrides all three at run time, so these are a starting point.</p>
+    <div id="thinkRow" hidden>
+      <label class="chk"><input type="checkbox" id="realThink" checked />
+        Use the think times from the recording</label>
+      <p class="hint">Without them each user replays the journey as fast as the
+         server answers. That is a stress test rather than a load test, and a
+         couple of users are enough to pin a CPU.</p>
+    </div>
   </fieldset>
 
   <div class="acts">

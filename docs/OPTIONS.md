@@ -124,18 +124,6 @@ telemetry that a `web` recording would otherwise load-test on someone else's
 behalf. `\.(png|jpe?g|svg|woff2?)$` drops images and fonts while keeping the
 rest of a `web` capture.
 
-### Use recorded think times
-
-Off by default, and the default is deliberate.
-
-Off, the plan uses uniform pauses between requests. On, it uses the gaps that
-actually occurred while you were recording.
-
-**Example.** You paused for 47 seconds mid-recording to read a Slack message. On,
-that 47-second pause is now in the plan, so 500 virtual users each sit idle for
-47 seconds and your throughput is a fraction of what you intended. Turn this on
-when the recording was a clean, deliberate run and the pacing is meaningful.
-
 ### Skip correlation
 
 Off by default. On, dynamic values are left exactly as recorded.
@@ -207,6 +195,22 @@ measuring anything.
 
 These are a starting point. The HyperExecute run form overrides all three, so
 what you set here is what a local JMeter run would use.
+
+### Use the think times from the recording
+
+**On by default, for recordings.** It appears under Load profile whenever the
+source is a recording, because it shapes load rather than filtering traffic.
+
+On, the plan carries the gaps that actually occurred while you browsed, as a
+timer after each request. Off, the plan has no timers at all: every user
+replays the journey as fast as the server can answer, which is a stress test
+rather than a load test. Two users with no pacing generate more traffic than
+fifty behaving like people, and it will pin a CPU on a small engine.
+
+**When to turn it off.** You paused for 47 seconds mid-recording to read a
+Slack message, and that pause is now in the plan, so 500 users each sit idle
+for 47 seconds and throughput collapses. Either re-record cleanly, or turn this
+off and pace the test with the load profile instead.
 
 ## What comes out
 
