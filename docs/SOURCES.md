@@ -100,8 +100,14 @@ Replay that recording as it stands and it fails, because the token has expired.
 That is the problem correlation solves, and it is the largest single reason
 hand-built JMeter plans come back full of 401s.
 
-Switching to *Keep: web* keeps the assets instead. One recording, either an
-API-level or a browser-level plan, decided at generation time.
+Switching to *Keep: web* keeps the assets your own domain served: 26 of the 58,
+because third-party hosts are still refused. One recording, either an API-level
+or a browser-level plan, decided at generation time rather than at record time.
+
+Cross-origin APIs also arrive with a CORS preflight in front of every call.
+Those are dropped: the browser sends `OPTIONS` because its security model
+demands it, JMeter never does, and a preflight sampler would double the request
+count of a plan while measuring nothing real.
 
 This is the only source where correlation has anything to work with, since it is
 the only one carrying real responses. Which is why the recorder exists;

@@ -59,6 +59,15 @@ write.
 
 Requests count as repeats when the method, URL and body all match.
 
+### What is dropped whatever you choose
+
+CORS preflights. A browser sends `OPTIONS` before a cross-origin call because
+its security model requires it; JMeter has no such model and never sends one.
+A preflight sampler would measure a request that does not happen under load,
+and double the request count of every cross-origin API. They are recognised by
+the `Access-Control-Request-*` header rather than by the method, so an
+`OPTIONS` endpoint you actually mean to test is kept.
+
 ## Traffic filters
 
 These only appear for the two sources that carry more than you asked for: a
@@ -74,14 +83,19 @@ What counts as part of the test.
 | `api` | service calls only | you are load-testing an API, and the HTML is irrelevant |
 | `web` | everything the browser fetched | page load time is the thing you are measuring |
 
-**Example.** The sample recording holds 58 requests: 3 API calls, 42 images,
-fonts and stylesheets, and 13 analytics beacons.
+**Example.** The sample recording holds 58 requests. The same file, authored
+three ways:
 
-- `api` gives you a 3-request plan. Every number in the report is about your
-  service.
-- `web` gives you all 45 first-party requests, so the plan measures what a real
-  page load costs, including the CDN.
-- `auto` sits between: the page itself plus its service calls.
+| Keep | Kept | What went |
+|---|---|---|
+| `api` | 3 | 42 static, 13 third-party |
+| `auto` | 4 | 36 static, 18 third-party |
+| `web` | 26 | 32 third-party |
+
+`api` gives a plan where every number in the report is about your service.
+`web` keeps the assets your own domain served, so the plan measures what a page
+load costs, while still refusing to load-test somebody else's CDN. `auto` sits
+between: the page itself plus its service calls.
 
 The trap `auto` and `api` exist to avoid: with assets included, 500 users mostly
 hammer a CDN, average response time collapses to 12 ms, and the report says the

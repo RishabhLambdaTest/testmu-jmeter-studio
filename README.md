@@ -97,6 +97,28 @@ store-shaped zip as an unlisted Chrome Web Store item and updates arrive on thei
 own. Both routes are written up in
 [extension/STORE_LISTING.md](extension/STORE_LISTING.md).
 
+## What has been verified
+
+Driven in a real Chrome with the packaged build, not inspected. Kept here so
+nobody has to guess what is proven and what is merely written.
+
+| Path | State |
+|---|---|
+| Record a logged-in journey against a live public API | 8 requests, transactions preserved, the JWT from `POST /auth/login` correlated at high confidence |
+| All seven sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, existing `.jmx` |
+| The four artifacts | `.jmx` valid, Taurus YAML, Playwright with ranked locators, HAR |
+| Annotating while recording | assertions, extractors, transactions and drops all reach the plan |
+| Validate against real JMeter | pass, failure and nothing-ran each reported distinctly (needs the optional local console) |
+| An hour-shaped recording | 40,000 requests written in 1.1 s; survives worker eviction and a browser restart |
+| Test data | a `CSVDataSet` referencing the file, split across engines at run time |
+| Regression suite | 56 of 56, in the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) repository, which shares this engine |
+
+**Not yet exercised: a live HyperExecute create, upload and trigger.** There are
+no credentials in the development environment, so everything up to that API call
+is tested and the call itself is not. The wire format matches the Python client
+that does work, and every failure names its actual cause, but the first real run
+is the first proof.
+
 ## What is in here
 
 | Path | |

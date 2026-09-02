@@ -54,6 +54,9 @@ These are the real evaluation criteria. Everything else is packaging.
 | Response bodies captured | yes | yes, through `chrome.debugger`, the only API that can |
 | Mobile emulation while recording | yes | yes, metrics and user agent together |
 | Annotate while recording | limited | transactions, assertions, extractors, pauses, drops, and requests that never happened |
+| An hour-long session | streamed to their cloud as you record | written to disk as you record |
+| Survives a browser restart | it is on their server | yes, and it is offered back when you return |
+| CORS preflights | filtered | filtered |
 | The recording leaves your machine | yes, uploaded | no |
 | What you get out | a test inside the platform | `.jmx`, HAR, Taurus YAML and Playwright, downloaded |
 
@@ -103,6 +106,19 @@ to the HyperExecute API with your own key. For a regulated customer this is not 
 feature. It is the difference between a purchase and a security review that never
 ends.
 
+**Long sessions, without sending anything anywhere.** This is the same problem
+solved two ways. BlazeMeter records into their cloud, so the browser is only a
+buffer and length is their storage problem. We write to disk in the browser,
+sized against the storage the browser grants, which is measured in gigabytes.
+Neither has a cap. Ours costs you nothing but disk, and the session survives
+both the extension's worker being evicted and Chrome being closed.
+
+What keeps that cheap is being selective about bytes rather than requests. Every
+request is stored; for assets that means their URL, method and type, because a
+font's content cannot be asserted on, correlated or sent by a sampler. Measured
+on a real session of 241 requests, 200 of them images: 241 entries and 41 bodies
+on disk. A browser-level plan still authors from that same recording.
+
 **Six ways in that a recorder does not have.** Most teams do not start from a
 browser session. They start from a Postman collection somebody maintains, an
 OpenAPI spec in the repo, or a curl command pasted into a ticket. A
@@ -147,11 +163,17 @@ scheduled runs, APM integrations.
 the gap without closing it.
 
 *A recorder that has met the whole internet.* Theirs has been in the store for
-years. Our locator ranking and noise filters are good, but they are new.
+years and has seen every authentication scheme and single-page framework there
+is. Ours is tested against real sites and handles what those tests found, but
+the tail is long and we are early in it.
 
 None of these sit in the authoring path, which is where the customer's pain
 actually is. They start to matter in the second month, and a pitch that pretends
 otherwise loses the second meeting.
+
+**The one to close first is trends.** Reporting depth is a large surface, but
+the part a load-testing team touches every week is the comparison against last
+week. Everything else on this list can wait behind it.
 
 ## The pitch, in three sentences
 
