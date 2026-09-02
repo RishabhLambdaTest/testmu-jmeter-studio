@@ -96,9 +96,15 @@ that resolves uniquely is the one written down. A recorder that emits
 release. This is the difference between a recording you keep and one you redo
 every sprint.
 
-Browser steps can also go into the `.jmx` itself, as WebDriver samplers, which
-need `jmeter-plugins-webdriver` on the runner. The log says so by name at
-generation time.
+The browser steps stay out of the `.jmx` deliberately. A WebDriver sampler
+drives a real Chrome, one per thread, so it cannot carry load, and it needs a
+chromedriver on the runner that a stock JMeter or CI machine does not have. A
+run-time user count applies to every thread group, so a plan asking for one
+browser user becomes two hundred browsers the moment someone runs it at scale.
+JMeter's own recorder and BlazeMeter's both draw the line in the same place.
+
+So the split is the point: the `.jmx` carries the load, the Playwright script
+proves the journey. Both come out of the one recording.
 
 ## Recording options
 

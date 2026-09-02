@@ -328,7 +328,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "the recording was already used" | The handover from recorder to authoring page is deliberately one-shot, so reloading the page cannot silently re-author a capture you have moved on from. Record again, or pick a HAR file |
 | 0 correlated, on a source that is not a recording | Expected. Correlation needs real responses, and only a recording carries them. The Correlations tab says as much |
 | "needs jmeter-plugins-casutg on the runner" | The plan uses arrival-rate thread groups. Upload that jar with the plan, or install it into JMeter's `lib/ext` |
-| "needs jmeter-plugins-webdriver on the runner" | The plan carries browser steps as WebDriver samplers. Same fix, or generate without browser steps |
+| "needs jmeter-plugins-webdriver on the runner" | Only a hand-written spec that asks for WebDriver samplers can produce this; the extension never puts browser steps in the `.jmx`. Upload that jar with the plan, and note the runner also needs a chromedriver |
 | **Validate (single user)** is greyed out | Validate runs the plan through real JMeter, which a browser cannot do. It needs the local console from the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen). Everything else works without it |
 | The errors count is above zero | Open the Checks tab. A plan with errors is never shipped silently |
 | Validate says "nothing ran" | JMeter started and executed no samplers. The message carries JMeter's own reason, and it is usually a data file the plan references that is not sitting beside it. Upload the CSV with the plan, or clear the Test data fields |
