@@ -15,19 +15,56 @@
 
 const HX_BASE = "https://api-hyperexecute.lambdatest.com";
 const HX_UI = "https://hyperexecute.lambdatest.com/hyperexecute";
+const HX_ORIGIN = "https://hyperexecute.lambdatest.com";
+const HX_RULE_ID = 8801;
+
+/* Origin and Referer are forbidden header names: fetch() silently drops
+   whatever you set, so every call from here otherwise arrives as
+   `Origin: chrome-extension://<id>` with no Referer at all. The logistics host,
+   which serves create and upload, does not mind. The reception host, which
+   serves the trigger and sits behind the dashboard UI, answers that with a 403
+   even though the credentials are the ones it accepted a second earlier.
+
+   declarativeNetRequest is the only API in MV3 that can set those two headers,
+   so one session rule rewrites them for this host and nothing else. Session
+   rules die with the browser, so nothing is left installed. */
+async function hxHeaderRule() {
+  if (!chrome.declarativeNetRequest) return;
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [HX_RULE_ID],
+    addRules: [{
+      id: HX_RULE_ID,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [
+          { header: "origin", operation: "set", value: HX_ORIGIN },
+          { header: "referer", operation: "set",
+            value: HX_ORIGIN + "/hyperexecute/projects" },
+        ],
+      },
+      condition: {
+        urlFilter: "||api-hyperexecute.lambdatest.com",
+        resourceTypes: ["xmlhttprequest"],
+      },
+    }],
+  });
+}
 
 function hxHeaders(user, key) {
   return {
     accept: "application/json",
+    "accept-language": "en-US,en;q=0.9",
     authorization: "Basic " + btoa(`${user}:${key}`),
     "content-type": "application/json",
-    origin: HX_UI.replace("/hyperexecute", ""),
   };
 }
 
 /* Every failure here has to say what actually happened. HyperExecute answers
    every credential problem with the same "1002 - Invalid Authentication Token",
    so the message has to supply the part it withholds. */
+let AUTH_PROVEN = false;   // set once a call this host has authenticated succeeds
+
 async function hxError(action, response) {
   let body = "";
   try { body = await response.text(); } catch (e) { /* nothing to add */ }
@@ -37,11 +74,24 @@ async function hxError(action, response) {
     reason = (j.error && j.error.message) || j.message || reason;
   } catch (e) { /* not JSON, keep the raw text */ }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     return new Error(
-      `HyperExecute rejected the credentials (HTTP ${response.status}).\n` +
-      `Username must be the LambdaTest username, not the email you sign in with.\n` +
+      `HyperExecute rejected the credentials (HTTP 401). ${reason}\n` +
+      `Username must be the LambdaTest username, not the email you sign in with. ` +
       `Both are on accounts.lambdatest.com/detail/profile.`);
+  }
+  /* A 403 is a different story, and telling it as a credential failure sends
+     the reader to the wrong page. If the upload has already gone through, this
+     same Authorization header was accepted seconds ago. */
+  if (response.status === 403) {
+    return new Error(
+      `${action}: HTTP 403. ${reason || "the server sent no reason."}\n` +
+      (AUTH_PROVEN
+        ? `These credentials were accepted moments ago by the upload, so the ` +
+          `username and access key are not what is wrong. Check that the ` +
+          `project id belongs to this account and is a JMeter project.`
+        : `Check the username is the LambdaTest username rather than the ` +
+          `sign-in email; both are on accounts.lambdatest.com/detail/profile.`));
   }
   if (response.status >= 500) {
     return new Error(`${action}: HyperExecute returned HTTP ${response.status} — ` +
@@ -52,6 +102,7 @@ async function hxError(action, response) {
 
 async function hxCreateProject(user, key, name, type = "jmeter", log = () => {}) {
   log("info", `creating project "${name}"…`);
+  await hxHeaderRule();
   const r = await fetch(`${HX_BASE}/logistics/v1.0/project`, {
     method: "POST",
     headers: hxHeaders(user, key),
@@ -72,6 +123,7 @@ async function hxCreateProject(user, key, name, type = "jmeter", log = () => {})
   const id = j.id || j.projectId || j.projectID ||
              (j.data && (j.data.id || j.data.projectId));
   if (!id) throw new Error("project created but no ID came back: " + body.slice(0, 200));
+  AUTH_PROVEN = true;
   log("ok", "project " + id);
   return String(id);
 }
@@ -83,18 +135,18 @@ async function hxUpload(user, key, projectId, files, log = () => {}) {
     form.append("files", new Blob([f.content], { type: "application/octet-stream" }), f.name);
     log("info", "  " + f.name);
   }
-  // no content-type header: the browser sets the multipart boundary itself
+  await hxHeaderRule();
   const r = await fetch(`${HX_BASE}/logistics/v1.0/project/${projectId}/files/upload`, {
     method: "POST",
     // no content-type: the browser sets the multipart boundary itself
     headers: {
       accept: "application/json, text/plain, */*",
       authorization: "Basic " + btoa(`${user}:${key}`),
-      origin: "https://hyperexecute.lambdatest.com",
     },
     body: form,
   });
-  if (!r.ok) throw await hxError("upload failed", r);
+  if (!r.ok) throw await hxError("the upload failed", r);
+  AUTH_PROVEN = true;
   log("ok", "uploaded");
 }
 
@@ -125,6 +177,7 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   if (cfg.globalTimeout != null) payload.globalTimeout = cfg.globalTimeout;
 
   log("info", "triggering: " + JSON.stringify(payload));
+  await hxHeaderRule();
   // the trigger sits under /reception, not /logistics
   const r = await fetch(`${HX_BASE}/reception/api/project/${projectId}/trigger-job`, {
     method: "POST",
@@ -141,4 +194,4 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   return String(jobId);
 }
 
-window.HX = { hxCreateProject, hxUpload, hxTrigger, HX_UI };
+window.HX = { hxCreateProject, hxUpload, hxTrigger, hxHeaderRule, HX_UI };

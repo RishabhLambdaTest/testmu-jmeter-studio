@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.3.2-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.3-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.3.2.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.3.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.3.2-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.3-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -196,6 +196,43 @@ banner stops the recording.
 
 ![The HyperExecute run form](screenshots/run-hyperexecute.png)
 
+### The five steps, in order
+
+The page runs the same sequence every time, and the Log names each one as it
+happens. Knowing the order is what makes a failure readable: whatever step the
+log stopped on is the step that failed, and everything above it succeeded.
+
+**1. Credentials.** Username and access key go in the top two fields. The
+username is the LambdaTest *username*, not the email you sign in with; both sit
+on `accounts.lambdatest.com/detail/profile`. *Remember on this machine* keeps
+them in Chrome's extension storage for this profile only.
+
+**2. The project.** A HyperExecute job lives inside a project. Give a name and
+one is created, or paste the id of a project you already have. Fill in one or
+the other, never both. Creating a name that exists is an error, and the message
+tells you to switch to the id. The log prints `project <id>` either way, and the
+id is written back into the form so a retry reuses it rather than trying to
+create it twice.
+
+**3. The upload.** Every file in the list is sent to that project: the plan
+itself, plus any CSV, plugin jar or `system.properties` you attached. The log
+prints each filename as it goes. This is the step that proves your credentials
+work, because it is authenticated exactly like the trigger that follows.
+
+**4. The trigger.** The run configuration is turned into one job request, which
+the log prints in full before sending it. That line is worth reading — it is the
+literal payload, so you can see whether the users, ramp-up and duration you typed
+actually made it. `-e -o report` is always included: it is what makes JMeter
+write the HTML dashboard that HyperExecute then collects as the **report**
+artifact.
+
+**5. The job.** The trigger returns a job id, the log prints it, and a link to
+the dashboard appears. From there it is an ordinary HyperExecute job: live
+status, logs, and the report artifact when it finishes.
+
+**Upload only** stops after step 3. Useful when someone else triggers runs, or
+when you are staging files for a scheduled one.
+
 ### What each field wants
 
 | Field | |
@@ -208,7 +245,8 @@ banner stops the recording.
 | Name for the recorded plan | The filename the `.jmx` gets on the runner |
 | Add .jmx, .jar, .properties or data files | Anything else the run needs: a CSV of test data, a plugin jar the log asked for, a `system.properties` |
 | Which .jmx should the job run | Pick one, when more than one was uploaded |
-| Regions | `eastus` by default. Comma-separate them for a multi-region run |
+| Regions | `eastus` by default. Comma-separate them for a multi-region run, and each region gets its own copy of the job |
+| Platform | **Leave it empty.** It exists for accounts whose regions span more than one cloud; empty means HyperExecute uses whichever cloud backs the region you named, which is what almost every account wants. Fill it in only if your own Projects dashboard offers the choice |
 | Max users (total VU) | Total virtual users across the whole job |
 | Max users per engine | How many each machine carries. Total divided by this is how many machines start |
 | Ramp-up, Duration | Seconds. Both override whatever the `.jmx` says |
@@ -216,11 +254,12 @@ banner stops the recording.
 | Job label | Optional, shows on the dashboard |
 | Split CSV rows across engines | Each machine gets its own slice of the data file, instead of every machine replaying the same rows |
 
-Press **Create & trigger**. The log prints the project id, every uploaded file and
-the job id as each happens, then the dashboard opens.
+Press **Create & trigger**.
 
-**Upload only** does everything except starting the job, which is useful when
-someone else triggers runs, or when you are staging files for a scheduled one.
+Anything you leave empty falls through to the plan. An empty *Max users* does
+not mean one user; it means whatever the `.jmx` carries, which is often one. If
+the dashboard shows a number you did not expect, the printed trigger payload in
+the log is where to look.
 
 ### Where your credentials go
 
@@ -297,6 +336,8 @@ Every error the extension can produce, what it actually means, and what to do.
 | What you see | What it means |
 |---|---|
 | "HyperExecute rejected the credentials (HTTP 401)" | Nearly always the email in the username field. It wants the username; both are on `accounts.lambdatest.com/detail/profile`. HyperExecute answers every credential problem with the same `1002 - Invalid Authentication Token`, which is why the message spells out the likely cause |
+| "the trigger failed: HTTP 403" *after the upload succeeded* | Not your credentials, whatever the wording of an older build said: the upload one step earlier used the same ones. Fixed in 1.3.3. The trigger endpoint requires the `Origin` and `Referer` of the HyperExecute dashboard, and those two are headers a browser refuses to let a script set. 1.3.3 sets them through `declarativeNetRequest`, which is the only route available. If you are on 1.3.2 or earlier, update; if you are on 1.3.3 and still see it, the message now carries the server's own reason, and the project id is the next thing to check |
+| A 403 *before* anything uploaded | This one really is the credentials. See the 401 row |
 | "A project named X already exists" | Open it on the Projects dashboard, copy its id into *existing project ID*, and leave the name blank. Or choose a different name |
 | "username and access key are both needed" | One of the two fields is empty |
 | "nothing to upload - author a plan or add a file" | You reached the run page without a plan. Author one, or attach a `.jmx` with *Add files* |
@@ -336,6 +377,7 @@ shows a banner the whole time it is attached.
 | `tabs` | To attach to the tab you chose, and follow SSO popups it opens |
 | `storage` | Checkpoints an in-progress recording, so an evicted service worker does not lose it |
 | `downloads` | Saving the plan, HAR or YAML you asked for |
+| `declarativeNetRequestWithHostAccess` | One rule, on `api-hyperexecute.lambdatest.com` alone, setting the `Origin` and `Referer` its trigger endpoint requires. Those two are headers a browser will not let a script set directly. The rule is a session rule, so it disappears when Chrome closes, and it neither blocks nor reads anything |
 | `offscreen` | A service worker cannot create blob URLs, so the offscreen document builds the file to download |
 | `<all_urls>` | You choose the site, and the extension cannot know it in advance. Capture only runs on a tab you started |
 

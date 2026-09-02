@@ -74,7 +74,7 @@
     <legend>Run configuration</legend>
     <div class="grid2">
       <div><label>Regions</label><input type="text" id="regions" placeholder="eastus, westus" /></div>
-      <div><label>Platform</label><input type="text" id="platform" placeholder="azure (optional)" /></div>
+      <div><label>Platform</label><input type="text" id="platform" placeholder="leave empty" /></div>
       <div><label>Max users (total VU)</label><input type="text" id="vusers" placeholder="from the plan" /></div>
       <div><label>Max users per engine</label><input type="text" id="maxVusers" placeholder="2000" /></div>
       <div><label>Ramp-up (s)</label><input type="text" id="rampup" placeholder="from the .jmx" /></div>
@@ -83,6 +83,10 @@
       <div><label>Job label</label><input type="text" id="label" placeholder="optional" /></div>
     </div>
     <p class="hint" id="vmCalc"></p>
+    <p class="hint"><b>Platform</b> is for accounts whose regions are split across
+       more than one cloud. Leave it empty and HyperExecute uses whichever cloud
+       backs the region you named, which is what almost every account wants.
+       Fill it in only if your Projects dashboard actually offers a choice.</p>
     <label class="chk"><input type="checkbox" id="splitcsv" />
       Split CSV rows across engines</label>
     <p class="hint">These override the plan: whatever users, ramp-up and duration the
