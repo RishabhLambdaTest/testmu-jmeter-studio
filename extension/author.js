@@ -212,12 +212,13 @@ $("go").onclick = async () => {
     const data = await window.JmxgenEngine.author(body);
     STATE = data;
     STATE.session = null;          // there is no server session to refer to
-    addLog("ok", `plan built - ${data.steps.length} request(s), ${data.size_kb} KB, ` +
+    const nreq = (data.steps || []).filter((s) => s.method !== "webdriver").length;
+    addLog("ok", `plan built - ${nreq} request(s), ${data.size_kb} KB, ` +
                  `${(data.correlations || []).length} correlated`);
     for (const w of (data.verify && data.verify.warnings) || []) addLog("warn", w);
     for (const e of (data.verify && data.verify.errors) || []) addLog("error", e);
     render();
-    say("plan ready - " + data.steps.length + " request(s), " +
+    say("plan ready - " + nreq + " request(s), " +
         data.size_kb + " KB", "ok");
   } catch (e) {
     addLog("error", String(e.message || e));
@@ -229,11 +230,18 @@ $("go").onclick = async () => {
 
 /* ---- results ----------------------------------------------------------- */
 
+/* What the .jmx actually carries. A recorded browser step is a click, not a
+   request: it ships in the Playwright script, so it is neither a sampler nor
+   something to count as one. */
+function planSteps() {
+  return (STATE.steps || []).filter((s) => s.method !== "webdriver");
+}
+
 function render() {
   $("results").hidden = false;
   const v = STATE.verify || {};
   const cards = [
-    ["requests", STATE.steps.length],
+    ["requests", planSteps().length],
     ["correlated", (STATE.correlations || []).length],
     ["size", STATE.size_kb + " KB"],
     ["errors", (v.errors || []).length],
@@ -260,7 +268,9 @@ function showTab(which) {
     b.classList.toggle("on", b.dataset.tab === which));
   const el = $("tabbody");
   if (which === "steps") {
-    const rows = (STATE.steps || []).map((s) =>
+    // Browser steps are not in the .jmx - they leave as the Playwright script -
+    // so listing them here as if they were samplers overstates the plan.
+    const rows = planSteps().map((s) =>
       `<tr><td>${esc(s.group || "")}</td><td class="mono">${esc(s.method || "")}</td>
        <td class="mono">${esc(s.path || "")}</td>
        <td>${esc(s.asserts == null ? "" : s.asserts)}</td>

@@ -123,7 +123,8 @@ recording to fix a setting.
 `⌘⇧8` / `Ctrl+Shift+8` starts and stops recording without opening the popup.
 
 [OPTIONS.md](OPTIONS.md) works through each of these with an example, along with
-every other control in the extension.
+every other control in the extension. [TRANSACTIONS.md](TRANSACTIONS.md) covers
+step naming and what the report ends up calling things, with screenshots.
 
 ## Recording for an hour
 
