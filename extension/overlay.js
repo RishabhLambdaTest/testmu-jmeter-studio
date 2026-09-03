@@ -366,6 +366,24 @@
     if (c) c.textContent = String(status.count);
     const tx = root.querySelector("#jg-tx");
     if (tx && document.activeElement !== tx) tx.value = status.transaction || "";
+    /* Assert, Extract, Rename and Skip all act on the last captured request, so
+       the panel has to say which one that is. Without it you are annotating
+       blind and only find out on the results page. */
+    const last = root.querySelector("#jg-last");
+    if (last) last.textContent = status.lastUrl
+      ? "last: " + shortUrl(status.lastUrl)
+      : "nothing captured yet";
+  }
+
+  /* Enough of the URL to recognise the request, from the end that varies. */
+  function shortUrl(u) {
+    try {
+      const p = new URL(u);
+      const path = p.pathname + p.search;
+      return path.length > 44 ? "…" + path.slice(-43) : path;
+    } catch (e) {
+      return u.length > 44 ? "…" + u.slice(-43) : u;
+    }
   }
 
   chrome.runtime.onMessage.addListener((msg) => {

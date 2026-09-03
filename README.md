@@ -13,7 +13,7 @@ API, so your access key never leaves the machine.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.3.7-share.zip
+1. unzip dist/testmu-jmeter-studio-1.3.8-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. toolbar icon  →  cURL  →  paste a request  →  Generate plan
 4. Run on HyperExecute…  →  credentials  →  Create & trigger
@@ -82,8 +82,8 @@ Playwright test covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.3.7-share.zip     6.3 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.3.7.zip           6.3 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.3.8-share.zip     6.3 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.3.8.zip           6.3 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`

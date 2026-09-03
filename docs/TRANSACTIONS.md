@@ -51,12 +51,42 @@ initial navigation and any SSO redirect, inside the transaction. Press *Start
 recording this tab* instead and you begin from whatever is already loaded, which
 usually means the login is already over.
 
-## Changing step while you browse
+## Adding the next transaction, and the one after that
 
-The panel is on the page, so you do not go back to the popup. Set the next name
-and everything captured from that moment lands in the new controller.
+You do not go back to the popup. The panel that appears on the page is the
+control, and its first field is Transaction with its own Set button.
 
-![The recording panel, mid-journey](screenshots/tx-panel.png)
+![The recording panel on the page under test](screenshots/tx-panel.png)
+
+The loop is the same for every step after the first.
+
+**1. The first step is already running.** You named it in the popup before
+pressing Go, so the panel opens showing it. Nothing has been captured yet.
+
+![The panel showing the first transaction, nothing captured](screenshots/tx-step1-set.png)
+
+**2. Do the step.** Sign in. The badge counts requests as they arrive, and the
+line under the field names the last one, which is what Assert, Extract, Rename
+and Skip act on.
+
+![The panel after the login request was captured](screenshots/tx-step1-captured.png)
+
+**3. Type the next step's name.** Straight into the panel's Transaction field.
+Nothing has changed yet: the name applies when you set it.
+
+![The next transaction name typed into the panel](screenshots/tx-step2-typed.png)
+
+**4. Press Set.** The panel confirms it in green, and every request from this
+moment lands in the new transaction.
+
+![The panel confirming the transaction changed](screenshots/tx-step2-set.png)
+
+**5. Do that step.** The requests it makes are now grouped under the new name.
+
+![The panel after the next step's traffic was captured](screenshots/tx-step2-captured.png)
+
+Repeat 3 to 5 for as many steps as the journey has. There is no limit, and no
+need to decide the list in advance.
 
 ```
 Set "Login"     →  sign in
@@ -65,8 +95,31 @@ Set "Checkout"  →  place the order
 ```
 
 Three names, three transactions. This is the highest-value thing you can do
-while recording, and the only one that has to happen while recording, because
+while recording, and the only one that *has* to happen while recording, because
 nothing afterwards can tell which requests belonged to which step.
+
+### Set the name before the traffic, not before the typing
+
+This is the part that catches people out. Typing into a field sends no HTTP
+request, so a transaction set around it captures nothing and never appears in
+the plan.
+
+```
+Set "Login"        →  type the username, type the password, click Log in   ✅
+Set "Timesheet"    →  open the timesheet page
+Set "Save entry"   →  enter 8 hours, click Save
+```
+
+```
+Set "Enter Username"   →  type into a box            ✗ captures nothing
+Set "Enter Password"   →  type into a box            ✗ captures nothing
+Set "Click Login"      →  click                      ← the login lands here
+```
+
+Both recordings involve the same clicks. The first produces three meaningful
+transactions; the second produces one, with two empty names that are dropped.
+Name the step for what the user is achieving, and set it just before the action
+that talks to the server.
 
 ## Renaming a request
 
