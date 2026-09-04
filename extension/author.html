@@ -73,9 +73,9 @@
       <div><label for="methods">Methods</label>
            <input type="text" id="methods" placeholder="blank = all" /></div>
       <div><label for="include">Include (regex)</label>
-           <input type="text" id="include" placeholder="/api/" /></div>
+           <input type="text" id="include" placeholder="regex - keep only URLs matching" /></div>
       <div><label for="exclude">Exclude (regex)</label>
-           <input type="text" id="exclude" placeholder="analytics|beacon" /></div>
+           <input type="text" id="exclude" placeholder="regex - drop URLs matching" /></div>
     </div>
     <label class="chk"><input type="checkbox" id="noCorrelate" /> Skip correlation</label>
   </details>
@@ -83,20 +83,20 @@
   <details>
     <summary>Authentication</summary>
     <label for="loginPath">Login request</label>
-    <input type="text" id="loginPath" placeholder="POST /oauth/token" />
+    <input type="text" id="loginPath" placeholder="method and path of the login request" />
     <label for="loginBody">Body</label>
-    <input type="text" id="loginBody" placeholder='{"grant_type":"client_credentials"}' />
+    <input type="text" id="loginBody" placeholder="request body to send" />
     <label for="loginToken">Token path</label>
-    <input type="text" id="loginToken" placeholder="$.access_token" />
+    <input type="text" id="loginToken" placeholder="JSONPath to the token in the response" />
   </details>
 
   <details>
     <summary>Test data</summary>
     <div class="grid2">
       <div><label for="csvFile">CSV file</label>
-           <input type="text" id="csvFile" placeholder="users.csv" /></div>
+           <input type="text" id="csvFile" placeholder="name of the CSV you will upload" /></div>
       <div><label for="csvCols">Columns</label>
-           <input type="text" id="csvCols" placeholder="username,password" /></div>
+           <input type="text" id="csvCols" placeholder="comma-separated column names" /></div>
     </div>
   </details>
 
@@ -104,9 +104,9 @@
     <legend>Load profile</legend>
     <div class="grid3">
       <div><label for="threads">Users</label>
-           <input type="text" id="threads" placeholder="1" /></div>
+           <input type="text" id="threads" placeholder="1 if blank" /></div>
       <div><label for="ramp">Ramp (s)</label>
-           <input type="text" id="ramp" placeholder="1" /></div>
+           <input type="text" id="ramp" placeholder="1 if blank" /></div>
       <div><label for="dur">Duration (s)</label>
            <input type="text" id="dur" placeholder="blank = loop once" /></div>
     </div>
@@ -137,7 +137,7 @@
     <fieldset>
       <legend>Save</legend>
       <label for="planName">File name</label>
-      <input type="text" id="planName" placeholder="plan.jmx" />
+      <input type="text" id="planName" placeholder="plan.jmx if blank" />
     </fieldset>
 
     <div class="acts">
@@ -165,7 +165,7 @@
 
   <details class="adv">
     <summary>Where jmxgen runs</summary>
-    <input type="text" id="endpoint" placeholder="http://localhost:8770" />
+    <input type="text" id="endpoint" placeholder="localhost:8770 if blank" />
   </details>
 </div>
 <script src="xmlgate.js"></script>

@@ -15,6 +15,31 @@ rather than a checklist: you can author a good plan without touching any of it.
   [Finishing](#finishing)
 - [The panel on the page](#the-panel-on-the-page)
 
+## A note on the grey text
+
+Every field's grey text describes the field or names what happens when you
+leave it blank. **It is never an example value and never a default you are
+about to send.** If a field looks filled in but the text is grey, the field is
+empty.
+
+Where blank means something specific:
+
+| Field | Blank means |
+|---|---|
+| Users, Ramp | 1 |
+| Duration (authoring page) | each user loops once and stops |
+| Plan file name | `plan.jmx` |
+| Methods | every method |
+| Include, Exclude | no filtering |
+| Max users, Ramp-up, Duration (run page) | whatever the `.jmx` carries, often 1 user |
+| Max users per engine | prefilled with 2000; clear it and HyperExecute's own default applies |
+| Global timeout, Job label | not sent |
+| Existing project id | a project is created from the name |
+| Where jmxgen runs | `localhost:8770` |
+
+Everything else is genuinely optional, and the examples that used to sit in
+these boxes are in the sections below instead, where they can be explained.
+
 ---
 
 # The authoring page

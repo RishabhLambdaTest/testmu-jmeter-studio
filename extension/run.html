@@ -56,7 +56,7 @@
     </div>
     <div class="grid2" id="projectManual">
       <div><label>New project name</label>
-           <input type="text" id="project" placeholder="Orders API load" /></div>
+           <input type="text" id="project" placeholder="name for the new project" /></div>
       <div><label>…or existing project id</label>
            <input type="text" id="projectId" placeholder="leave blank to create" /></div>
     </div>
@@ -66,7 +66,7 @@
   <fieldset>
     <legend>Files</legend>
     <label>Name for the recorded plan</label>
-    <input type="text" id="planName" placeholder="plan.jmx" />
+    <input type="text" id="planName" placeholder="plan.jmx if blank" />
     <label>Files to upload</label>
     <div class="files" id="fileList"></div>
     <label>Add .jmx, .jar, .properties or data files</label>
@@ -78,9 +78,9 @@
   <fieldset>
     <legend>Run configuration</legend>
     <div class="grid2">
-      <div><label>Regions</label><input type="text" id="regions" placeholder="eastus, westus" /></div>
+      <div><label>Regions</label><input type="text" id="regions" placeholder="one or more, comma-separated" /></div>
       <div><label>Max users (total VU)</label><input type="text" id="vusers" placeholder="from the plan" /></div>
-      <div><label>Max users per engine</label><input type="text" id="maxVusers" placeholder="2000" /></div>
+      <div><label>Max users per engine</label><input type="text" id="maxVusers" placeholder="HyperExecute default if blank" /></div>
       <div><label>Ramp-up (s)</label><input type="text" id="rampup" placeholder="from the .jmx" /></div>
       <div><label>Duration (s)</label><input type="text" id="duration" placeholder="from the .jmx" /></div>
       <div><label>Global timeout (min)</label><input type="text" id="timeout" placeholder="optional" /></div>
@@ -108,7 +108,7 @@
 
   <details>
     <summary>Where jmxgen runs</summary>
-    <input type="text" id="endpoint" placeholder="http://localhost:8770" />
+    <input type="text" id="endpoint" placeholder="localhost:8770 if blank" />
   </details>
 
   <div class="msg" id="msg"></div>

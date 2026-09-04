@@ -171,6 +171,40 @@ The rule of thumb: name transactions after what the user is doing, not after
 what the interface is doing. *Submit timesheet* is a step. *Click the third
 tab* is not.
 
+## Every other source
+
+A recording is the only source where you name steps as they happen. The rest
+carry whatever structure the file already has, and that varies. Measured on the
+sample files:
+
+| Source | Transactions you get | To change them |
+|---|---|---|
+| Recording | the names you set while recording | set them in the panel; nothing afterwards can recover the grouping |
+| Postman collection | one per folder, `Auth`, `Catalogue` | rename the folders in Postman, re-export |
+| Excel / CSV sheet | one per value in the `transaction` column | edit the column; `thread_group` splits it further |
+| cURL commands | a single group, `Flow` | see below |
+| OpenAPI / Swagger | a single group, `API` | see below |
+| URL list | one per page, plus an `Assets` group | — |
+| Existing `.jmx` | whatever the plan already had, preserved | — |
+
+**Postman and Excel are the two that carry real structure**, so if a team keeps
+either, the report is already readable without anyone doing extra work. A
+Postman folder called *Checkout* becomes a transaction called *Checkout*.
+
+**cURL and OpenAPI have no notion of a journey.** A curl command is one
+request, and a spec is an unordered catalogue of endpoints; neither knows which
+calls belong together. So everything lands in one group, and that is honest
+rather than lazy: inventing step boundaries from a spec would be guesswork
+presented as fact.
+
+If you need named steps from those two, the practical routes are to author from
+the sheet instead, which costs a column, or to group in the plan afterwards.
+
+Everything else on this page applies to all seven sources. Test data, the
+authentication fields, the load profile and the run-time overrides do not care
+where the requests came from, because by the time they are applied the source
+has already become the same internal shape.
+
 ## When a transaction is not worth it
 
 A transaction wrapping a single request tells you nothing the sampler did not
