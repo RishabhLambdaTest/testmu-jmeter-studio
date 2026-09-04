@@ -484,9 +484,14 @@ async function takeRecording() {
   syncInputs();
   $("segments").hidden = false;
   const txs = await showSegments();
-  $("segSummary").textContent =
-    `${n} request(s) on disk across ${txs.length} transaction(s). ` +
-    `Untick what this plan should leave out.`;
+  /* Only invite someone to untick something when there is a list to untick.
+     A single transaction renders no rows, so the instruction pointed at empty
+     space and read like a control that had failed to load. */
+  $("segSummary").textContent = txs.length > 1
+    ? `${n} request(s) on disk across ${txs.length} transaction(s). ` +
+      `Untick what this plan should leave out.`
+    : `${n} request(s) on disk, in one unnamed group. Set a Transaction in ` +
+      `the panel while recording to split the next one into named steps.`;
   say(`recording loaded - ${n} request(s) on disk`, "ok");
   addLog("ok", `recording found - ${n} request(s)`);
   return true;
