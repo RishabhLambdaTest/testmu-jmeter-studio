@@ -262,6 +262,39 @@ path and checks: read it to confirm the plan contains what you meant to test.
 rule, a confidence and the hop, so you can disagree with one. *Checks* holds
 validation results once you have run one.
 
+### Editing the plan
+
+Click any row in the Requests table and the verbs appear underneath it:
+
+```
+Rename…   Assert 200   Assert text…   Extract…   Pause 1s   Move up   Move down   Delete
+```
+
+They are the same verbs the recording panel uses, and they do the same things.
+Each one edits the spec and rebuilds the plan, so an edited plan is exactly what
+the spec says and goes through the same checks as a freshly authored one.
+
+**An edit that breaks something says so.** Delete a request another one takes a
+token from and the message reads *"delete applied, but it broke something:
+variable ${ACCESSTOKEN} is used but never defined"*, and the Checks tab opens.
+That plan would still build and still run; it would fail at load with a wall of
+401s. A warning that only appeared in the log would make this editor a way to
+break a plan quietly.
+
+### Advanced — edit the spec
+
+The plan is generated from a spec, and the spec is in a box at the bottom of the
+page. Everything the engine can build is reachable there, including the things
+the form deliberately does not carry: database steps, GraphQL samplers, JSR223
+scripting, the other four timer types, and if/loop/parallel controllers.
+
+Edit it, press **Regenerate from the spec**, and the result goes through the
+same validation as anything else. A spec that cannot be read says why rather
+than failing silently.
+
+Most people will never open this. It exists so the form does not need a field
+for every feature.
+
 The Log panel underneath holds everything the engine did. **copy** puts it on the
 clipboard, **clear** empties it, **hide** collapses it.
 

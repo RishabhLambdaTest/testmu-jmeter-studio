@@ -163,6 +163,15 @@
     <pre class="log" id="log"></pre>
   </section>
 
+  <details id="specWrap" class="adv">
+    <summary>Advanced — edit the spec</summary>
+    <p class="hint">The plan is generated from this. Everything the engine can
+       build lives here, including database steps, GraphQL, scripting, the other
+       timer types and if/loop controllers. Edit it and regenerate.</p>
+    <textarea id="specYaml" spellcheck="false"></textarea>
+    <div class="acts"><button id="specApply">Regenerate from the spec</button></div>
+  </details>
+
   <details class="adv">
     <summary>Where jmxgen runs</summary>
     <input type="text" id="endpoint" placeholder="localhost:8770 if blank" />

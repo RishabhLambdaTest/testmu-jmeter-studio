@@ -81,3 +81,36 @@ td.mono { font-family:var(--mono); font-size:11.5px }
 .seg .name { font-weight:600; font-size:13px }
 .seg .n { margin-left:auto; color:var(--text-mute); font-size:11.5px;
           font-variant-numeric:tabular-nums }
+
+/* ---- editing a generated plan -----------------------------------------
+   The row is the control: clicking it opens the verbs underneath, so the
+   table stays a table until you ask it for something. */
+.steprow { cursor: pointer; }
+.steprow:hover { background: rgba(255, 255, 255, .04); }
+.steprow td.edit { color: var(--muted); font-size: 12px; text-align: right; opacity: 0; }
+.steprow:hover td.edit { opacity: 1; }
+tr.inspector td { background: rgba(255, 255, 255, .03); padding: 10px 12px; }
+.insp { display: flex; flex-wrap: wrap; gap: 8px; }
+.insp button {
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .10);
+  color: var(--fg); border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer;
+}
+.insp button:hover { background: rgba(255, 255, 255, .12); }
+.insp button.warn { color: #ff9d9d; }
+
+/* The spec is the whole engine in one control, rather than a field per
+   feature. Most people will never open it. */
+#specWrap textarea {
+  width: 100%; min-height: 260px; resize: vertical;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(0, 0, 0, .25); color: var(--fg);
+  border: 1px solid rgba(255, 255, 255, .10); border-radius: 10px; padding: 10px;
+}
+
+/* An edit that breaks something is neither a success nor a failure: the plan
+   built, and it is now wrong. It needs its own colour or it reads as either. */
+.msg.warn, .warn.show {
+  background: #33290f; color: #f0cf8a; border: 1px solid #6b571f;
+}

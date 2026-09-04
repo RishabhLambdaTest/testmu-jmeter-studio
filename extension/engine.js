@@ -307,10 +307,39 @@ json.dumps({
 
 /* Re-emit from an edited spec, so the pages can drop steps or reject
    correlations without re-reading the source. */
-async function rebuild(specJson, changes) {
+/* The spec editor's counterpart. A YAML parse failure has to arrive as a
+   readable message rather than a Python traceback, because the person who
+   typed it is looking at their own file, not at ours. */
+async function rebuildYaml(yamlText) {
+  const py = await boot();
+  py.globals.set("_yaml", yamlText);
+  const out = await py.runPythonAsync(`
+import json, os, tempfile
+import jmxgen
+d = tempfile.mkdtemp(); sp = os.path.join(d, "spec.yaml")
+open(sp, "w", encoding="utf-8").write(_yaml)
+try:
+    spec = jmxgen.load_spec(sp)
+except Exception as exc:
+    raise ValueError("the spec could not be read: %s" % exc)
+xml = jmxgen.build_plan(spec)
+p = os.path.join(d, "plan.jmx")
+open(p, "w", encoding="utf-8").write(xml)
+errors, warnings = jmxgen.verify(p, quiet=True)
+json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
+            "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
+            "steps": jmxgen._flatten(spec),
+            "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
+            "taurus": jmxgen.dump_taurus(spec), "spec_json": json.dumps(spec)})
+`);
+  return JSON.parse(out);
+}
+
+async function rebuild(specJson, changes, edits) {
   const py = await boot();
   py.globals.set("_spec", specJson);
   py.globals.set("_changes", JSON.stringify(changes || {}));
+  py.globals.set("_edits", JSON.stringify(edits || []));
   const out = await py.runPythonAsync(`
 import json, os, tempfile
 import jmxgen
@@ -319,12 +348,16 @@ for key in ("threads", "ramp_up", "duration"):
     if changes.get(key):
         for tg in spec.get("thread_groups", []):
             tg[key] = int(changes[key])
+for _e in json.loads(_edits):
+    jmxgen.apply_edit(spec, _e)
 xml = jmxgen.build_plan(spec)
 d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
 open(p, "w", encoding="utf-8").write(xml)
 errors, warnings = jmxgen.verify(p, quiet=True)
 json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
+            "steps": jmxgen._flatten(spec),
+            "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
             "taurus": jmxgen.dump_taurus(spec), "spec_json": json.dumps(spec)})
 `);
   return JSON.parse(out);
@@ -334,7 +367,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
 
 // Called directly by the page that hosts it; the message listener below is for
 // anything else in the extension that wants a plan built.
-window.JmxgenEngine = { boot, author, rebuild, openInput, isReady: () => !!pyodide };
+window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, isReady: () => !!pyodide };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.target !== "engine") return;
@@ -343,7 +376,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === "engine-boot") return sendResponse({ ok: true, data: (await boot(), true) });
       if (msg.type === "engine-author") return sendResponse({ ok: true, data: await author(msg.payload) });
       if (msg.type === "engine-rebuild")
-        return sendResponse({ ok: true, data: await rebuild(msg.spec, msg.changes) });
+        return sendResponse({ ok: true, data: await rebuild(msg.spec, msg.changes, msg.edits) });
       sendResponse({ ok: false, error: "unknown engine call: " + msg.type });
     } catch (e) {
       // a Python traceback is the most useful thing we have; keep all of it

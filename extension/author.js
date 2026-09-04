@@ -228,6 +228,123 @@ $("go").onclick = async () => {
   }
 };
 
+/* ---- editing the plan --------------------------------------------------
+   Every edit is applied to the spec and the plan is rebuilt from it, so an
+   edited plan is exactly what the spec says and goes through the same checks
+   as a freshly authored one. The verbs are the ones the recording panel
+   already uses, so there is nothing new to learn here. */
+
+let INSPECTED = null;
+
+function closeInspector() {
+  const open = document.querySelector(".inspector");
+  if (open) open.remove();
+  INSPECTED = null;
+}
+
+function openInspector(tr) {
+  if (INSPECTED === tr) return closeInspector();
+  closeInspector();
+  INSPECTED = tr;
+  const at = tr.dataset.at;
+  const row = document.createElement("tr");
+  row.className = "inspector";
+  row.innerHTML = `<td colspan="6">
+    <div class="insp">
+      <button data-op="rename">Rename…</button>
+      <button data-op="assert">Assert 200</button>
+      <button data-op="assertText">Assert text…</button>
+      <button data-op="extract">Extract…</button>
+      <button data-op="pause">Pause 1s</button>
+      <button data-op="up">Move up</button>
+      <button data-op="down">Move down</button>
+      <button data-op="delete" class="warn">Delete</button>
+    </div></td>`;
+  tr.after(row);
+  row.querySelectorAll("button").forEach((b) =>
+    b.onclick = (e) => { e.stopPropagation(); runEdit(b.dataset.op, JSON.parse(at)); });
+}
+
+async function runEdit(op, at) {
+  let edit = { op, at };
+  if (op === "rename") {
+    const v = prompt("Name for this request");
+    if (!v) return;
+    edit.value = v;
+  } else if (op === "assertText") {
+    const v = prompt("The response body must contain");
+    if (!v) return;
+    edit = { op: "assert", at, value: v };
+  } else if (op === "extract") {
+    const q = prompt("JSONPath to extract, for example $.data.token");
+    if (!q) return;
+    const v = prompt("Variable name");
+    if (!v) return;
+    edit = { op: "extract", at, value: q, var: v };
+  } else if (op === "pause") {
+    edit.value = 1000;
+  } else if (op === "delete") {
+    if (!confirm("Remove this request from the plan?")) return;
+  }
+
+  closeInspector();
+  say("rebuilding…", "info");
+  try {
+    const data = await JmxgenEngine.rebuild(STATE.spec_json, null, [edit]);
+    applyRebuild(data, op);
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say(String(e.message || e), "err");
+  }
+}
+
+/* A rebuild returns a whole plan, so the page updates the same way it does
+   after authoring - including the warnings, which is how deleting a request
+   another one depends on becomes visible rather than silent. */
+function applyRebuild(data, what) {
+  /* What matters after an edit is not how many problems the plan has, but
+     which ones it did not have a moment ago. Deleting a request that another
+     one extracts a token from leaves a plan that still builds and still runs,
+     and fails at load with a wall of 401s - so a new warning has to be as loud
+     as an error here, or the editor becomes a way to break a plan quietly. */
+  const was = STATE.verify || {};
+  const beforeW = new Set((was.warnings || []));
+  const beforeE = new Set((was.errors || []));
+  const now = data.verify || {};
+  const newW = (now.warnings || []).filter((w) => !beforeW.has(w));
+  const newE = (now.errors || []).filter((e) => !beforeE.has(e));
+
+  STATE = Object.assign({}, STATE, data);
+  newW.forEach((w) => addLog("warn", w));
+  newE.forEach((e) => addLog("error", e));
+  render();
+
+  if (newE.length) {
+    say(`${what} applied, and the plan now has an error: ${newE[0]}`, "err");
+    showTab("checks");
+  } else if (newW.length) {
+    say(`${what} applied, but it broke something: ${newW[0]}`, "warn");
+    showTab("checks");
+  } else {
+    say(`${what} applied`, "ok");
+  }
+}
+
+/* The spec editor: one control that reaches everything the engine builds,
+   instead of a field per feature on a form most people never scroll past. */
+$("specApply").onclick = async () => {
+  const yaml = $("specYaml").value.trim();
+  if (!yaml) return say("the spec is empty", "err");
+  say("regenerating…", "info");
+  try {
+    const data = await JmxgenEngine.rebuildYaml(yaml);
+    applyRebuild(data, "spec");
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say("the spec could not be used: " + (e.message || e), "err");
+  }
+};
+
 /* ---- results ----------------------------------------------------------- */
 
 /* What the .jmx actually carries. A recorded browser step is a click, not a
@@ -251,6 +368,9 @@ function render() {
     `<div class="card"><div class="n">${esc(n)}</div><div class="k">${k}</div></div>`).join("");
   if (!$("planName").value) $("planName").value = "plan.jmx";
 
+  if (STATE.spec_yaml && document.activeElement !== $("specYaml")) {
+    $("specYaml").value = STATE.spec_yaml;
+  }
   const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
@@ -270,14 +390,19 @@ function showTab(which) {
   if (which === "steps") {
     // Browser steps are not in the .jmx - they leave as the Playwright script -
     // so listing them here as if they were samplers overstates the plan.
-    const rows = planSteps().map((s) =>
-      `<tr><td>${esc(s.group || "")}</td><td class="mono">${esc(s.method || "")}</td>
-       <td class="mono">${esc(s.path || "")}</td>
+    const rows = planSteps().map((s, i) =>
+      `<tr class="steprow" data-i="${i}" data-at="${esc(JSON.stringify(s.at || []))}">
+       <td>${esc(s.group || "")}</td><td class="mono">${esc(s.method || "")}</td>
+       <td class="mono">${esc(s.name || s.path || "")}</td>
        <td>${esc(s.asserts == null ? "" : s.asserts)}</td>
-       <td>${esc(s.think_time == null ? "" : s.think_time + " ms")}</td></tr>`).join("");
+       <td>${esc(s.think_time == null ? "" : s.think_time + " ms")}</td>
+       <td class="edit">edit</td></tr>`).join("");
     el.innerHTML = rows
-      ? `<table><thead><tr><th>Group</th><th>Method</th><th>Path</th><th>Checks</th><th>Think</th></tr></thead><tbody>${rows}</tbody></table>`
+      ? `<table><thead><tr><th>Group</th><th>Method</th><th>Request</th><th>Checks</th>` +
+        `<th>Think</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="empty">No requests in this plan.</div>';
+    el.querySelectorAll(".steprow").forEach((tr) =>
+      tr.onclick = () => openInspector(tr));
   } else if (which === "corr") {
     const rows = (STATE.correlations || []).map((c) =>
       `<tr><td class="mono">\${${esc(c.var)}}</td><td>${esc(c.rule || "")}</td>

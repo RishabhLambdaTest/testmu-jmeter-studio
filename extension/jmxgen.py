@@ -1469,26 +1469,32 @@ def dump_spec(spec, path):
 
 
 def _flatten(spec, depth=0, out=None, group=""):
-    """A flat, display-friendly view of the plan's steps."""
+    """A flat, display-friendly view of the plan's steps.
+
+    Every row carries `at`: the index trail from thread_groups down to the
+    step, so the authoring page can point at a step and say "rename this one"
+    without the two sides having to agree on anything but a list of integers.
+    """
     if out is None:
         out = []
-    for tg in spec.get("thread_groups", []):
-        _walk_display(tg.get("steps", []), out, tg.get("name", "Thread Group"))
+    for i, tg in enumerate(spec.get("thread_groups", [])):
+        _walk_display(tg.get("steps", []), out, tg.get("name", "Thread Group"), [i])
     return out
 
 
-def _walk_display(steps, out, group):
-    for st in steps:
+def _walk_display(steps, out, group, trail):
+    for i, st in enumerate(steps):
+        here = trail + [i]
         if "transaction" in st or "parallel" in st:
             label = st.get("transaction") or st.get("parallel")
-            _walk_display(st.get("steps", []), out, label)
+            _walk_display(st.get("steps", []), out, label, here)
             continue
         if "steps" in st:
-            _walk_display(st["steps"], out, group)
+            _walk_display(st["steps"], out, group, here)
             continue
         if "pause" in st:
             out.append({"group": group, "name": "pause %sms" % st["pause"],
-                        "method": "", "path": "", "kind": "pause"})
+                        "method": "", "path": "", "kind": "pause", "at": here})
             continue
         out.append({
             "group": group,
@@ -1499,7 +1505,65 @@ def _walk_display(steps, out, group):
             "extracts": [e.get("var") for e in (st.get("extract", []) or [])],
             "think_time": st.get("think_time"),
             "kind": st.get("type", "http"),
+            "at": here,
         })
+
+
+# --------------------------------------------------------------------------
+# editing a plan after it is built
+# --------------------------------------------------------------------------
+#
+# Edits are applied to the spec and the plan is rebuilt from it. Nothing ever
+# edits the XML: the spec stays the single source of truth, so a plan that has
+# been edited five times is still exactly what the spec says, and the same
+# checks run over it as over a freshly authored one.
+
+
+def _steps_holding(spec, at):
+    """The list a step lives in, and its index within it."""
+    tgs = spec.get("thread_groups") or []
+    if not at or at[0] >= len(tgs):
+        raise ValueError("no such step")
+    steps = tgs[at[0]].get("steps") or []
+    for idx in at[1:-1]:
+        if idx >= len(steps):
+            raise ValueError("no such step")
+        steps = steps[idx].get("steps") or []
+    if not at[1:] or at[-1] >= len(steps):
+        raise ValueError("no such step")
+    return steps, at[-1]
+
+
+def apply_edit(spec, edit):
+    """One edit, in place. Unknown operations raise rather than pass quietly."""
+    op = edit.get("op")
+    steps, i = _steps_holding(spec, edit.get("at") or [])
+    node = steps[i]
+
+    if op == "rename":
+        node["name"] = str(edit.get("value") or "").strip() or node.get("name", "")
+    elif op == "delete":
+        del steps[i]
+    elif op == "up":
+        if i > 0:
+            steps[i - 1], steps[i] = steps[i], steps[i - 1]
+    elif op == "down":
+        if i + 1 < len(steps):
+            steps[i + 1], steps[i] = steps[i], steps[i + 1]
+    elif op == "pause":
+        ms = int(edit.get("value") or 1000)
+        steps.insert(i + 1, {"pause": ms})
+    elif op == "assert":
+        node.setdefault("assert", []).append(
+            {"field": "body", "match": "contains", "pattern": str(edit.get("value") or "")}
+            if edit.get("value") else {"code": 200})
+    elif op == "extract":
+        var = str(edit.get("var") or "VALUE").strip().upper().replace(" ", "_")
+        node.setdefault("extract", []).append(
+            {"type": "json", "var": var, "query": str(edit.get("value") or "$")})
+    else:
+        raise ValueError("unknown edit %r" % op)
+    return spec
 
 
 def _plan_load(spec):
