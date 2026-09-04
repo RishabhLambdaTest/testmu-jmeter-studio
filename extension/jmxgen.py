@@ -1506,6 +1506,13 @@ def _walk_display(steps, out, group, trail):
             "think_time": st.get("think_time"),
             "kind": st.get("type", "http"),
             "at": here,
+            # what the sampler will actually send, so a plan can be read as
+            # well as listed. Bodies are capped: this is for recognising a
+            # request, not for reviewing a megabyte of JSON.
+            "url": st.get("url") or st.get("path") or "",
+            "headers": {k: str(v)[:200] for k, v in (st.get("headers") or {}).items()},
+            "params": st.get("params") or {},
+            "body": str(st.get("body") or st.get("data") or "")[:4000],
         })
 
 
@@ -1534,9 +1541,63 @@ def _steps_holding(spec, at):
     return steps, at[-1]
 
 
+def _sub_pattern(value):
+    """Match the value as a whole thing, not as a substring of a longer one.
+
+    Replacing "emilys" without this also rewrites "emilyspass" into
+    "${USERNAME}pass", which corrupts a password while reporting success. The
+    boundaries are deliberately narrow: a token may legitimately contain dots,
+    slashes and dashes, so only letters, digits and underscores disqualify a
+    match.
+    """
+    return re.compile(r"(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])" % re.escape(value))
+
+
+def _sub_in_step(st, pattern, token):
+    """Swap a literal for ${VAR} everywhere one step could carry it."""
+    n = 0
+    for key in ("url", "path", "body", "data"):
+        if isinstance(st.get(key), str):
+            st[key], hits = pattern.subn(token, st[key])
+            n += hits
+    for key in ("headers", "params"):
+        for k, v in list((st.get(key) or {}).items()):
+            if isinstance(v, str):
+                (st[key])[k], hits = pattern.subn(token, v)
+                n += hits
+    for sub in st.get("steps") or []:
+        n += _sub_in_step(sub, pattern, token)
+    return n
+
+
 def apply_edit(spec, edit):
-    """One edit, in place. Unknown operations raise rather than pass quietly."""
+    """One edit, in place.
+
+    Returns a note when the edit has something to report, so the page can say
+    what happened rather than only that something did. Unknown operations raise
+    rather than pass quietly.
+    """
     op = edit.get("op")
+
+    # Substitution is plan-wide on purpose. A recorded token appears in every
+    # request that used it, and replacing it in one place leaves the others
+    # holding a value that expired the moment recording stopped - the same
+    # silent half-fix this editor exists to avoid.
+    if op == "substitute":
+        value = str(edit.get("value") or "")
+        if not value:
+            raise ValueError("nothing to replace")
+        var = str(edit.get("var") or "VALUE").strip().upper().replace(" ", "_")
+        token = "${%s}" % var
+        pattern = _sub_pattern(value)
+        n = 0
+        for tg in spec.get("thread_groups") or []:
+            for st in tg.get("steps") or []:
+                n += _sub_in_step(st, pattern, token)
+        if not n:
+            raise ValueError("that value is not in this plan")
+        return "replaced in %d place(s), now ${%s}" % (n, var)
+
     steps, i = _steps_holding(spec, edit.get("at") or [])
     node = steps[i]
 
@@ -1563,7 +1624,7 @@ def apply_edit(spec, edit):
             {"type": "json", "var": var, "query": str(edit.get("value") or "$")})
     else:
         raise ValueError("unknown edit %r" % op)
-    return spec
+    return ""
 
 
 def _plan_load(spec):

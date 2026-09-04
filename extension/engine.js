@@ -348,15 +348,18 @@ for key in ("threads", "ramp_up", "duration"):
     if changes.get(key):
         for tg in spec.get("thread_groups", []):
             tg[key] = int(changes[key])
+_notes = []
 for _e in json.loads(_edits):
-    jmxgen.apply_edit(spec, _e)
+    _n = jmxgen.apply_edit(spec, _e)
+    if _n:
+        _notes.append(_n)
 xml = jmxgen.build_plan(spec)
 d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
 open(p, "w", encoding="utf-8").write(xml)
 errors, warnings = jmxgen.verify(p, quiet=True)
 json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
-            "steps": jmxgen._flatten(spec),
+            "steps": jmxgen._flatten(spec), "notes": _notes,
             "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
             "taurus": jmxgen.dump_taurus(spec), "spec_json": json.dumps(spec)})
 `);

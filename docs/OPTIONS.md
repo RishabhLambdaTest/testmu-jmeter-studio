@@ -270,9 +270,26 @@ Click any row in the Requests table and the verbs appear underneath it:
 Rename…   Assert 200   Assert text…   Extract…   Pause 1s   Move up   Move down   Delete
 ```
 
+Above them sits the request itself: the URL, the headers, and the body the
+sampler will send. A plan you cannot read is one you cannot edit with any
+confidence, so the inspector opens with what is actually going over the wire.
+
 They are the same verbs the recording panel uses, and they do the same things.
 Each one edits the spec and rebuilds the plan, so an edited plan is exactly what
 the spec says and goes through the same checks as a freshly authored one.
+
+**Replace value…** swaps a literal for a `${VARIABLE}`, everywhere in the plan
+rather than only in the request you clicked. A recorded token appears in every
+request that used it, and replacing it in one place leaves the others holding a
+value that expired when recording stopped.
+
+It matches whole values only. Replacing `emilys` does not touch `emilyspass` —
+that substring rewrite would corrupt a password while reporting success. The
+message says how many places changed.
+
+Expect a warning afterwards: a variable nothing defines yet is *expected* at
+this point, not a mistake. Define it under Test data from a CSV, or with
+Extract on an earlier request, and the warning goes.
 
 **An edit that breaks something says so.** Delete a request another one takes a
 token from and the message reads *"delete applied, but it broke something:

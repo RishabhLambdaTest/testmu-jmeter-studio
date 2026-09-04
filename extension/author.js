@@ -234,6 +234,21 @@ $("go").onclick = async () => {
    as a freshly authored one. The verbs are the ones the recording panel
    already uses, so there is nothing new to learn here. */
 
+/* A plan you cannot read is a plan you cannot edit with any confidence, so the
+   inspector opens with the request itself: what this sampler will send. */
+function requestDetail(step) {
+  const rows = [];
+  if (step.url) rows.push(["URL", step.url]);
+  for (const [k, v] of Object.entries(step.headers || {})) rows.push([k, v]);
+  for (const [k, v] of Object.entries(step.params || {})) rows.push([k + " (param)", v]);
+  const head = rows.map(([k, v]) =>
+    `<div class="dl"><span class="k">${esc(k)}</span><span class="v mono">${esc(v)}</span></div>`).join("");
+  const body = step.body
+    ? `<pre class="reqbody mono">${esc(step.body)}</pre>` : "";
+  if (!head && !body) return '<p class="hint nodetail">This step carries no request detail.</p>';
+  return `<div class="detail">${head}${body}</div>`;
+}
+
 let INSPECTED = null;
 
 function closeInspector() {
@@ -247,15 +262,18 @@ function openInspector(tr) {
   closeInspector();
   INSPECTED = tr;
   const at = tr.dataset.at;
+  const step = planSteps()[Number(tr.dataset.i)] || {};
   const row = document.createElement("tr");
   row.className = "inspector";
   row.innerHTML = `<td colspan="6">
+    ${requestDetail(step)}
     <div class="insp">
       <button data-op="rename">Rename…</button>
       <button data-op="assert">Assert 200</button>
       <button data-op="assertText">Assert text…</button>
       <button data-op="extract">Extract…</button>
       <button data-op="pause">Pause 1s</button>
+      <button data-op="substitute">Replace value…</button>
       <button data-op="up">Move up</button>
       <button data-op="down">Move down</button>
       <button data-op="delete" class="warn">Delete</button>
@@ -281,6 +299,12 @@ async function runEdit(op, at) {
     const v = prompt("Variable name");
     if (!v) return;
     edit = { op: "extract", at, value: q, var: v };
+  } else if (op === "substitute") {
+    const v = prompt("The value to replace, exactly as it appears above");
+    if (!v) return;
+    const name = prompt("Variable name to use instead");
+    if (!name) return;
+    edit = { op: "substitute", at, value: v, var: name };
   } else if (op === "pause") {
     edit.value = 1000;
   } else if (op === "delete") {
@@ -319,12 +343,21 @@ function applyRebuild(data, what) {
   newE.forEach((e) => addLog("error", e));
   render();
 
+  const note = (data.notes || []).join(" · ");
+
   if (newE.length) {
     say(`${what} applied, and the plan now has an error: ${newE[0]}`, "err");
-    showTab("checks");
+    showTab("checks");   // an error means the plan is broken: go and look
   } else if (newW.length) {
-    say(`${what} applied, but it broke something: ${newW[0]}`, "warn");
-    showTab("checks");
+    /* A warning does not move you off the table you are working in. The
+       message says what happened, and substitution has a specific next step:
+       a variable that nothing defines yet is expected, not a mistake. */
+    const nudge = what === "substitute"
+      ? " - define it under Test data, or with Extract on an earlier request."
+      : "";
+    say(`${note || what + " applied"} - but ${newW[0]}${nudge}`, "warn");
+  } else if (note) {
+    say(note, "ok");
   } else {
     say(`${what} applied`, "ok");
   }

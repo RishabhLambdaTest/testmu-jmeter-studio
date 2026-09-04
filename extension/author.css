@@ -114,3 +114,15 @@ tr.inspector td { background: rgba(255, 255, 255, .03); padding: 10px 12px; }
 .msg.warn, .warn.show {
   background: #33290f; color: #f0cf8a; border: 1px solid #6b571f;
 }
+
+/* The request, above the verbs: read it, then change it. */
+.detail { margin: 0 0 10px; }
+.detail .dl { display: flex; gap: 10px; padding: 2px 0; font-size: 12px; }
+.detail .dl .k { color: var(--muted); min-width: 140px; flex: none; }
+.detail .dl .v { color: var(--text-dim); word-break: break-all; }
+.reqbody {
+  margin: 8px 0 0; padding: 8px 10px; max-height: 180px; overflow: auto;
+  background: rgba(0, 0, 0, .28); border-radius: 8px;
+  font-size: 12px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
+}
+.nodetail { margin: 0 0 8px; }
