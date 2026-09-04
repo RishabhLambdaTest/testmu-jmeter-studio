@@ -264,6 +264,8 @@ validation results once you have run one.
 
 ### Editing the plan
 
+Scenario by scenario, this is [EDITING.md](EDITING.md). In short:
+
 It lives in the **Requests** tab, on the result page. Every row is clickable,
 and says so on the right:
 

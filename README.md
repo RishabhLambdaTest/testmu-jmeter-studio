@@ -36,6 +36,10 @@ Each one has a sample in [`sample/`](sample/) you can run today.
 [**Recording**](docs/RECORDING.md) is the guided version of recording a journey
 and annotating it as you browse.
 
+[**Editing**](docs/EDITING.md) covers changing a plan after it is generated,
+scenario by scenario: a badly named sampler, a request that should not be in
+the test, a token the correlator missed, data that should come from a CSV.
+
 [**Transactions**](docs/TRANSACTIONS.md) covers naming steps while you record,
 which is what decides whether the report reads as three steps or two hundred
 URLs.

@@ -158,7 +158,7 @@ group, method, path and checks, **and every row is editable**: click one to see
 the URL, headers and body it will send, then rename it, assert on it, extract a
 value, replace a value with a variable, reorder it or remove it. You never have
 to record again to fix a plan.
-[OPTIONS.md](OPTIONS.md#editing-the-plan) covers each verb. *Correlations* lists the dynamic values it wired
+[EDITING.md](EDITING.md) covers each verb, with the case each one is for. *Correlations* lists the dynamic values it wired
 between requests, each with the rule that matched, a confidence, and the hop it
 travels. *Checks* holds the results of a single-user validation run, once you
 have done one.
