@@ -264,7 +264,14 @@ validation results once you have run one.
 
 ### Editing the plan
 
-Click any row in the Requests table and the verbs appear underneath it:
+It lives in the **Requests** tab, on the result page. Every row is clickable,
+and says so on the right:
+
+![The Requests table, with edit on each row](screenshots/author-edit-hint.png)
+
+Click any row and the request opens, with the verbs underneath it:
+
+![A request open in the inspector](screenshots/author-edit-inspector.png)
 
 ```
 Rename…   Assert 200   Assert text…   Extract…   Pause 1s   Move up   Move down   Delete
@@ -273,6 +280,10 @@ Rename…   Assert 200   Assert text…   Extract…   Pause 1s   Move up   Move
 Above them sits the request itself: the URL, the headers, and the body the
 sampler will send. A plan you cannot read is one you cannot edit with any
 confidence, so the inspector opens with what is actually going over the wire.
+
+```
+Rename…  Assert 200  Assert text…  Extract…  Pause 1s  Replace value…  Move up  Move down  Delete
+```
 
 They are the same verbs the recording panel uses, and they do the same things.
 Each one edits the spec and rebuilds the plan, so an edited plan is exactly what

@@ -431,7 +431,10 @@ function showTab(which) {
        <td>${esc(s.think_time == null ? "" : s.think_time + " ms")}</td>
        <td class="edit">edit</td></tr>`).join("");
     el.innerHTML = rows
-      ? `<table><thead><tr><th>Group</th><th>Method</th><th>Request</th><th>Checks</th>` +
+      ? `<p class="hint tablehint">Click any request to see what it sends, and to
+           rename it, assert on it, extract a value, replace a value with a
+           variable, reorder it or remove it.</p>` +
+        `<table><thead><tr><th>Group</th><th>Method</th><th>Request</th><th>Checks</th>` +
         `<th>Think</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="empty">No requests in this plan.</div>';
     el.querySelectorAll(".steprow").forEach((tr) =>
