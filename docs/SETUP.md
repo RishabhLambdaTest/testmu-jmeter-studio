@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.3.8-share.zip          ←  the one you want
+testmu-jmeter-studio-1.3.9-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.3.8.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.3.9.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.3.8-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.3.9-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -207,12 +207,20 @@ username is the LambdaTest *username*, not the email you sign in with; both sit
 on `accounts.lambdatest.com/detail/profile`. *Remember on this machine* keeps
 them in Chrome's extension storage for this profile only.
 
-**2. The project.** A HyperExecute job lives inside a project. Give a name and
-one is created, or paste the id of a project you already have. Fill in one or
-the other, never both. Creating a name that exists is an error, and the message
-tells you to switch to the id. The log prints `project <id>` either way, and the
-id is written back into the form so a retry reuses it rather than trying to
-create it twice.
+**2. The project.** A HyperExecute job lives inside a project. Once your
+credentials are filled in, the page asks your account what it has and offers
+them in a dropdown, so nothing has to be pasted. Pick one, or choose
+**+ New project…** and give a name.
+
+Only JMeter projects are listed. Uploading a plan into a project of another
+type fails later, at trigger time, for a reason nobody would connect back to
+this choice.
+
+If the listing cannot load — no network, an account with no projects — the two
+original fields come back and you can name a project or paste an id as before.
+A convenience that fails should never be the reason a test cannot start.
+
+The log prints `project <id>` either way.
 
 **3. The upload.** Every `.jmx` in the list is parsed before anything is sent,
 and an upload that would carry a plan no XML parser can read is refused here

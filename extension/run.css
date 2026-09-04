@@ -62,3 +62,7 @@ input:focus, select:focus, textarea:focus { border-color:var(--brand) }
            padding-bottom:14px; border-bottom:1px solid var(--line-soft) }
 .page.wide { max-width:none; padding-left:6vw; padding-right:6vw }
 header h1 { letter-spacing:-.02em }
+
+/* display:grid on .grid2 outranks the default [hidden] rule, so hiding a
+   grid row by property silently does nothing without this. */
+[hidden] { display: none !important; }

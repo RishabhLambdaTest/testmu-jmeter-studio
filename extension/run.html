@@ -50,12 +50,17 @@
 
   <fieldset>
     <legend>Project</legend>
-    <div class="grid2">
+    <div id="projectPick">
+      <label for="projectSel">Which project should this run go into?</label>
+      <select id="projectSel"></select>
+    </div>
+    <div class="grid2" id="projectManual">
       <div><label>New project name</label>
            <input type="text" id="project" placeholder="Orders API load" /></div>
       <div><label>…or existing project id</label>
            <input type="text" id="projectId" placeholder="leave blank to create" /></div>
     </div>
+    <p class="hint" id="projectHint"></p>
   </fieldset>
 
   <fieldset>

@@ -265,8 +265,9 @@ A job lives inside a project. Fill in one field or the other, never both.
 
 | Control | What it does | When to use it |
 |---|---|---|
-| New project name | creates a project and uses it | the first run for a given service |
-| …or existing project id | adds this run to a project you have | every run after that. The id is written back after a create, so a retry reuses it |
+| Which project should this run go into? | lists the JMeter projects on your account | every run. Pick one and the id is filled in for you |
+| + New project… | reveals a name box; the project is created when you press the button | the first run for a given service |
+| New project name / existing project id | the original two fields | only appear when the list could not load, or before credentials are filled in |
 
 Creating a name that already exists is an error rather than a silent reuse,
 because two projects with the same name is worse than a message.

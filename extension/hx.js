@@ -100,6 +100,24 @@ async function hxError(action, response) {
   return new Error(`${action}: HTTP ${response.status} ${reason}`);
 }
 
+/* The org's projects, so the run page can offer a list instead of asking
+   someone to paste an id. Filtered to jmeter server-side: uploading a plan
+   into a Playwright project fails later, at trigger time, for a reason nobody
+   would connect back to this choice. */
+async function hxListProjects(user, key, log = () => {}) {
+  await hxHeaderRule();
+  const r = await fetch(
+    `${HX_BASE}/sentinel/v1.0/projects?per_page=100&type=jmeter`,
+    { headers: hxHeaders(user, key) });
+  if (!r.ok) throw await hxError("could not list the projects", r);
+  const j = await r.json();
+  const rows = (j && j.data) || [];
+  log("ok", `${rows.length} project(s) found`);
+  return rows
+    .filter((p) => p && p.id)
+    .map((p) => ({ id: String(p.id), name: p.name || p.id, by: p.created_by || "" }));
+}
+
 async function hxCreateProject(user, key, name, type = "jmeter", log = () => {}) {
   log("info", `creating project "${name}"…`);
   await hxHeaderRule();
@@ -195,4 +213,4 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   return String(jobId);
 }
 
-window.HX = { hxCreateProject, hxUpload, hxTrigger, hxHeaderRule, HX_UI };
+window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI };

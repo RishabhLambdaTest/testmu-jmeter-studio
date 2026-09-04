@@ -319,6 +319,74 @@ async function submit(trigger) {
   }
 }
 
+/* ---- the project list --------------------------------------------------
+   Pasting an id is a poor way to choose a project, so the page asks the
+   account what it has. Everything here is a convenience: if the call fails,
+   is slow, or the account has no projects, the two original fields come back
+   and the run proceeds. A listing that cannot load must never be the reason
+   somebody cannot start a test. */
+
+const NEW_PROJECT = "__new__";
+let PROJECTS = null;
+
+function showManual(why) {
+  $("projectPick").hidden = true;
+  $("projectManual").hidden = false;
+  $("projectHint").textContent = why || "";
+}
+
+async function loadProjects() {
+  const user = $("user").value.trim();
+  const key = $("key").value.trim();
+  if (!user || !key) {
+    return showManual("Fill in the username and access key and the list of " +
+                      "your projects loads here.");
+  }
+  $("projectPick").hidden = false;
+  $("projectManual").hidden = true;
+  $("projectSel").innerHTML = '<option>loading…</option>';
+  try {
+    PROJECTS = await HX.hxListProjects(user, key, addLog);
+  } catch (e) {
+    addLog("warn", "could not list projects: " + (e.message || e));
+    return showManual("The project list could not be loaded, so name a new " +
+                      "project or paste an id instead.");
+  }
+  const chosen = $("projectId").value.trim();
+  $("projectSel").innerHTML =
+    PROJECTS.map((p) =>
+      `<option value="${p.id}"${p.id === chosen ? " selected" : ""}>` +
+      `${p.name.replace(/[<>&]/g, "")}</option>`).join("") +
+    `<option value="${NEW_PROJECT}"${PROJECTS.length ? "" : " selected"}>` +
+    `+ New project…</option>`;
+  $("projectHint").textContent =
+    `${PROJECTS.length} JMeter project(s) on this account.`;
+  syncProject();
+}
+
+/* The select is the visible control; the two original fields stay as the
+   values submit() reads, so there is one code path to the API either way. */
+function syncProject() {
+  const v = $("projectSel").value;
+  const creating = v === NEW_PROJECT;
+  $("projectManual").hidden = !creating;
+  $("projectId").value = creating ? "" : v;
+  if (creating) {
+    $("projectHint").textContent = "It will be created when you press the button below.";
+  } else {
+    const p = (PROJECTS || []).find((x) => x.id === v);
+    $("projectHint").textContent = p ? `id ${p.id}` : "";
+  }
+  save();
+}
+$("projectSel").onchange = syncProject;
+
+let listTimer = null;
+["user", "key"].forEach((id) => $(id).addEventListener("input", () => {
+  clearTimeout(listTimer);
+  listTimer = setTimeout(loadProjects, 600);   // wait for the paste to finish
+}));
+
 $("go").onclick = () => submit(true);
 $("uploadOnly").onclick = () => submit(false);
 
@@ -331,6 +399,7 @@ $("uploadOnly").onclick = () => submit(false);
   renderFiles();
   vmCalc();
   await prefillLoad();
+  await loadProjects();      // saved credentials mean the list is ready at once
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
   ping();
 })();

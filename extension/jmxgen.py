@@ -34,12 +34,23 @@ JMETER_VERSION = "5.6.3"
 # --------------------------------------------------------------------------
 
 
+# Characters XML 1.0 cannot carry at all. Escaping does not rescue them:
+# &#31; is itself invalid, so the only correct move is to drop them.
+#
+# They arrive from a recorded response that is not really text - protobuf, a
+# gzip fragment, an internal batch format - and one byte poisons the whole
+# plan, because a document that will not parse is not a plan at all.
+_ILLEGAL_XML = re.compile(
+    "[^\\x09\\x0A\\x0D\\x20-\\uD7FF\\uE000-\\uFFFD"
+    "\\U00010000-\\U0010FFFF]")
+
+
 def esc(v):
     if v is None:
         return ""
     if isinstance(v, bool):
         return "true" if v else "false"
-    return _xml_escape(str(v), {'"': "&quot;"})
+    return _xml_escape(_ILLEGAL_XML.sub("", str(v)), {'"': "&quot;"})
 
 
 def sp(name, val):
