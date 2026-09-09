@@ -18,22 +18,30 @@ Playwright with a persistent context, headless off (extensions and service
 worker discovery are unreliable headless):
 
 ```python
+import hashlib
 ctx = p.chromium.launch_persistent_context(PROFILE, headless=False,
     args=[f"--disable-extensions-except={EXT}", f"--load-extension={EXT}",
-          "--no-first-run", "--no-default-browser-check"])
-ext = None
-for _ in range(60):
-    for sw in ctx.service_workers: ext = sw.url.split("/")[2]
-    if ext: break
-    try: ctx.wait_for_event("serviceworker", timeout=1000)
-    except Exception: pass
+          "--no-first-run", "--no-default-browser-check",
+          "--disable-features=DisableLoadExtensionCommandLineSwitch"])
+# an unpacked extension's id is the SHA-256 of its absolute path, mapped
+# a-p, so there is no service-worker race to lose
+h = hashlib.sha256(EXT.encode()).hexdigest()[:32]
+ext = "".join(chr(ord("a") + int(c, 16)) for c in h)
 pg = ctx.new_page(); pg.goto(f"chrome-extension://{ext}/author.html")
 ```
+
+**Do not pass `channel="chrome"`.** Chrome 137+ removed `--load-extension`, and
+by 152 it is ignored outright: the browser starts, the extension is simply not
+there, and every `chrome-extension://` navigation fails with
+`ERR_BLOCKED_BY_CLIENT` and no other clue. Playwright's bundled Chromium still
+honours the switch, so omit `channel` entirely. Verified: Chrome 152 loads
+nothing, Chromium 148 registers the service worker.
 
 Notes that cost time when forgotten:
 
 - Use a fresh profile directory per run, or saved settings mask the default you
-  are testing.
+  are testing. A profile whose recording was never built into a plan is how you
+  reproduce the recovered-session popup on the next launch.
 - `wait_for_selector(".steprow")` after generating; the download button enables
   slightly before the table renders.
 - The popup closes itself when it hands over. Expect it, do not fight it.

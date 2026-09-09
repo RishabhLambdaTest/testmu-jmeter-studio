@@ -30,12 +30,17 @@
       <div class="jg-head">
         <span class="jg-dot"></span>
         <span class="jg-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#0B0A10" stroke-width="2.6"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 14 L7 14 L10 5 L14 19 L17 10 L19 14 L22 14"/>
+          <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <path d="M28.009 2.49H20.804v17.413h7.205V2.49Z"/>
+            <path d="M11.197 2.49H3.991v9.907l7.206 7.506V2.49Z"/>
+            <path d="M11.197 19.903H3.991v9.607h7.206v-9.607Z"/>
+            <path d="M20.804 19.903h-9.607l5.705 7.205h3.903l-.001-7.205Z"/>
           </svg>
         </span>
-        <span class="jg-title"><b>TestMu</b> <i>AI</i></span>
+        <span class="jg-title">
+          <span class="jg-word"><b>TestMu</b> <i>AI</i></span>
+          <span class="jg-product">JMeter Studio</span>
+        </span>
         <span class="jg-count" id="jg-count">0</span>
         <button class="jg-x jg-min" id="jg-hide"
                 title="minimise - keeps recording">&#8211;</button>

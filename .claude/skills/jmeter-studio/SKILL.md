@@ -38,6 +38,34 @@ covers it.
 
 ## Settled decisions, and why
 
+**The palette is the TestMu AI dashboard's, and `brand.css` is the only place
+it lives.** The tokens are lifted from the `--lt-*` design tokens the dashboard
+ships (its stylesheets are public assets even though the page needs a login:
+`automation.lambdatest.com/builds/*/static/css/*.css`). Three mappings are easy
+to get wrong and all three look "nearly right":
+
+- the **canvas is grey** (`#f6f8fa`) and the **cards on it are white**, not the
+  reverse
+- the primary action is **green** `--lt-bg-primary` `#1f883d`. The orange
+  `--lt-bg-brand-primary` `#ed5f00` is the dashboard's "Upgrade Now" upsell
+  only — nothing in this extension may use it
+- the logo is **monochrome `#121212`**, a bare glyph and not a coloured tile.
+  It is the official mark from `testmuai.com/favicon_black.svg`, inlined as
+  four paths, with "JMeter Studio" under the wordmark
+
+Links are `#0969da`, radii are a 6px system, and disabled controls take a flat
+neutral fill — never `opacity`, which on a light ground turns a filled button
+into unreadable pale-on-white. `overlay.css` cannot see these tokens (it is
+injected into pages that never load `brand.css`), so it repeats the literals and
+has to be changed alongside.
+
+When matching a screenshot of the dashboard, take *values* from its stylesheet
+and use the screenshot only to learn *which* token goes where: macOS captures
+are P3 read as sRGB, so sampled pixels come back desaturated (that green
+samples `#499259`, the orange `#b96530`) and building a palette from them
+produces something subtly wrong.
+
+
 **Browser steps stay out of the `.jmx`.** A WebDriver sampler needs a Chrome
 per thread and a chromedriver on the runner, and HyperExecute's user override
 applies to every thread group, so one browser user becomes two hundred

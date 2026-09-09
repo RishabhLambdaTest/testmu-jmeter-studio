@@ -2,7 +2,7 @@
    closes the moment focus leaves it, so anything that needs typing lives on a
    real page instead. Tokens come from brand.css. */
 
-body { margin:0; background:var(--bg); color:var(--text);
+body { margin:0; background:var(--surface); color:var(--text);
        font:12.5px/1.45 var(--sans); }
 .wrap { width:292px; padding:0 0 12px; }
 
@@ -12,7 +12,7 @@ body { margin:0; background:var(--bg); color:var(--text);
        border-bottom:1px solid var(--line-soft); }
 .dot { width:7px; height:7px; border-radius:50%; background:var(--text-mute);
        flex:none; }
-.dot.on { background:var(--rec); box-shadow:0 0 0 3px rgba(255,74,74,.18);
+.dot.on { background:var(--rec); box-shadow:0 0 0 3px rgba(207,34,46,.18);
           animation:pulse 1.4s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 @media (prefers-reduced-motion: reduce) { .dot.on { animation:none } }
@@ -34,22 +34,23 @@ body { margin:0; background:var(--bg); color:var(--text);
 .l { display:block; color:var(--text-dim); margin-bottom:5px; font-size:11px;
      text-transform:uppercase; letter-spacing:.06em }
 .row { display:flex; gap:6px; margin-bottom:10px; }
-.in { flex:1; min-width:0; background:var(--sunk); border:1px solid var(--line);
+.in { flex:1; min-width:0; background:var(--field); border:1px solid var(--line);
       color:var(--text); border-radius:var(--r-sm); padding:7px 8px; font:inherit; }
 .in::placeholder { color:var(--text-mute) }
 .in:focus { outline:none; border-color:var(--brand); box-shadow:var(--ring) }
 
 /* ---- buttons ---- */
-.b { background:var(--raised); border:1px solid var(--line); color:var(--text);
+.b { background:var(--lt-component-button-secondary); border:1px solid var(--line); color:var(--text);
      border-radius:var(--r-sm); padding:8px 10px; cursor:pointer; font:inherit;
      transition:background .12s, border-color .12s; }
-.b:hover:not(:disabled) { background:#26222F; border-color:#39334A }
+.b:hover:not(:disabled) { background:var(--raised); border-color:var(--lt-border-primary) }
 .b:focus-visible { outline:none; box-shadow:var(--ring) }
-.b:disabled { opacity:.4; cursor:default }
+.b:disabled, .go:disabled { background:var(--lt-bg-base-disabled); border-color:var(--line);
+                  color:var(--lt-text-disabled); cursor:default }
 .wide { width:100%; margin-bottom:7px; }
-.go { background:linear-gradient(180deg, var(--brand), var(--brand-lo));
-      border-color:var(--brand-lo); font-weight:600; color:#fff }
-.go:hover:not(:disabled) { background:linear-gradient(180deg, var(--brand-hi), var(--brand)) }
+.go { background:var(--brand); border-color:var(--brand);
+      font-weight:600; color:var(--on-brand) }
+.go:hover:not(:disabled) { background:var(--brand-hi); border-color:var(--brand-hi) }
 .warn { color:var(--bad) }
 .or { text-align:center; color:var(--text-mute); font-size:10.5px; margin:2px 0 7px }
 

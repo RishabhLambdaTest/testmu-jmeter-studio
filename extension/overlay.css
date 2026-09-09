@@ -1,9 +1,10 @@
 #jmxgen-overlay {
   position: fixed; top: 16px; right: 16px; z-index: 2147483647;
-  width: 268px; background: #14121C; color: #ECEAF2;
-  font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  border: 1px solid #2A2636; border-radius: 13px;
-  box-shadow: 0 12px 36px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04) inset;
+  width: 268px; background: #fff; color: #24292f;
+  font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  border: 1px solid #d0d7de; border-radius: 8px;
+  box-shadow: 0 8px 24px #424a531f, 0 1px 0 #1f23280a;
   display: none;
 }
 #jmxgen-overlay.jg-big { width: 372px; }
@@ -11,30 +12,34 @@
 #jmxgen-overlay * { box-sizing: border-box; }
 #jmxgen-overlay .jg-head {
   display: flex; align-items: center; gap: 7px; padding: 9px 10px;
-  border-bottom: 1px solid #201D2B; cursor: move; user-select: none;
-  background: linear-gradient(180deg, #1C1926, #14121C);
+  border-bottom: 1px solid #d0d7deb2; cursor: move; user-select: none;
+  background: linear-gradient(180deg, #f6f8fa, #fff);
   border-radius: 12px 12px 0 0;
 }
 #jmxgen-overlay .jg-mark {
-  width: 19px; height: 19px; flex: none; border-radius: 6px;
-  background: linear-gradient(145deg, #9B82FF, #5B3FD9);
+  width: 18px; height: 18px; flex: none;
   display: grid; place-items: center;
-  box-shadow: 0 2px 7px rgba(124,92,255,.35);
 }
-#jmxgen-overlay .jg-mark svg { width: 11px; height: 11px; display: block; }
-#jmxgen-overlay .jg-title b { font-weight: 650; }
-#jmxgen-overlay .jg-title i { font-style: normal; color: #9B82FF; font-weight: 600; }
-#jmxgen-overlay .jg-min:hover  { background: #F5B544; color: #0B0A10; }
-#jmxgen-overlay .jg-max:hover  { background: #3ECF8E; color: #0B0A10; }
+#jmxgen-overlay .jg-mark svg { width: 18px; height: 18px; display: block;
+                               fill: #121212; }
+#jmxgen-overlay .jg-title b { font-weight: 700; }
+#jmxgen-overlay .jg-title i { font-style: normal; color: #121212; font-weight: 700; }
+#jmxgen-overlay .jg-min:hover  { background: #9a6700; color: #fff; }
+#jmxgen-overlay .jg-max:hover  { background: #1f883d; color: #fff; }
 #jmxgen-overlay .jg-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: #FF4A4A;
-  box-shadow: 0 0 0 3px rgba(255,74,74,.18); flex: none;
+  width: 7px; height: 7px; border-radius: 50%; background: #cf222e;
+  box-shadow: 0 0 0 3px rgba(207,34,46,.18); flex: none;
   animation: jg-pulse 1.4s infinite;
 }
 @keyframes jg-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
-#jmxgen-overlay .jg-title { font-weight: 600; flex: 1; letter-spacing: -.01em; }
+#jmxgen-overlay .jg-title { flex: 1; min-width: 0; display: flex;
+                            flex-direction: column; gap: 0; }
+#jmxgen-overlay .jg-word { font-weight: 700; letter-spacing: -.01em;
+                           color: #121212; }
+#jmxgen-overlay .jg-product { color: #6e7781; font-size: 9.5px;
+                              font-weight: 500; white-space: nowrap; }
 #jmxgen-overlay .jg-count {
-  background: #1A1430; color: #9B82FF; border: 1px solid #2A2636;
+  background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de;
   border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
 }
 /* Three quiet dots that reveal their glyph on hover - the chrome stays out of
@@ -42,50 +47,53 @@
 #jmxgen-overlay .jg-x {
   width: 15px; height: 15px; flex: none; border: 0; border-radius: 50%;
   padding: 0; cursor: pointer; display: grid; place-items: center;
-  background: #241F30; color: transparent;
+  background: #e7ebef; color: transparent;
   font: 600 9px/1 inherit; transition: background .12s, color .12s;
 }
-#jmxgen-overlay .jg-x:hover { color: rgba(0,0,0,.72); }
+#jmxgen-overlay .jg-x:hover { color: #fff; }
 #jmxgen-overlay .jg-x:focus-visible {
-  outline: none; box-shadow: 0 0 0 3px rgba(124,92,255,.28);
+  outline: none; box-shadow: 0 0 0 3px rgba(31,136,61,.30);
 }
 @media (prefers-reduced-motion: reduce) {
   #jmxgen-overlay .jg-x { transition: none; }
   #jmxgen-overlay .jg-dot { animation: none; }
 }
 #jmxgen-overlay .jg-body { padding: 10px; }
-#jmxgen-overlay .jg-l { display: block; color: #9aa0a6; margin-bottom: 4px; }
+#jmxgen-overlay .jg-l { display: block; color: #6e7781; margin-bottom: 4px; }
 #jmxgen-overlay .jg-row { display: flex; gap: 6px; margin-bottom: 8px; }
 #jmxgen-overlay .jg-in {
-  flex: 1; min-width: 0; background: #0e1013; border: 1px solid #2c3038;
-  color: #e8eaed; border-radius: 6px; padding: 5px 7px; font: inherit;
+  flex: 1; min-width: 0; background: #fff; border: 1px solid #d0d7de;
+  color: #24292f; border-radius: 6px; padding: 5px 7px; font: inherit;
 }
 #jmxgen-overlay .jg-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0;
 }
 #jmxgen-overlay .jg-b {
-  background: #22262e; border: 1px solid #2c3038; color: #e8eaed;
+  background: #f6f8fa; border: 1px solid #d0d7de; color: #24292f;
   border-radius: 6px; padding: 6px 8px; cursor: pointer; font: inherit; text-align: center;
 }
-#jmxgen-overlay .jg-b:hover { background: #2c313a; }
+#jmxgen-overlay .jg-b:hover { background: #e7ebef; border-color: #6e7781; }
 #jmxgen-overlay .jg-wide { width: 100%; margin-top: 6px; }
-#jmxgen-overlay .jg-go { background: #1d6f42; border-color: #24894f; font-weight: 600; }
-#jmxgen-overlay .jg-go:hover { background: #24894f; }
-#jmxgen-overlay .jg-warn { color: #f0a3a3; }
+#jmxgen-overlay .jg-go { background: #1f883d; border-color: #1f883d;
+                         color: #fff; font-weight: 600; }
+#jmxgen-overlay .jg-go:hover { background: #1c8139; border-color: #1c8139; }
+#jmxgen-overlay .jg-warn { color: #cf222e; }
 #jmxgen-overlay .jg-last {
-  color: #9aa0a6; font-size: 11px; margin: 6px 0; min-height: 15px;
+  color: #6e7781; font-size: 11px; margin: 6px 0; min-height: 15px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-#jmxgen-overlay .jg-good { color: #7ee2a8; }
-#jmxgen-overlay .jg-bad { color: #f0a3a3; }
-#jmxgen-overlay .jg-hint { color: #6b7076; font-size: 10.5px; margin-top: 8px; }
-#jmxgen-overlay code { background: #0e1013; padding: 1px 4px; border-radius: 4px; }
+#jmxgen-overlay .jg-good { color: #1f883d; }
+#jmxgen-overlay .jg-bad { color: #cf222e; }
+#jmxgen-overlay .jg-hint { color: #6e7781; font-size: 10.5px; margin-top: 8px; }
+#jmxgen-overlay code { background: #f6f8fa; color: #24292f;
+                       font-family: source-code-pro, Menlo, Monaco, Consolas, monospace;
+                       padding: 1px 4px; border-radius: 4px; }
 
-#jmxgen-overlay .jg-close:hover { background: #FF6B63; color: #0B0A10; }
+#jmxgen-overlay .jg-close:hover { background: #cf222e; color: #fff; }
 #jmxgen-overlay .jg-confirm { padding: 12px 10px; }
-#jmxgen-overlay .jg-ctext { color: #e8eaed; margin-bottom: 10px; line-height: 1.5; }
+#jmxgen-overlay .jg-ctext { color: #24292f; margin-bottom: 10px; line-height: 1.5; }
 
 /* browser-step capture toggle */
 #jmxgen-overlay .jg-chk { display:flex; align-items:center; gap:7px; margin:8px 0 6px;
-  color:#9aa0a6; font-size:11.5px; cursor:pointer; }
+  color:#6e7781; font-size:11.5px; cursor:pointer; }
 #jmxgen-overlay .jg-chk input { width:auto; margin:0; }

@@ -115,12 +115,12 @@ The toggle sits at the top right. Three buttons appear on the left once it is on
 Select the `testmu-jmeter-studio` folder itself, the one that directly contains
 `manifest.json`. Not the zip, and not the folder above it.
 
-A card appears with the violet mark, the name TestMu AI — JMeter Studio, and a
+A card appears with the TestMu mark, the name TestMu AI — JMeter Studio, and a
 version number. That is the whole installation.
 
 ### Pin it
 
-Click the puzzle-piece icon in the toolbar and pin the extension. The violet mark
+Click the puzzle-piece icon in the toolbar and pin the extension. The TestMu mark
 appears in the toolbar, and that is how you open it.
 
 There are shortcuts if you prefer them. `⌘⇧9` (`Ctrl+Shift+9`) opens the popup,
