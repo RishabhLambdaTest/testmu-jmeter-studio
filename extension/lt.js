@@ -279,6 +279,65 @@ function ltStripBody(e) {
   return e;
 }
 
+/* An hour of polling is four hundred identical GETs, and the plan wants one
+   sampler. The recorder collapses across the whole capture; a session collapses
+   within each transaction instead, because the same URL fetched during two
+   different steps is two steps, and collapsing globally would empty the second
+   one. Same key as the recorder otherwise: method, url and the head of the
+   body. */
+function ltRepeatKey(e) {
+  const r = e.request || {};
+  const body = r.postData ? "|" + String(r.postData.text || "").slice(0, 200) : "";
+  return (r.method || "GET") + " " + (r.url || "") + body;
+}
+
+function ltCollapse(entries) {
+  const seen = new Set();
+  const out = [];
+  let dropped = 0;
+  for (const e of entries) {
+    const tx = (e._jmxgen && e._jmxgen.transaction) || "";
+    const key = tx + "\u0000" + ltRepeatKey(e);
+    if (seen.has(key)) { dropped++; continue; }
+    seen.add(key);
+    out.push(e);
+  }
+  return { entries: out, dropped: dropped };
+}
+
+/* The engine names a sampler after its method and path, which is right until
+   a site routes everything through one script. On OpenCart every page is
+   index.php and the route lives in the query, so a journey comes out as
+   twenty-five rows all reading "GET /index.php" and looks like a bug.
+
+   So where two requests in the same transaction share a path, the query is
+   put back into the name. Only there: adding it everywhere would make every
+   ordinary name longer for no gain. The engine honours _jmxgen.name. */
+function ltNameEntries(entries) {
+  const bucket = new Map();
+  for (const e of entries) {
+    let path = "";
+    try { path = new URL(e.request.url).pathname; } catch (x) { path = e.request.url; }
+    const key = ((e._jmxgen && e._jmxgen.transaction) || "") + "\u0000" +
+                (e.request.method || "GET") + " " + path;
+    if (!bucket.has(key)) bucket.set(key, []);
+    bucket.get(key).push({ e: e, path: path });
+  }
+  let renamed = 0;
+  for (const rows of bucket.values()) {
+    if (rows.length < 2) continue;              // no ambiguity, leave it alone
+    for (const r of rows) {
+      let q = "";
+      try { q = new URL(r.e.request.url).search; } catch (x) { q = ""; }
+      if (!q) continue;
+      const name = (r.e.request.method || "GET") + " " + r.path + q;
+      r.e._jmxgen = Object.assign({}, r.e._jmxgen, { name: name.slice(0, 110) });
+      renamed++;
+    }
+  }
+  return renamed;
+}
+
 /* ---- the whole thing --------------------------------------------------- */
 async function ltSessionHar(user, key, sid, opts) {
   opts = opts || {};
@@ -418,19 +477,36 @@ async function ltSessionHar(user, key, sid, opts) {
     log("grouped into " + landed + " navigation step(s)");
   }
 
+  const renamed = ltNameEntries(kept);
+  if (renamed) {
+    log(renamed + " sampler(s) named with their query, so requests through one " +
+        "script can be told apart");
+  }
+
+  let finalEntries = kept;
+  if (opts.collapse !== false) {
+    const c = ltCollapse(kept);
+    finalEntries = c.entries;
+    if (c.dropped) {
+      log(c.dropped + " repeated request(s) collapsed, leaving " +
+          finalEntries.length + " sampler(s)");
+    }
+  }
+
   return {
     har: {
       log: {
         version: "1.2",
         creator: { name: "jmxgen", version: "1" },
         pages: [],
-        entries: kept,
+        entries: finalEntries,
       },
     },
     host: host,
     hosts: ranked,
     total: entries.length,
-    kept: kept.length,
+    kept: finalEntries.length,
+    beforeCollapse: kept.length,
     named: steps.length > 0,
     source: source,
     bytes: probe.bytes,

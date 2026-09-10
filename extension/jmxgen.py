@@ -2336,8 +2336,12 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
             if value in made or len(found) >= limit:
                 continue
             rule = _match_rule(label, rules)
-            from_path = label.endswith("_id") and value in (entries[idx].get("request")
-                                                            or {}).get("url", "")
+            # A value short enough to occur by accident is not an id worth
+            # correlating: "0" from filter_category_id=0 also matches the 0 in
+            # product_id=40, and the plan then sends 4${filter_category_id}.
+            from_path = (label.endswith("_id") and len(value) >= 4
+                         and value in (entries[idx].get("request")
+                                       or {}).get("url", ""))
             if not rule and not _is_dynamic(value, label) and not from_path:
                 continue
             if rule and not _is_dynamic(value, label) and len(value) < 4:
