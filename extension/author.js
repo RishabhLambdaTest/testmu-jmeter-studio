@@ -201,9 +201,12 @@ async function sessionToEngine(sid) {
   const others = out.hosts.filter((h) => h.host !== out.host).slice(0, 4)
     .map((h) => `${h.host} (${h.n})`).join(", ");
   if (others) addLog("info", "other hosts seen, left out: " + others);
-  if (!out.named) {
-    addLog("info", "this session had no step annotations, so steps came from navigations");
-  }
+  addLog("info",
+    out.source === "annotations"
+      ? "transactions came from the step names the test reported"
+      : out.source === "commands"
+      ? "the test reported no step names, so transactions came from its WebDriver commands"
+      : "no commands were recorded, so transactions came from page navigations");
 
   const sink = await window.JmxgenEngine.openInput("session.har");
   sink.write(JSON.stringify(out.har));

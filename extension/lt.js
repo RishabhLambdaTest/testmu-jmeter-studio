@@ -175,9 +175,53 @@ async function ltMemberText(user, key, sid, m) {
   ).text();
 }
 
-/* ---- step 3: the test's own step names --------------------------------
-   The annotation field carries what the test called each step. It is absent on
-   a plain Selenium run, so the caller falls back to navigation boundaries. */
+/* ---- step 3: the test's own steps -------------------------------------
+   Every command is a boundary at a known moment. An annotated run (KaneAI)
+   labels them itself; a plain Selenium run does not, and its rows still carry
+   the WebDriver path, which names the step well enough to group by. The two
+   are mixed rather than chosen between, because annotation coverage is
+   partial in practice - 4 rows of 8, 5 of 9 - not all or nothing.
+
+   Locators are not available: the requestBody comes back empty on every
+   session checked, so a step is "Click an element", never "Click #search". */
+
+/* Setup and teardown are not steps of the journey. */
+const LT_SKIP_CMD = /^(timeouts|session$|window|screenshot|log|cookie|source|title|alert)/i;
+
+/* The tail of a WebDriver path, as something a person would recognise. */
+function ltNameFromPath(method, path) {
+  if (!path) return "";
+  if (/\/wd\/hub\/session$/.test(path) || method === "DELETE") return "";
+  let tail = String(path).split("/session/")[1] || String(path);
+  const parts = tail.split("/").filter(Boolean);
+  parts.shift();                                   // the session id itself
+  const head = (parts[0] || "").toLowerCase();
+  if (!head || LT_SKIP_CMD.test(head)) return "";
+  const last = (parts[parts.length - 1] || "").toLowerCase();
+  if (head === "url") return "Open the page";
+  if (head === "element" && last === "click") return "Click an element";
+  if (head === "element" && last === "value") return "Type into a field";
+  if (head === "element" && last === "clear") return "Clear a field";
+  if (head === "element") return "Find an element";
+  if (head === "execute") return "Run a script";
+  if (head === "forward") return "Go forward";
+  if (head === "back") return "Go back";
+  if (head === "refresh") return "Reload the page";
+  if (head === "frame") return "Switch frame";
+  return "Step: " + head;
+}
+
+/* Selenium reports nanoseconds, the CDP log milliseconds. Reading one as the
+   other moves every boundary by decades, so the unit is detected rather than
+   assumed. */
+function ltStamp(n) {
+  const v = Number(n);
+  if (!isFinite(v) || v <= 0) return 0;
+  if (v > 1e15) return v / 1e6;      // nanoseconds
+  if (v > 1e12) return v;            // milliseconds
+  return v * 1000;                   // seconds
+}
+
 async function ltSteps(user, key, sid) {
   try {
     const r = await ltFetch(LT_BASE + "/sessions/" + sid + "/log/command",
@@ -186,14 +230,25 @@ async function ltSteps(user, key, sid) {
     const rows = j.data || j || [];
     const steps = [];
     for (const row of rows) {
-      const v = row.Value || {};
-      const ann = (row.annotation || "").trim();
-      if (!v.requestStartTime || !ann) continue;
-      // requestStartTime is nanoseconds since the epoch; Date wants milliseconds
-      steps.push({ t: Number(v.requestStartTime) / 1e6, name: ltCleanLabel(ann) });
+      const v = row.Value || row.value || {};
+      const t = ltStamp(v.requestStartTime || row.timestamp);
+      if (!t) continue;
+      const ann = (row.annotation || v.heading || "").trim();
+      const name = ann ? ltCleanLabel(ann)
+                       : ltNameFromPath(v.requestMethod, v.requestPath);
+      if (!name) continue;            // setup, teardown, and other non-steps
+      steps.push({ t: t, name: name, fromAnnotation: !!ann });
     }
     steps.sort(function (a, b) { return a.t - b.t; });
-    return steps;
+    /* Two clicks in a row are two steps, but ten identical "Run a script" in a
+       row are one: collapse only neighbours that share a derived name. */
+    const out = [];
+    for (const s of steps) {
+      const prev = out[out.length - 1];
+      if (prev && !s.fromAnnotation && !prev.fromAnnotation && prev.name === s.name) continue;
+      out.push(s);
+    }
+    return out;
   } catch (e) {
     return [];                        // names are a bonus, never a blocker
   }
@@ -247,8 +302,14 @@ async function ltSessionHar(user, key, sid, opts) {
   log(members.length + " capture file(s) in the archive");
 
   const steps = await ltSteps(user, key, sid);
-  log(steps.length ? steps.length + " named step(s) from the test"
-                   : "no step annotations - grouping by navigation instead");
+  const annotated = steps.filter(function (s) { return s.fromAnnotation; }).length;
+  const source = !steps.length ? "navigation"
+               : annotated ? "annotations" : "commands";
+  log(!steps.length
+      ? "no commands recorded - grouping by navigation instead"
+      : steps.length + " step(s) from the test" +
+        (annotated ? " (" + annotated + " named by the test itself)"
+                   : " (named from its WebDriver commands)"));
 
   const entries = [];
   const hosts = new Map();
@@ -353,6 +414,7 @@ async function ltSessionHar(user, key, sid, opts) {
     total: entries.length,
     kept: kept.length,
     named: steps.length > 0,
+    source: source,
     bytes: probe.bytes,
   };
 }
