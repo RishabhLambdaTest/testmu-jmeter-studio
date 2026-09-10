@@ -516,8 +516,43 @@ async function ltSessionHar(user, key, sid, opts) {
     /* A step is named after the request it caused, the way a recorder names a
        transaction controller after the action it recorded. A name the test
        wrote itself always wins. */
-    const used = new Map();
+    /* A step that opened no page and only repeated the previous step's own
+       calls is not a step: it is the tail of the one before. Typing into a
+       search box lands one last autocomplete after the command that follows,
+       and that should not become a transaction of its own. The test is narrow
+       on purpose - same endpoint as the step before, nothing page-like in it -
+       so a single-page app whose every step is an XHR keeps its steps. */
     const order = Array.from(buckets.keys()).sort(function (a, b) { return a - b; });
+    /* Assets do not decide what a step is. The stray autocomplete arrives with
+       a fresh batch of product thumbnails, and comparing those would make every
+       tail look like a step of its own. */
+    const endpointsOf = function (rows) {
+      return new Set(rows.filter(function (e) {
+        return !LT_ASSET_DEST.test(ltHeaderOf(e, "sec-fetch-dest"));
+      }).map(function (e) {
+        let path = "";
+        try { path = new URL(e.request.url).pathname; } catch (x) { path = e.request.url; }
+        return (e.request.method || "GET") + " " + path + " " + ltShortTarget(e.request.url);
+      }));
+    };
+    for (let i = order.length - 1; i > 0; i--) {
+      const rows = buckets.get(order[i]);
+      if (rows.some(ltIsPageish)) continue;
+      const prev = buckets.get(order[i - 1]);
+      const prevEnds = endpointsOf(prev);
+      const mine = endpointsOf(rows);
+      let sameActivity = true;
+      for (const k of mine) if (!prevEnds.has(k)) { sameActivity = false; break; }
+      if (!sameActivity) continue;
+      prev.push.apply(prev, rows);
+      buckets.delete(order[i]);
+      order.splice(i, 1);
+    }
+    for (const at of order) {
+      buckets.get(at).sort(function (a, b) { return ltEntryTime(a) - ltEntryTime(b); });
+    }
+
+    const used = new Map();
     for (const at of order) {
       const rows = buckets.get(at);
       const step = steps[at];
@@ -620,5 +655,7 @@ window.LT = {
   ltProbe: ltProbe,
   ltListSessions: ltListSessions,
   ltIsThirdParty: ltIsThirdParty,
+  ltShortTarget: ltShortTarget,
+  ltIsPageish: ltIsPageish,
   ltCleanLabel: ltCleanLabel,
 };
