@@ -198,17 +198,35 @@ function ltNameFromPath(method, path) {
   const head = (parts[0] || "").toLowerCase();
   if (!head || LT_SKIP_CMD.test(head)) return "";
   const last = (parts[parts.length - 1] || "").toLowerCase();
-  if (head === "url") return "Open the page";
-  if (head === "element" && last === "click") return "Click an element";
-  if (head === "element" && last === "value") return "Type into a field";
-  if (head === "element" && last === "clear") return "Clear a field";
-  if (head === "element") return "Find an element";
-  if (head === "execute") return "Run a script";
-  if (head === "forward") return "Go forward";
-  if (head === "back") return "Go back";
-  if (head === "refresh") return "Reload the page";
-  if (head === "frame") return "Switch frame";
-  return "Step: " + head;
+  if (head === "url") return "Open";
+  if (head === "element" && last === "click") return "Click";
+  if (head === "element" && last === "value") return "Type into";
+  if (head === "element" && last === "clear") return "Clear";
+  if (head === "element" || head === "elements") return "Find";
+  if (head === "execute") return "Script";
+  if (head === "forward") return "Forward to";
+  if (head === "back") return "Back to";
+  if (head === "refresh") return "Reload";
+  if (head === "frame") return "Frame";
+  return head;
+}
+
+/* What a request is, in a few words. Sites that route everything through one
+   script keep the real target in the query, so a route-style parameter beats
+   the path when there is one. */
+const LT_ROUTE_KEYS = ["route", "action", "cmd", "op", "do", "page", "module"];
+function ltShortTarget(url) {
+  try {
+    const u = new URL(url);
+    for (const k of LT_ROUTE_KEYS) {
+      const v = u.searchParams.get(k);
+      if (v) return decodeURIComponent(v).slice(0, 44);
+    }
+    const path = u.pathname.replace(/\/+$/, "");
+    return (path || "/").slice(-44);
+  } catch (x) {
+    return String(url).slice(0, 44);
+  }
 }
 
 /* Selenium reports nanoseconds, the CDP log milliseconds. Reading one as the
@@ -318,8 +336,10 @@ function ltNameEntries(entries) {
   for (const e of entries) {
     let path = "";
     try { path = new URL(e.request.url).pathname; } catch (x) { path = e.request.url; }
-    const key = ((e._jmxgen && e._jmxgen.transaction) || "") + "\u0000" +
-                (e.request.method || "GET") + " " + path;
+    /* Plan-wide, not per transaction: the requests table is read as one list,
+       and splitting the journey into steps means a path now often appears once
+       inside each of them while still repeating across the plan. */
+    const key = (e.request.method || "GET") + " " + path;
     if (!bucket.has(key)) bucket.set(key, []);
     bucket.get(key).push({ e: e, path: path });
   }
@@ -337,6 +357,42 @@ function ltNameEntries(entries) {
   }
   return renamed;
 }
+
+/* Which request a step is really about. A navigation or a form post is the
+   action; the rest of the burst is what the page pulled in afterwards. */
+function ltPrimary(rows) {
+  for (const e of rows) {
+    const hs = e.request.headers || [];
+    const dest = hs.filter(function (h) { return /^sec-fetch-dest$/i.test(h.name); })[0];
+    if (dest && dest.value === "document") return e;
+  }
+  for (const e of rows) if ((e.request.method || "GET") !== "GET") return e;
+  return rows[0];
+}
+
+/* Typing "iPhone" into a search box fires one request per keystroke. They are
+   real traffic and a recorder keeps them, so these are reported rather than
+   dropped - JMeter offers the same choice as "store 1st sampler of each group
+   only", and it is an option there, not a default. */
+function ltNoteRepeats(entries, log) {
+  const groups = new Map();
+  for (const e of entries) {
+    let path = "";
+    try { path = new URL(e.request.url).pathname; } catch (x) { path = e.request.url; }
+    const tx = (e._jmxgen && e._jmxgen.transaction) || "";
+    const key = tx + "\u0000" + (e.request.method || "GET") + " " + path + " " +
+                ltShortTarget(e.request.url);
+    groups.set(key, (groups.get(key) || 0) + 1);
+  }
+  for (const [key, n] of groups) {
+    if (n < 4) continue;
+    const what = key.split("\u0000")[1];
+    log(n + " near-identical requests to " + what.slice(0, 54) +
+        " - typing into a field sends one per keystroke. Keep one unless the " +
+        "autocomplete is what you are testing.");
+  }
+}
+
 
 /* ---- the whole thing --------------------------------------------------- */
 async function ltSessionHar(user, key, sid, opts) {
@@ -421,40 +477,45 @@ async function ltSessionHar(user, key, sid, opts) {
   log(kept.length + " request(s) from " + host);
 
   if (steps.length) {
-    // anything before the first step belongs to it
+    /* Bucket by which step a request fell into, not by that step's name.
+       A journey navigates eight times and every one of those is "Open"; naming
+       first and grouping second merges all eight into a single controller,
+       which is JMeter's own "do not group samplers" - the mode its manual
+       warns makes it impossible to tell which request belongs to which action. */
+    const buckets = new Map();
     for (const e of kept) {
       const t = ltEntryTime(e);
-      let name = steps[0].name;
-      for (let i = 0; i < steps.length; i++) if (t >= steps[i].t) name = steps[i].name;
-      e._jmxgen = Object.assign({}, e._jmxgen, { transaction: name });
+      let at = 0;
+      for (let i = 0; i < steps.length; i++) if (t >= steps[i].t) at = i;
+      if (!buckets.has(at)) buckets.set(at, []);
+      buckets.get(at).push(e);
     }
-    const landed = new Set(kept.map(function (e) {
-      return e._jmxgen.transaction;
-    })).size;
-    log("grouped into " + landed + " transaction(s) from the test's own steps");
-    /* One group has three different causes and they need different answers.
-       Skew is only credible when the two timelines do not overlap at all:
-       a test that sits on one page for six minutes puts everything in the
-       first step legitimately, and calling that a clock bug sends people
-       hunting for something that is not there. */
-    if (landed < 2 && steps.length > 1) {
-      const firstReq = ltEntryTime(kept[0]);
-      const lastReq = ltEntryTime(kept[kept.length - 1]);
-      const firstStep = steps[0].t;
-      const lastStep = steps[steps.length - 1].t;
-      const overlap = firstReq <= lastStep && lastReq >= firstStep;
-      if (!overlap) {
-        log("warning: the requests and the test's steps cover different times, " +
-            "so the two clocks disagree and the grouping cannot be trusted");
-      } else if (kept.length < steps.length) {
-        log("only " + kept.length + " request(s) came from " + host +
-            ", so the " + steps.length + " step(s) collapse into one transaction");
+
+    /* A step is named after the request it caused, the way a recorder names a
+       transaction controller after the action it recorded. A name the test
+       wrote itself always wins. */
+    const used = new Map();
+    const order = Array.from(buckets.keys()).sort(function (a, b) { return a - b; });
+    for (const at of order) {
+      const rows = buckets.get(at);
+      const step = steps[at];
+      let name;
+      if (step && step.fromAnnotation) {
+        name = step.name;
       } else {
-        const gap = Math.round((lastStep - steps[0].t) / 1000);
-        log("all the traffic arrived during one step: the run spent " + gap +
-            "s between its first and last step, and the rest made no requests");
+        const primary = ltPrimary(rows);
+        const verb = (step && step.name) || "Step";
+        name = (verb + " " + ltShortTarget(primary.request.url)).slice(0, 70);
+      }
+      const seen = used.get(name) || 0;
+      used.set(name, seen + 1);
+      const label = seen ? name + " " + (seen + 1) : name;
+      for (const e of rows) {
+        e._jmxgen = Object.assign({}, e._jmxgen, { transaction: label });
       }
     }
+    log("grouped into " + order.length + " transaction(s) from the test's own steps");
+    ltNoteRepeats(kept, log);
   } else {
     // no annotations: a top-level navigation on this host starts a new group
     let current = "Step 1";
