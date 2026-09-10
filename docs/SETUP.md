@@ -194,6 +194,27 @@ banner stops the recording.
 
 ---
 
+## 4b. From a test that already ran
+
+If your team runs Selenium on TestMu AI, the traffic may already be captured and
+no recording is needed.
+
+1. Open the authoring page and choose **TestMu AI session (session id)**.
+2. Fill in your username and access key, the same pair the run page uses.
+3. Paste a session id, or press **Load my sessions** and choose one.
+4. **Generate plan.**
+
+The plan arrives grouped into the steps the test performed.
+
+This works only for a session whose run had `"network.full.har": true` in its
+capabilities. Without it the session records no request or response bodies, and
+a plan built from that would send empty POSTs and correlate nothing, so it is
+refused rather than produced. Selenium only for now.
+
+[SESSIONS.md](SESSIONS.md) covers it fully.
+
+---
+
 ## 5. Running it on HyperExecute
 
 **Run on HyperExecute…** opens the run page with the plan already attached:
@@ -315,6 +336,20 @@ Every error the extension can produce, what it actually means, and what to do.
 | The card is grey, or "This extension may have been corrupted" | The folder was moved, renamed or deleted. Remove the card and load it again from where the files now live |
 | No *Load unpacked* button | Developer mode is off, or your organisation's Chrome policy blocks unpacked extensions. Section 9 has the force-install route |
 | No toolbar icon | It is installed but not pinned. Puzzle-piece icon, then pin |
+
+### Authoring from a session
+
+| What you see | What it means |
+|---|---|
+| "Network full har logs are not available. Please set network.full.har: true in caps" | The run that produced this session did not capture full HAR. Nothing can be recovered after the fact; re-run the test with the capability on |
+| "fill in your TestMu AI username and access key above" | The account fields are empty. They are on the authoring page itself, next to the session id, and are shared with the run page |
+| "the credentials were refused (401)" | Wrong username or access key. The username is not the sign-in email |
+| "those credentials cannot read this session (403)" | The session belongs to another account or organisation |
+| "HTTP 500 from the session log API" | The log service failed. Requests already retry, so try again in a moment; roughly one call in ten fails on a large sample |
+| "nothing was recorded from *host*" | Everything captured came from other hosts. The log lists them with counts |
+| One transaction where the test had several | The log says which of the three causes applies: fewer requests than steps, all the traffic arriving inside one step, or timelines that do not meet |
+| Many near-identical requests to one endpoint | Typing into a search box sends one per keystroke. They are kept on purpose; delete the rows you do not want in the editor |
+| A Playwright session will not convert | Playwright sessions produce no full HAR today. Selenium only |
 
 ### While recording
 

@@ -31,7 +31,7 @@ These are the real evaluation criteria. Everything else is packaging.
 
 | The question | What it really is | Where we stand |
 |---|---|---|
-| "I have no spec and no script, where do I start?" | authoring from nothing | seven sources: recording, cURL, OpenAPI, Postman, Excel, a URL list, an existing `.jmx` |
+| "I have no spec and no script, where do I start?" | authoring from nothing | eight sources: recording, cURL, OpenAPI, Postman, Excel, a URL list, an existing `.jmx`, or an automation session that already ran |
 | "My login works once, then everything 401s" | token correlation | automatic, and shown: the rule, a confidence, the exact hop |
 | "All 500 users log in as the same person" | parameterisation | CSV test data per user, split across engines at run time |
 | "My setUp step extracts a token nobody else can see" | properties against variables | the login publishes with `props.put`, read back as `${__P()}` |

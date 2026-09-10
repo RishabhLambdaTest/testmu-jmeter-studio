@@ -46,9 +46,33 @@ these boxes are in the sections below instead, where they can be explained.
 
 ## Source
 
-*Where the requests come from.* Seven of them, covered one by one in
+*Where the requests come from.* Eight of them, covered one by one in
 [SOURCES.md](SOURCES.md) with a sample file each. The choice changes which input
 appears below it: a file picker, a text box, or both.
+
+## From a TestMu AI session
+
+Shown only when the source is *TestMu AI session*. The whole path is in
+[SESSIONS.md](SESSIONS.md); this is what each control does.
+
+| Control | What it does | When to use it |
+|---|---|---|
+| Session id | the id of an automation session on your account | always, unless you pick one from the list below |
+| TestMu AI username | the same account the run page uses | the first time. Filling it in either place fills both |
+| Access key | from `accounts.lambdatest.com/detail/profile` | the first time |
+| Remember on this machine | keeps both in extension storage, this profile only | leave it on unless the machine is shared |
+| Load my sessions | lists your 40 most recent sessions with status and time | when you do not have an id to hand |
+| …or pick a recent session | fills the id from that list | after loading them |
+
+The account is sent only to `api.lambdatest.com`, to read your own session logs.
+
+Only a session run with `"network.full.har": true` carries the traffic a plan
+needs. Others are refused, quoting the capability, because the alternative logs
+have no request or response bodies: a plan built from them would POST nothing
+and correlate nothing, while still looking valid. Selenium only for now.
+
+The traffic filters and *Use the think times from the recording* below apply to
+a session exactly as they do to a recording.
 
 ## From the recording
 
@@ -255,6 +279,15 @@ for the fourth time.
 Download and *Run on HyperExecute…* both parse the plan first. A plan that no
 XML parser will read is refused here, with the line and column, rather than
 failing on a runner ten minutes later.
+
+Every plan is also run through the scale checklist as it is built, and the log
+says what it found. It is the same set of checks the console applies: listeners
+that hold results in heap, an unbounded loop with no scheduler, missing
+timeouts, disabled elements still parsed into memory, functional mode, a plan
+large enough that the tree itself is the cost. Past about three hundred
+samplers it says so, because beyond that the plan is a memory cost on every
+thread before a single request is sent. It matters most for a converted
+session, which nobody hand-reviews.
 
 Three tabs sit above them. *Requests* is every sampler with its group, method,
 path and checks: read it to confirm the plan contains what you meant to test.

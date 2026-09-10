@@ -171,6 +171,19 @@ The rule of thumb: name transactions after what the user is doing, not after
 what the interface is doing. *Submit timesheet* is a step. *Click the third
 tab* is not.
 
+## From an automation session
+
+A session you already ran is the one source where transactions arrive without
+anybody naming them. The test's own steps become the transactions: where the run
+reported step names, those are used verbatim; where it did not, each WebDriver
+command is a boundary and the name comes from the request that step caused, so a
+journey reads `Open common/home`, `Type into product/search`,
+`Click checkout/cart/add`.
+
+That is the same shape this page describes for a recording, arrived at from the
+other end. [SESSIONS.md](SESSIONS.md) covers how it is decided and when it
+cannot be.
+
 ## Every other source
 
 A recording is the only source where you name steps as they happen. The rest
@@ -200,7 +213,7 @@ presented as fact.
 If you need named steps from those two, the practical routes are to author from
 the sheet instead, which costs a column, or to group in the plan afterwards.
 
-Everything else on this page applies to all seven sources. Test data, the
+Everything else on this page applies to all eight sources. Test data, the
 authentication fields, the load profile and the run-time overrides do not care
 where the requests came from, because by the time they are applied the source
 has already become the same internal shape.
