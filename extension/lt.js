@@ -360,14 +360,36 @@ function ltNameEntries(entries) {
 
 /* Which request a step is really about. A navigation or a form post is the
    action; the rest of the burst is what the page pulled in afterwards. */
+const LT_ASSET_DEST = /^(image|font|style|script|media|audio|video|track|manifest)$/i;
+
+function ltHeaderOf(e, name) {
+  const h = (e.request.headers || []).filter(function (x) {
+    return x.name && x.name.toLowerCase() === name;
+  })[0];
+  return h ? String(h.value) : "";
+}
+
+/* Whether a request is a page being opened.
+   Sec-Fetch-Dest is the only trustworthy signal here. jQuery puts text/html at
+   the front of the Accept header on a plain XHR, so an autocomplete call looks
+   exactly like a page load if you judge it by Accept. */
+function ltIsPageish(e) {
+  return ltHeaderOf(e, "sec-fetch-dest") === "document" ||
+         ltHeaderOf(e, "sec-fetch-mode") === "navigate" ||
+         (e.request.method || "GET") !== "GET";
+}
+
 function ltPrimary(rows) {
-  for (const e of rows) {
-    const hs = e.request.headers || [];
-    const dest = hs.filter(function (h) { return /^sec-fetch-dest$/i.test(h.name); })[0];
-    if (dest && dest.value === "document") return e;
-  }
-  for (const e of rows) if ((e.request.method || "GET") !== "GET") return e;
-  return rows[0];
+  // an image or a stylesheet is never the action a step was about
+  const real = rows.filter(function (e) {
+    return !LT_ASSET_DEST.test(ltHeaderOf(e, "sec-fetch-dest"));
+  });
+  const pool = real.length ? real : rows;
+  for (const e of pool) if (ltHeaderOf(e, "sec-fetch-dest") === "document") return e;
+  for (const e of pool) if (ltHeaderOf(e, "sec-fetch-mode") === "navigate") return e;
+  // a form submit is the action itself, and outranks anything it triggered
+  for (const e of pool) if ((e.request.method || "GET") !== "GET") return e;
+  return pool[0];
 }
 
 /* Typing "iPhone" into a search box fires one request per keystroke. They are
@@ -504,8 +526,13 @@ async function ltSessionHar(user, key, sid, opts) {
         name = step.name;
       } else {
         const primary = ltPrimary(rows);
-        const verb = (step && step.name) || "Step";
-        name = (verb + " " + ltShortTarget(primary.request.url)).slice(0, 70);
+        let verb = (step && step.name) || "Step";
+        /* A navigation whose window caught only background XHR did not open
+           anything here - the page load landed in the neighbouring step. Say
+           what the traffic is instead of claiming a page was opened. */
+        if (verb === "Open" && !ltIsPageish(primary)) verb = "";
+        name = ((verb ? verb + " " : "") +
+                ltShortTarget(primary.request.url)).slice(0, 70);
       }
       const seen = used.get(name) || 0;
       used.set(name, seen + 1);
