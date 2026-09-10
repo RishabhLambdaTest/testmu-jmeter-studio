@@ -373,10 +373,28 @@ async function ltSessionHar(user, key, sid, opts) {
       return e._jmxgen.transaction;
     })).size;
     log("grouped into " + landed + " transaction(s) from the test's own steps");
-    /* If everything lands in one step the two clocks probably disagree, which
-       is a silent failure otherwise: the plan still builds, just ungrouped. */
-    if (landed < 2 && steps.length > 2) {
-      log("warning: every request landed in one step, so the clocks may disagree");
+    /* One group has three different causes and they need different answers.
+       Skew is only credible when the two timelines do not overlap at all:
+       a test that sits on one page for six minutes puts everything in the
+       first step legitimately, and calling that a clock bug sends people
+       hunting for something that is not there. */
+    if (landed < 2 && steps.length > 1) {
+      const firstReq = ltEntryTime(kept[0]);
+      const lastReq = ltEntryTime(kept[kept.length - 1]);
+      const firstStep = steps[0].t;
+      const lastStep = steps[steps.length - 1].t;
+      const overlap = firstReq <= lastStep && lastReq >= firstStep;
+      if (!overlap) {
+        log("warning: the requests and the test's steps cover different times, " +
+            "so the two clocks disagree and the grouping cannot be trusted");
+      } else if (kept.length < steps.length) {
+        log("only " + kept.length + " request(s) came from " + host +
+            ", so the " + steps.length + " step(s) collapse into one transaction");
+      } else {
+        const gap = Math.round((lastStep - steps[0].t) / 1000);
+        log("all the traffic arrived during one step: the run spent " + gap +
+            "s between its first and last step, and the rest made no requests");
+      }
     }
   } else {
     // no annotations: a top-level navigation on this host starts a new group
