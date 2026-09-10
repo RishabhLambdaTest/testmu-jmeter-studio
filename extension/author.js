@@ -125,6 +125,7 @@ const BUILTIN_MODES = {
   excel:   { label: "Excel / CSV sheet", input: "file", ext: ".xlsx,.csv" },
   urls:    { label: "Page URL list (probe)", input: "text" },
   jmx:     { label: "Existing .jmx (import)", input: "file", ext: ".jmx" },
+  ltsession: { label: "TestMu AI session (session id)", input: "text" },
 };
 
 async function loadModes() {
@@ -151,13 +152,14 @@ function syncInputs() {
   $("textLabel").textContent =
     $("mode").value === "openapi" ? "…or a spec URL" :
     $("mode").value === "curl" ? "Paste one or more curl commands" :
-    $("mode").value === "urls" ? "One URL per line" : "Input";
+    $("mode").value === "urls" ? "One URL per line" :
+    $("mode").value === "ltsession" ? "Session id from the automation dashboard" : "Input";
   // filters only bite on sources that carry more than you asked for
-  $("filters").hidden = !["har", "urls"].includes($("mode").value);
+  $("filters").hidden = !["har", "urls", "ltsession"].includes($("mode").value);
   // think times only exist in a recording, and they are the difference between
   // a load test and a spin loop, so the control sits with the load profile
   // rather than folded away under filters
-  $("thinkRow").hidden = $("mode").value !== "har";
+  $("thinkRow").hidden = !["har", "ltsession"].includes($("mode").value);
 }
 $("mode").onchange = () => { syncInputs(); save(); };
 
@@ -173,6 +175,65 @@ function readFile(file) {
     fr.onerror = reject;
     fr.readAsDataURL(file);
   });
+}
+
+
+/* ---- TestMu AI session -------------------------------------------------
+   The session's own recording becomes a HAR the engine already knows how to
+   author from, so nothing downstream changes. Credentials are the ones the
+   run page already stores - the same LambdaTest account. */
+async function sessionToEngine(sid) {
+  const got = await chrome.storage.local.get("hxForm");
+  const saved = (got && got.hxForm) || {};
+  const user = (saved.user || "").trim();
+  const key = (saved.key || "").trim();
+  if (!user || !key) {
+    throw new Error("no credentials saved - open Run on HyperExecute, " +
+                    "fill in your username and access key, and tick Remember");
+  }
+  const out = await window.LT.ltSessionHar(user, key, sid, {
+    log: (m) => addLog("info", m),
+    maxBytes: 120 * 1048576,
+    onProgress: (done, total, seen) =>
+      say(`reading capture ${done}/${total} (${seen} requests)`, "info"),
+  });
+  addLog("info", `keeping ${out.kept} of ${out.total} request(s) from ${out.host}`);
+  const others = out.hosts.filter((h) => h.host !== out.host).slice(0, 4)
+    .map((h) => `${h.host} (${h.n})`).join(", ");
+  if (others) addLog("info", "other hosts seen, left out: " + others);
+  if (!out.named) {
+    addLog("info", "this session had no step annotations, so steps came from navigations");
+  }
+
+  const sink = await window.JmxgenEngine.openInput("session.har");
+  sink.write(JSON.stringify(out.har));
+  const { path } = sink.close();
+  return { path, info: out };
+}
+
+
+/* ---- will this plan survive being scaled? ------------------------------
+   A converted session is nobody's hand-written plan, so the checks that used
+   to live only in the console run here and say what they found. */
+const SAMPLER_BUDGET = 300;
+
+async function reportScale(data, nreq) {
+  if (nreq > SAMPLER_BUDGET) {
+    addLog("bad", `${nreq} samplers: past about ${SAMPLER_BUDGET} the plan tree ` +
+      "itself becomes the memory cost on every thread. Narrow the host, tighten " +
+      "Keep, or split the journey before running this at load.");
+  }
+  if (!data.jmx) return;
+  try {
+    const out = await window.JmxgenEngine.lint(data.jmx);
+    (out.notes || []).forEach((n) => addLog("info", n));
+    (out.issues || []).forEach((i) => addLog("bad", i));
+    if (!(out.issues || []).length) {
+      addLog("good", "scale checklist: nothing that would blow up the runner");
+    }
+  } catch (e) {
+    addLog("info", "the scale checklist could not run: " + (e.message || e));
+  }
 }
 
 /* ---- generate ---------------------------------------------------------- */
@@ -196,7 +257,24 @@ $("go").onclick = async () => {
     duration: $("dur").value.trim(),
   };
   const body = { mode: mode, options: opts, text: $("text").value.trim() };
-  if (FROM_RECORDING) {
+
+  if (mode === "ltsession") {
+    const sid = body.text.trim();
+    if (!sid) return say("paste a session id first", "bad");
+    $("go").disabled = true;
+    say("fetching the session's recording...", "info");
+    try {
+      const { path } = await sessionToEngine(sid);
+      body.mode = "har";                 // it is a recording from here on
+      body.text = "";
+      body.file = { name: "session.har", path };
+    } catch (e) {
+      $("go").disabled = false;
+      const extra = e.guidance ? " " + e.guidance : "";
+      addLog("bad", e.message + extra);
+      return say(e.message + extra, "bad");
+    }
+  } else if (FROM_RECORDING) {
     // written onto the engine's filesystem, so the payload carries a path
     // rather than the recording itself
     const { path } = await streamRecordingToEngine();
@@ -213,6 +291,7 @@ $("go").onclick = async () => {
     STATE = data;
     STATE.session = null;          // there is no server session to refer to
     const nreq = (data.steps || []).filter((s) => s.method !== "webdriver").length;
+    await reportScale(data, nreq);
     addLog("ok", `plan built - ${nreq} request(s), ${data.size_kb} KB, ` +
                  `${(data.correlations || []).length} correlated`);
     for (const w of (data.verify && data.verify.warnings) || []) addLog("warn", w);

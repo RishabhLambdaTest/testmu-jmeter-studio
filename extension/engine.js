@@ -335,6 +335,36 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
   return JSON.parse(out);
 }
 
+
+/* The scale checklist, run on a finished plan.
+ *
+ * jmxgen.validate() prints its findings and returns a status, which is right
+ * for a console and useless to a page, so its output is captured here. It
+ * matters most for a converted session: nobody hand-reviews one, and a plan
+ * with thousands of samplers is an out-of-memory failure rather than a test. */
+async function lint(xml) {
+  const py = await boot();
+  py.globals.set("_xml", xml);
+  const out = await py.runPythonAsync(`
+import contextlib, io, json, os, tempfile
+import jmxgen
+d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
+open(p, "w", encoding="utf-8").write(_xml)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    jmxgen.validate(p)
+issues, notes = [], []
+for line in buf.getvalue().splitlines():
+    line = line.strip()
+    if line.startswith("!"):
+        issues.append(line.lstrip("! ").strip())
+    elif line.startswith("."):
+        notes.append(line.lstrip(". ").strip())
+json.dumps({"issues": issues, "notes": notes})
+`);
+  return JSON.parse(out);
+}
+
 async function rebuild(specJson, changes, edits) {
   const py = await boot();
   py.globals.set("_spec", specJson);
@@ -370,7 +400,8 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
 
 // Called directly by the page that hosts it; the message listener below is for
 // anything else in the extension that wants a plan built.
-window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, isReady: () => !!pyodide };
+window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, lint,
+                        isReady: () => !!pyodide };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.target !== "engine") return;
