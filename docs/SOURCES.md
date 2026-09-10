@@ -1,12 +1,13 @@
 # Sources
 
-Seven inputs produce the same thing: a valid JMeter `.jmx` with assertions,
+Eight inputs produce the same thing: a valid JMeter `.jmx` with assertions,
 extractors, a load profile and correlated tokens. Pick whichever matches what
 your team already has. You never need more than one.
 
 Every sample named below sits in [`sample/`](../sample/) and points at
 [dummyjson.com](https://dummyjson.com), a public API that needs no key, so a new
-user can try all seven on the day they install the extension.
+user can try the first seven on the day they install the extension. The eighth
+needs an automation session of your own.
 
 In the extension, open the popup and choose a source under *Author from something
 else*, or use the **Source** dropdown on the authoring page. That is all you need.
@@ -148,6 +149,25 @@ The plan comes back as an editable spec, so you can see what is in it, filter it
 and re-emit it clean. Anything jmxgen does not model is preserved as it was
 rather than dropped. For plans that are bloated or broken, `jmxgen optimize` is
 the companion.
+
+---
+
+## 8. TestMu AI sessions
+
+For when the test already ran.
+
+An automation session recorded with `"network.full.har": true` has captured
+everything a load test needs. Choose **TestMu AI session**, paste a session id or
+press **Load my sessions**, and the plan comes back grouped into the steps the
+test performed: `Open common/home`, `Type into product/search`,
+`Click checkout/cart/add`.
+
+Nothing is recorded and nothing is re-run. The account is the one the run page
+already stores.
+
+Selenium only for now, and the capability has to have been on when the session
+ran. [**Sessions**](SESSIONS.md) covers the whole thing, including what the
+conversion leaves out and why the other network logs cannot be used.
 
 ---
 

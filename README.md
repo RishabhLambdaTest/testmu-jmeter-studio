@@ -30,7 +30,8 @@ step by step, with screenshots.
 troubleshooting for every error the extension can produce and the permission
 questions a security review will ask.
 
-[**Sources**](docs/SOURCES.md) walks through all seven ways to author a plan.
+[**Sources**](docs/SOURCES.md) walks through all eight ways to author a plan,
+and [**Sessions**](docs/SESSIONS.md) covers authoring from an automation run.
 Each one has a sample in [`sample/`](sample/) you can run today.
 
 [**Recording**](docs/RECORDING.md) is the guided version of recording a journey
@@ -53,7 +54,7 @@ places BlazeMeter is ahead.
 
 ## What it does
 
-Seven sources feed the same authoring engine: a browser recording, curl commands,
+Eight sources feed the same authoring engine: a browser recording, curl commands,
 an OpenAPI or Swagger spec, a Postman collection, an Excel or CSV sheet, a list of
 page URLs, or a JMeter plan you already have.
 
@@ -113,7 +114,7 @@ nobody has to guess what is proven and what is merely written.
 | Path | State |
 |---|---|
 | Record a logged-in journey against a live public API | 8 requests, transactions preserved, the JWT from `POST /auth/login` correlated at high confidence |
-| All seven sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, existing `.jmx` |
+| All eight sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, existing `.jmx`, TestMu AI session |
 | The four artifacts | `.jmx` valid, Taurus YAML, Playwright with ranked locators, HAR |
 | The XML gate | a real plan passes; truncated, unclosed, non-JMeter, sampler-less, control-character and empty inputs are each refused by name |
 | Annotating while recording | assertions, extractors, transactions and drops all reach the plan |
@@ -138,7 +139,7 @@ job, and a build with the rule disabled reproduces the 403 exactly.
 |---|---|
 | `extension/` | the extension; load this folder unpacked, or zip it with `package.sh` |
 | `dist/` | the two builds, ready to hand out |
-| `docs/` | setup, sources, recording, comparison, screenshots |
+| `docs/` | setup, sources, sessions, recording, comparison, screenshots |
 | `sample/` | one input for every source, plus CSV, workload and mTLS samples |
 
 Two files in `extension/` are not web assets, and both belong to the
