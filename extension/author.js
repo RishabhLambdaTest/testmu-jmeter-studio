@@ -155,6 +155,9 @@ function syncInputs() {
     $("mode").value === "urls" ? "One URL per line" :
     $("mode").value === "ltsession" ? "Session id from the automation dashboard" : "Input";
   // filters only bite on sources that carry more than you asked for
+  $("ltBlock").hidden = $("mode").value !== "ltsession";
+  // a session id is one short line, not a paste area
+  $("text").rows = $("mode").value === "ltsession" ? 1 : 5;
   $("filters").hidden = !["har", "urls", "ltsession"].includes($("mode").value);
   // think times only exist in a recording, and they are the difference between
   // a load test and a spin loop, so the control sits with the load profile
@@ -183,14 +186,11 @@ function readFile(file) {
    author from, so nothing downstream changes. Credentials are the ones the
    run page already stores - the same LambdaTest account. */
 async function sessionToEngine(sid) {
-  const got = await chrome.storage.local.get("hxForm");
-  const saved = (got && got.hxForm) || {};
-  const user = (saved.user || "").trim();
-  const key = (saved.key || "").trim();
+  const { user, key } = ltCreds();
   if (!user || !key) {
-    throw new Error("no credentials saved - open Run on HyperExecute, " +
-                    "fill in your username and access key, and tick Remember");
+    throw new Error("fill in your TestMu AI username and access key above");
   }
+  await ltSaveCreds();
   const out = await window.LT.ltSessionHar(user, key, sid, {
     log: (m) => addLog("info", m),
     maxBytes: 120 * 1048576,
@@ -211,6 +211,66 @@ async function sessionToEngine(sid) {
   return { path, info: out };
 }
 
+
+
+/* ---- the TestMu AI account --------------------------------------------
+   Shared with the run page through the same stored form, so entering it in
+   either place is enough. Authoring from a session used to send people to the
+   run page and back, which is not a flow anyone should have to discover. */
+async function ltLoadCreds() {
+  const got = await chrome.storage.local.get("hxForm");
+  const saved = (got && got.hxForm) || {};
+  if (saved.user) $("ltUser").value = saved.user;
+  if (saved.remember !== false && saved.key) $("ltKey").value = saved.key;
+  $("ltRemember").checked = saved.remember !== false;
+}
+
+async function ltSaveCreds() {
+  const got = await chrome.storage.local.get("hxForm");
+  const form = Object.assign({}, (got && got.hxForm) || {});
+  form.user = $("ltUser").value.trim();
+  form.remember = $("ltRemember").checked;
+  form.key = $("ltRemember").checked ? $("ltKey").value.trim() : "";
+  await chrome.storage.local.set({ hxForm: form });
+}
+
+function ltCreds() {
+  return { user: $("ltUser").value.trim(), key: $("ltKey").value.trim() };
+}
+
+["ltUser", "ltKey"].forEach((id) => { $(id).onchange = ltSaveCreds; });
+$("ltRemember").onchange = ltSaveCreds;
+
+$("ltLoad").onclick = async () => {
+  const { user, key } = ltCreds();
+  if (!user || !key) return say("fill in the username and access key first", "bad");
+  $("ltLoad").disabled = true;
+  $("ltHint").textContent = "looking for your recent sessions…";
+  try {
+    await ltSaveCreds();
+    const rows = await window.LT.ltListSessions(user, key, 40);
+    if (!rows.length) {
+      $("ltHint").textContent = "no sessions on this account yet";
+      return;
+    }
+    $("ltPick").innerHTML = '<option value="">choose a session…</option>' +
+      rows.map((r) => {
+        const when = (r.when || "").slice(0, 16);
+        return `<option value="${esc(r.id)}">${esc(r.name)} — ${esc(r.status || "")} ${esc(when)}</option>`;
+      }).join("");
+    $("ltHint").textContent = rows.length + " recent session(s). " +
+      "Only ones run with network.full.har carry the traffic a plan needs.";
+  } catch (e) {
+    $("ltHint").textContent = "";
+    say(e.message || String(e), "bad");
+  } finally {
+    $("ltLoad").disabled = false;
+  }
+};
+
+$("ltPick").onchange = () => {
+  if ($("ltPick").value) { $("text").value = $("ltPick").value; save(); }
+};
 
 /* ---- will this plan survive being scaled? ------------------------------
    A converted session is nobody's hand-written plan, so the checks that used
@@ -742,6 +802,7 @@ async function takeRecording() {
 (async () => {
   await load();
   await loadModes();
+  await ltLoadCreds();   // so a saved account is already there
   await ping();                       // console check - cheap, and may fail
   // Boot the engine up front so the first Generate is not the slow one. The
   // status line only becomes accurate once this resolves, so ping again after.

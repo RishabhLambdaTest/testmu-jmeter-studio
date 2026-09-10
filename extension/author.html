@@ -55,6 +55,36 @@
       <label for="text" id="textLabel">Input</label>
       <textarea id="text" spellcheck="false"></textarea>
     </div>
+
+    <!-- Authoring from a session needs the same account the run page uses.
+         Asking for it here means the whole journey stays on one page. -->
+    <div id="ltBlock" hidden>
+      <div class="grid2">
+        <div>
+          <label for="ltUser">TestMu AI username</label>
+          <input type="text" id="ltUser" autocomplete="username" />
+        </div>
+        <div>
+          <label for="ltKey">Access key</label>
+          <input type="password" id="ltKey" autocomplete="current-password" />
+        </div>
+      </div>
+      <label class="chk"><input type="checkbox" id="ltRemember" checked />
+        Remember on this machine</label>
+      <p class="hint">The same account the run page uses. It is sent only to
+        api.lambdatest.com to read your own session logs.</p>
+      <div class="grid2">
+        <div>
+          <label for="ltPick">…or pick a recent session</label>
+          <select id="ltPick"><option value="">fill in the account first</option></select>
+        </div>
+        <div>
+          <label for="ltLoad">&nbsp;</label>
+          <button type="button" id="ltLoad">Load my sessions</button>
+        </div>
+      </div>
+      <p class="hint" id="ltHint"></p>
+    </div>
   </fieldset>
 
   <!-- shown only when authoring from a recording: an hour-long session is

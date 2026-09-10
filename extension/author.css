@@ -129,3 +129,8 @@ tr.inspector td { background: var(--surface); padding: 10px 12px; }
   font-size: 12px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
 }
 .nodetail { margin: 0 0 8px; }
+
+/* The session id is a single value, so the field should not look like a place
+   to paste a document. */
+textarea[rows="1"] { min-height: 0; height: 38px; resize: none;
+                     white-space: nowrap; overflow-x: auto; }
