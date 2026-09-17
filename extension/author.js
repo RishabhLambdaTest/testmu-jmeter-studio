@@ -8,16 +8,21 @@
 const $ = (id) => document.getElementById(id);
 /* [storage key, element id]. realThink moved key when its default became on,
    so an "off" saved by an older build is not inherited silently. */
-const CHECKS = [["realThink2", "realThink"], ["noCorrelate", "noCorrelate"]];
+const CHECKS = [["realThink2", "realThink"], ["noCorrelate", "noCorrelate"],
+                ["randomThink", "randomThink"], ["keepCookies", "keepCookies"],
+                ["embedded", "embedded"]];
 const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
               "loginBody", "loginToken", "csvFile", "csvCols", "threads", "ramp",
-              "dur", "planName"];
+              "dur", "planName", "parallel", "rulesText"];
 
 let MODES = {};
 const JMX_UPLOAD_LIMIT = 50 * 1048576;   // HyperExecute's per-.jmx upload limit
 let STATE = null;          // the last /api/author response
 let FILE = null;           // {name, content} of the picked file
 let FROM_RECORDING = false;  // author from what the recorder left on disk
+/* Set when the hosts were chosen by hand: the third-party rule would otherwise
+   drop the very host that was just ticked. */
+let HOSTS_CHOSEN = false;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -141,6 +146,7 @@ function syncInputs() {
   // a load test and a spin loop, so the control sits with the load profile
   // rather than folded away under filters
   $("thinkRow").hidden = !["har", "ltsession"].includes($("mode").value);
+  $("parallelRow").hidden = !$("embedded").checked;
   // validating builds nothing, so nothing about building applies
   const checking = $("mode").value === "jmx";
   ["optAuth", "optData", "loadBox"].forEach((id) => { $(id).hidden = checking; });
@@ -149,6 +155,11 @@ function syncInputs() {
   if (checking) $("results").hidden = true;
 }
 $("mode").onchange = () => { syncInputs(); save(); };
+// the parallel count only means anything when the resources are fetched
+$("embedded").onchange = () => {
+  $("parallelRow").hidden = !$("embedded").checked;
+  save();
+};
 
 $("file").onchange = async () => {
   const f = ($("file").files || [])[0];
@@ -262,7 +273,13 @@ $("go").onclick = async () => {
     include: $("include").value.trim(),
     exclude: $("exclude").value.trim(),
     real_think_time: $("realThink").checked,
+    randomize_think: $("randomThink").checked,
+    keep_cookies: $("keepCookies").checked,
+    embedded_resources: $("embedded").checked,
+    parallel_downloads: $("parallel").value.trim(),
     no_correlate: $("noCorrelate").checked,
+    rules_text: $("rulesText").value.trim(),
+    keep_third_party: HOSTS_CHOSEN,
     login_path: $("loginPath").value.trim(),
     login_body: $("loginBody").value.trim(),
     login_token: $("loginToken").value.trim(),
@@ -563,6 +580,7 @@ function render() {
   if (STATE.spec_yaml && document.activeElement !== $("specYaml")) {
     $("specYaml").value = STATE.spec_yaml;
   }
+  renderHosts();
   const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
@@ -620,6 +638,34 @@ function showTab(which) {
 }
 document.querySelectorAll(".tabs button").forEach((b) =>
   b.onclick = () => showTab(b.dataset.tab));
+
+/* ---- which hosts are in the plan ---------------------------------------
+   The engine picks the system under test and drops the rest, which is right
+   nearly always and wrong the once - a checkout on a payment host, an API on
+   its own subdomain. The recording knows every host it saw, so the choice can
+   be offered rather than only reported. */
+function renderHosts() {
+  const hosts = (STATE.report || {}).hosts || [];
+  $("hostsWrap").hidden = hosts.length < 2;
+  if (hosts.length < 2) return;
+  $("hostList").innerHTML = hosts.map((h) =>
+    `<label><input type="checkbox" data-host="${esc(h.host)}"${h.kept ? " checked" : ""} />` +
+    `<span>${esc(h.host)}</span>` +
+    `<span class="n">${h.seen} request(s)${h.kept ? `, <span class="kept">${h.kept} in the plan</span>` : ""}</span></label>`).join("");
+}
+
+$("hostsApply").onclick = async () => {
+  const want = [...$("hostList").querySelectorAll("input:checked")]
+    .map((el) => el.dataset.host);
+  if (!want.length) return say("tick at least one host", "bad");
+  // an include pattern is how the engine already filters; hosts are just a
+  // friendlier way to write one
+  $("include").value = "^https?://(" + want.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(/|:|$)";
+  $("filters").open = true;
+  HOSTS_CHOSEN = true;
+  await save();
+  await $("go").onclick();
+};
 
 /* ---- what to do with the plan ------------------------------------------ */
 

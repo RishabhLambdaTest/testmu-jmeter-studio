@@ -180,11 +180,29 @@ async function openInput(name) {
   };
 }
 
+/* A Python traceback is what the engine raises, and the whole of it belongs in
+   the log. What the page shows is its last line - "ValueError: upload a HAR"
+   reads as "upload a HAR" - because the reader is looking at their own input,
+   not at our stack. */
+async function runPy(py, code) {
+  try {
+    return await py.runPythonAsync(code);
+  } catch (e) {
+    const full = String((e && e.message) || e);
+    log(full);
+    const m = full.trim().split("\n").filter(Boolean).pop() || "";
+    const clean = m.replace(/^[\w.]*(Error|Exception):\s*/, "").trim();
+    const err = new Error(clean || full);
+    err.detail = full;
+    throw err;
+  }
+}
+
 async function author(payload) {
   const py = await boot();
   await prefetch(payload);
   py.globals.set("_payload", JSON.stringify(payload));
-  const out = await py.runPythonAsync(`
+  const out = await runPy(py, `
 import base64, json, os, tempfile, traceback
 import jmxgen
 
@@ -204,6 +222,11 @@ elif upload.get("content"):
     path = os.path.join(d, os.path.basename(upload.get("name") or "input"))
     with open(path, "wb") as fh:
         fh.write(base64.b64decode(upload["content"]))
+
+try:
+    _rules = jmxgen.load_rules_text(opts.get("rules_text") or "")
+except Exception as exc:
+    raise ValueError("correlation rules: %s" % exc)
 
 report = {"mode": mode}
 if mode == "openapi":
@@ -247,9 +270,14 @@ elif mode == "har":
         correlate=not opts.get("no_correlate"), mode=opts.get("traffic", "auto"),
         methods=opts.get("methods") or None,
         real_think_time=bool(opts.get("real_think_time")),
-        rules=jmxgen.load_rules(None))
+        randomize_think=bool(opts.get("randomize_think")),
+        embedded_resources=bool(opts.get("embedded_resources")),
+        parallel_downloads=int(opts.get("parallel_downloads") or 0),
+        keep_cookies=bool(opts.get("keep_cookies")),
+        rules=_rules)
     report.update({"kept": info["kept"], "total": info["total"],
                    "pages": info["pages"], "correlated": info["correlated"],
+                   "hosts": info.get("hosts", []),
                    "bodies_missing": info.get("bodies_missing", 0),
                    "no_response_bodies": info.get("no_response_bodies", False)})
 else:
@@ -313,7 +341,7 @@ json.dumps({
 async function rebuildYaml(yamlText) {
   const py = await boot();
   py.globals.set("_yaml", yamlText);
-  const out = await py.runPythonAsync(`
+  const out = await runPy(py, `
 import json, os, tempfile
 import jmxgen
 d = tempfile.mkdtemp(); sp = os.path.join(d, "spec.yaml")
@@ -345,7 +373,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
 async function lint(xml) {
   const py = await boot();
   py.globals.set("_xml", xml);
-  const out = await py.runPythonAsync(`
+  const out = await runPy(py, `
 import contextlib, io, json, os, tempfile
 import jmxgen
 d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
@@ -370,7 +398,7 @@ async function rebuild(specJson, changes, edits) {
   py.globals.set("_spec", specJson);
   py.globals.set("_changes", JSON.stringify(changes || {}));
   py.globals.set("_edits", JSON.stringify(edits || []));
-  const out = await py.runPythonAsync(`
+  const out = await runPy(py, `
 import json, os, tempfile
 import jmxgen
 spec = json.loads(_spec); changes = json.loads(_changes)

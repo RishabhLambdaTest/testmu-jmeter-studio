@@ -653,6 +653,8 @@ def build_http_sampler(s):
         bp("HTTPSampler.DO_MULTIPART_POST", s.get("multipart", False)),
         # embedded resources OFF unless explicitly asked: big memory cost
         bp("HTTPSampler.image_parser", s.get("embedded_resources", False)),
+        bp("HTTPSampler.concurrentDwn", bool(s.get("parallel_downloads"))),
+        sp("HTTPSampler.concurrentPool", s.get("parallel_downloads") or ""),
         sp("HTTPSampler.connect_timeout", s.get("connect_timeout", "")),
         sp("HTTPSampler.response_timeout", s.get("response_timeout", "")),
     ]
@@ -1708,6 +1710,9 @@ def _action_spec(act):
     """
     verb = act.get("do")
     out = {"do": verb}
+    # the tab it happened in, so a journey that opens a second tab replays there
+    if act.get("tab") is not None:
+        out["tab"] = act["tab"]
     if verb == "navigate":
         out["url"] = act.get("url")
         return out
@@ -1774,6 +1779,24 @@ a load test, it is a way to measure your own hardware.
 from playwright.sync_api import sync_playwright, expect
 
 
+def tab(context, index, current):
+    """The index-th tab this journey opened, waiting for it to exist.
+
+    A click with target=_blank opens a tab; the recording knows the step
+    happened there, and replaying it in the first tab would click the wrong
+    page. Without a context (someone calling run(page) by hand) the current
+    page is kept."""
+    if context is None:
+        return current
+    for _ in range(50):
+        if len(context.pages) > index:
+            p = context.pages[index]
+            p.bring_to_front()
+            return p
+        current.wait_for_timeout(100)
+    return current
+
+
 def first_of(page, locators, timeout=5000):
     """The first locator that is actually present.
 
@@ -1794,8 +1817,24 @@ def first_of(page, locators, timeout=5000):
 
 def spec_to_playwright(spec, filename="browser_test.py"):
     """Render the webdriver steps of a spec as a runnable Playwright script."""
-    body = [PW_PRELUDE % {"file": filename}, "", "def run(page):"]
+    body = [PW_PRELUDE % {"file": filename}, "", "def run(page, context=None):"]
     wrote = False
+    # tab id -> the order it first appeared, which is its index in context.pages
+    tabs, cur_tab = {}, [None]
+
+    def switch_for(act):
+        t = act.get("tab")
+        if t is None:
+            return []
+        if t not in tabs:
+            tabs[t] = len(tabs)
+        if cur_tab[0] == t:
+            return []
+        first, cur_tab[0] = cur_tab[0] is None, t
+        if first and tabs[t] == 0:
+            return []
+        return ["    page = tab(context, %d, page)   # the journey moved to another tab"
+                % tabs[t]]
     for tg in spec.get("thread_groups") or []:
         for node in tg.get("steps") or []:
             if node.get("transaction"):
@@ -1807,6 +1846,7 @@ def spec_to_playwright(spec, filename="browser_test.py"):
                 for step in inner:
                     body.append("    # %s" % step.get("name", ""))
                     for act in step.get("actions") or []:
+                        body += switch_for(act)
                         body += _pw_action(act)
                     think = step.get("think_time")
                     if isinstance(think, dict):
@@ -1816,6 +1856,7 @@ def spec_to_playwright(spec, filename="browser_test.py"):
                     wrote = True
             elif node.get("type") == "webdriver":
                 for act in node.get("actions") or []:
+                    body += switch_for(act)
                     body += _pw_action(act)
                 wrote = True
     if not wrote:
@@ -1828,9 +1869,10 @@ def spec_to_playwright(spec, filename="browser_test.py"):
         "if __name__ == '__main__':",
         "    with sync_playwright() as pw:",
         "        browser = pw.chromium.launch(headless=%s)" % headless,
-        "        page = browser.new_page()",
+        "        context = browser.new_context()",
+        "        page = context.new_page()",
         "        try:",
-        "            run(page)",
+        "            run(page, context)",
         "            print('browser test passed')",
         "        finally:",
         "            browser.close()",
@@ -1927,6 +1969,30 @@ CORRELATION_RULES = [
                                       r"^PHPSESSID$", r"^ASP\.NET_SessionId$"],
      "confidence": "medium"},
 ]
+
+
+def load_rules_text(text):
+    """A rule pack pasted in rather than read from a file: JSON or YAML, either
+    a list of rules or {"rules": [...]}. User rules are tried before the
+    built-in ones, so a pack can override a default."""
+    text = (text or "").strip()
+    if not text:
+        return list(CORRELATION_RULES)
+    try:
+        extra = json.loads(text)
+    except ValueError:
+        if not _have_yaml():
+            raise ValueError("the rules are not valid JSON (and PyYAML is not available)")
+        import yaml
+        extra = yaml.safe_load(text)
+    if isinstance(extra, dict):
+        extra = extra.get("rules") or []
+    if not isinstance(extra, list):
+        raise ValueError("the rules must be a list, or an object with a \"rules\" list")
+    for r in extra:
+        if not isinstance(r, dict) or not r.get("fields") or not r.get("extract"):
+            raise ValueError("each rule needs \"fields\" and \"extract\"")
+    return list(extra) + list(CORRELATION_RULES)
 
 
 def load_rules(path=None):
@@ -2453,7 +2519,9 @@ def uncorrelate(spec, correlations, reject_vars):
 def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=None,
                 pages=True, drop_third_party=True, keep_trackers=False,
                 correlate=True, think_time=None, mode="auto", methods=None,
-                real_think_time=False, max_think_ms=30000, rules=None):
+                real_think_time=False, max_think_ms=30000, rules=None,
+                randomize_think=False, embedded_resources=False,
+                parallel_downloads=0, keep_cookies=False):
     har = json.load(open(har_path, "r", encoding="utf-8-sig"))
     log = har.get("log", {})
     entries = log.get("entries", [])
@@ -2545,6 +2613,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
                 no_follow.add(pidx)
 
     skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0}
+    kept_by_host = {}
 
     for idx, e in enumerate(entries):
         req = e.get("request") or {}
@@ -2614,6 +2683,11 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
                 # one UA for the whole plan, not one per sampler
                 user_agents[h.get("value", "")] = user_agents.get(h.get("value", ""), 0) + 1
                 continue
+            if keep_cookies and n.lower() == "cookie":
+                # the recorded values, as the browser sent them. JMeter's cookie
+                # manager still overwrites any the server sets again.
+                hdrs[n] = h.get("value", "")
+                continue
             if n.startswith(":") or n.lower() in (
                     "host", "content-length", "cookie", "connection", "accept-encoding",
                     "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user",
@@ -2670,12 +2744,19 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         if gname not in groups:
             groups[gname] = []
             order.append(gname)
+        kept_by_host[host] = kept_by_host.get(host, 0) + 1
         groups[gname].append(step)
         kept.append(idx)
         steps_by_entry[idx] = step
         if ann.get("pause_after_ms"):
             groups[gname].append({"pause": int(ann["pause_after_ms"]),
                                   "name": "Pause after %s" % step["name"][:40]})
+
+    if embedded_resources or parallel_downloads:
+        for st_ in steps_by_entry.values():
+            st_["embedded_resources"] = bool(embedded_resources)
+            if parallel_downloads:
+                st_["parallel_downloads"] = int(parallel_downloads)
 
     for pidx in no_follow:
         st_ = steps_by_entry.get(pidx)
@@ -2684,6 +2765,14 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
 
     if real_think_time:
         _apply_real_think_times(groups, order, max_think_ms)
+
+    if randomize_think:
+        # a fixed pause is a metronome: every user of a hundred hits the same
+        # endpoint at the same instant. Spread each one +/-50%.
+        for st_ in steps_by_entry.values():
+            t = st_.get("think_time")
+            if isinstance(t, (int, float)) and t > 0:
+                st_["think_time"] = {"min": int(t * 0.5), "max": int(t * 1.5)}
 
     correlated = (_correlate(entries, kept, steps_by_entry, rules=rules)
                   if correlate else [])
@@ -2722,6 +2811,16 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     # field. They become a second thread group: one user, running the journey in
     # a real browser, next to the protocol group that carries the load.
     recorded = ((log.get("_jmxgen") or {}).get("actions")) or []
+    if recorded and (recorded[0].get("do") != "navigate"):
+        # The recorder attaches to a tab that is already open, or opens one and
+        # navigates it itself, so the first page load is not a recorded action.
+        # Without it the browser test starts on a blank page and clicks nothing.
+        first_url = next((entries[i].get("request", {}).get("url") for i in kept
+                          if entries[i].get("request", {}).get("url")), None)
+        if first_url:
+            recorded = [{"do": "navigate", "url": first_url,
+                         "transaction": recorded[0].get("transaction"),
+                         "tab": recorded[0].get("tab")}] + list(recorded)
     if recorded:
         # Tagged as a browser group, and emitted into the .jmx only when the
         # spec explicitly asks for WebDriver samplers. It is always available
@@ -2750,7 +2849,11 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     return spec, {"kept": len(kept), "total": len(entries), "skipped": skipped,
                   "correlated": correlated, "pages": len(order),
                   "actions": len(recorded), "bodies_missing": bodies_missing,
-                  "no_response_bodies": no_response_bodies}
+                  "no_response_bodies": no_response_bodies,
+                  # every host the recording touched, so the page can offer the
+                  # choice instead of only reporting what was decided
+                  "hosts": [{"host": h, "seen": n, "kept": kept_by_host.get(h, 0)}
+                            for h, n in sorted(hosts.items(), key=lambda kv: -kv[1])]}
 
 
 # --------------------------------------------------------------------------

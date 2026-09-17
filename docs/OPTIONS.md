@@ -178,6 +178,46 @@ stops the plan from replacing them with `${VARIABLES}`.
 Most of the time, leaving this off is what makes the plan work at all: replayed
 verbatim, a recorded session token has already expired.
 
+### Correlation rules of your own
+
+A rule says: a request field named like *this* carries a server-issued value,
+and here is exactly how to pull it back out of the response. Built-in rules
+cover ASP.NET ViewState, JSF, Rails, OAuth and the rest; a framework of your own
+takes a pack of your own, as JSON or YAML:
+
+```json
+[{"name": "my-csrf",
+  "fields": ["^csrf$"],
+  "extract": {"type": "boundary", "left": "name=\"csrf\" value=\"", "right": "\""},
+  "confidence": "high"}]
+```
+
+`fields` are regular expressions matched against the request field's name.
+`extract` is `boundary` (left/right), `regex` (one capturing group) or `json`
+(a JSON path). Your rules are tried before the built-in ones, so a pack can
+override a default, and a rule that fires is named in the Correlations tab
+instead of "heuristic".
+
+### Keep the recorded cookie values
+
+Off by default: cookies are left to JMeter's cookie manager, which collects
+whatever the server sets during the run, as a browser would. On, the plan also
+sends the `Cookie` header exactly as recorded, which is what you want when a
+value is set outside the journey - a consent flag, a feature toggle, an
+A/B bucket. A cookie the server sets again still wins.
+
+### Fetch each page's images, CSS and scripts
+
+Off by default. On, every sampler parses the HTML it receives and fetches the
+referenced resources the way a browser does, with *Parallel downloads*
+controlling how many at once (6 if blank). The requests do not appear in the
+plan: JMeter finds them at run time, and reports them inside the parent
+sampler's time.
+
+Use it when you want a page's true weight without a sampler per asset. Leave it
+off when you want the plan to say exactly what it sends: it costs memory on the
+engine, and a page that pulls 80 assets multiplies your request count by 80.
+
 ## Authentication
 
 Three fields that turn one recorded login into a login that runs once per virtual
@@ -254,6 +294,26 @@ fifty behaving like people, and it will pin a CPU on a small engine.
 Slack message, and that pause is now in the plan, so 500 users each sit idle
 for 47 seconds and throughput collapses. Either re-record cleanly, or turn this
 off and pace the test with the load profile instead.
+
+### Randomise the think times
+
+Off by default, and only useful with the think times on. A fixed pause is a
+metronome: five hundred users who started together stay together, and hit each
+endpoint in the same instant for the whole run. On, each pause becomes a range
+of half to one and a half times what was recorded, so the users spread out. The
+average pacing is unchanged.
+
+### Hosts in this recording
+
+Under the results, once a plan exists. A recording touches every host the page
+did - the application, its CDN, whatever analytics it loads - and the plan keeps
+the busiest one that is not a tracker. The list shows every host with how many
+requests it made and how many are in the plan; tick the ones you want and press
+**Rebuild with these hosts**.
+
+Use it when the journey spans two hosts of yours: a checkout on a payment
+domain, an API on its own subdomain. Ticking a host also stops the third-party
+rule dropping it.
 
 ## What comes out
 

@@ -102,6 +102,18 @@
            <input type="text" id="exclude" placeholder="regex - drop URLs matching" /></div>
     </div>
     <label class="chk"><input type="checkbox" id="noCorrelate" /> Skip correlation</label>
+    <label for="rulesText">Correlation rules of your own (JSON or YAML)</label>
+    <textarea id="rulesText" rows="3" spellcheck="false"
+              placeholder="a list of rules; each needs fields and extract. Yours are tried before the built-in ones."></textarea>
+    <p class="hint">Example: <code>[{"name":"my-csrf","fields":["^csrf$"],"extract":{"type":"boundary","left":"name=\"csrf\" value=\"","right":"\""},"confidence":"high"}]</code></p>
+    <label class="chk"><input type="checkbox" id="keepCookies" />
+      Keep the recorded cookie values (the server's own still win)</label>
+    <label class="chk"><input type="checkbox" id="embedded" />
+      Fetch each page's images, CSS and scripts, as a browser does</label>
+    <div class="grid2" id="parallelRow" hidden>
+      <div><label for="parallel">Parallel downloads</label>
+           <input type="text" id="parallel" placeholder="6 if blank" /></div>
+    </div>
   </details>
 
   <details id="optAuth">
@@ -138,6 +150,8 @@
     <div id="thinkRow" hidden>
       <label class="chk"><input type="checkbox" id="realThink" checked />
         Use the think times from the recording</label>
+      <label class="chk"><input type="checkbox" id="randomThink" />
+        Randomise them by &plusmn;50%, so users do not move in lockstep</label>
       <p class="hint">Without them each user replays the journey as fast as the
          server answers. That is a stress test rather than a load test, and a
          couple of users are enough to pin a CPU.</p>
@@ -160,6 +174,14 @@
       <button data-tab="checks">Checks</button>
     </div>
     <div class="tabbody" id="tabbody"></div>
+
+    <details id="hostsWrap" hidden>
+      <summary>Hosts in this recording</summary>
+      <p class="hint">Ticked hosts are in the plan. The pick is automatic - the
+         busiest host that is not a tracker - and this is where to change it.</p>
+      <div id="hostList" class="hosts"></div>
+      <div class="acts"><button id="hostsApply">Rebuild with these hosts</button></div>
+    </details>
 
     <fieldset>
       <legend>Save</legend>

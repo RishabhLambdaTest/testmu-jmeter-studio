@@ -367,6 +367,9 @@
       return;
     }
     setVisible(true);
+    // the red dot stops pulsing while paused, and the panel says so
+    const dot = root.querySelector(".jg-dot");
+    if (dot) dot.classList.toggle("paused", !!status.paused);
     const c = root.querySelector("#jg-count");
     if (c) c.textContent = String(status.count);
     const tx = root.querySelector("#jg-tx");
@@ -375,7 +378,8 @@
        the panel has to say which one that is. Without it you are annotating
        blind and only find out on the results page. */
     const last = root.querySelector("#jg-last");
-    if (last) last.textContent = status.lastUrl
+    if (last && status.paused) last.textContent = "paused - nothing is being recorded";
+    else if (last) last.textContent = status.lastUrl
       ? "last: " + shortUrl(status.lastUrl)
       : "nothing captured yet";
   }

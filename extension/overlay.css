@@ -26,6 +26,9 @@
 #jmxgen-overlay .jg-title i { font-style: normal; color: #121212; font-weight: 700; }
 #jmxgen-overlay .jg-min:hover  { background: #9a6700; color: #fff; }
 #jmxgen-overlay .jg-max:hover  { background: #1f883d; color: #fff; }
+/* paused: the dot stops pulsing and goes grey */
+#jmxgen-overlay .jg-dot.paused { animation: none; background: #6e7781;
+                                 box-shadow: 0 0 0 3px rgba(110,119,129,.18); }
 #jmxgen-overlay .jg-dot {
   width: 7px; height: 7px; border-radius: 50%; background: #cf222e;
   box-shadow: 0 0 0 3px rgba(207,34,46,.18); flex: none;

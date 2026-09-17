@@ -50,6 +50,12 @@ tree.
 | Skip last | drops that request from the plan |
 | + Manual request… | a request you type in, one that never happened but has to be in the test |
 
+**Pause** in the popup stops recording without ending the session: nothing that
+happens meanwhile is captured, and the panel's dot goes grey. It is for the
+parts of a journey that should not be in the test - signing in by hand,
+dismissing a cookie banner, fixing test data - and for the moment when you want
+to look something up mid-recording. Press it again to carry on.
+
 Drag the panel by its title bar. The `–` button hides it, and it comes back on
 the next captured request or from the popup.
 

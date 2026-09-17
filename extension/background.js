@@ -56,6 +56,7 @@ function freshState(tabId, transaction) {
     tabIds: [tabId],          // + any popup/new tab opened from it
     startedAt: Date.now(),
     transaction: tx,
+    paused: false,
     transactions: [tx],
     pending: {},         // requestId -> partial entry, in memory only
     actions: [],         // recorded browser steps, in order
@@ -211,6 +212,10 @@ function onEvent(source, method, params) {
     return;
   }
   if (!(state.tabIds || [state.tabId]).includes(source.tabId)) return;
+  // Paused keeps the debugger attached - detaching would lose the requests
+  // already in flight and make the page reload to re-attach - and simply
+  // stops recording what happens meanwhile.
+  if (state.paused) return;
   sweepPending();
 
   if (method === "Network.requestWillBeSent") {
@@ -430,6 +435,7 @@ function statusPayload() {
   return state
     ? {
         recording: !state.stopped,
+        paused: !!state.paused && !state.stopped,
         count: state.count || 0,
         actions: (state.actions || []).length,
         unsaved: (state.count || 0) > 0 && !state.exported,
@@ -862,7 +868,7 @@ chrome.debugger.onDetach.addListener((source) => {
   if (state && source.tabId === state.tabId) broadcast();
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "make-blob-url") return;   // handled by offscreen.html
   (async () => {
     await restore();
@@ -879,6 +885,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ok: true,
             data: await startAtUrl(msg.url, msg.transaction),
           });
+        case "setPaused": {
+          if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
+          state.paused = !!msg.paused;
+          await persist();
+          broadcast();
+          return sendResponse({ ok: true, data: statusPayload() });
+        }
         case "stop":
           return sendResponse({ ok: true, data: await stop() });
         case "status":
@@ -891,7 +904,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await harHandoff(msg.options) });
         case "guiAction": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
+          if (state.paused) return sendResponse({ ok: true, data: { actions: state.actions.length } });
           const a = msg.action || {};
+          // which tab it happened in: a journey that opens a second tab has to
+          // replay in a second tab too
+          a.tab = (sender && sender.tab && sender.tab.id) || state.tabId;
           // a click straight after typing in the same field is the blur, not a
           // separate step the user meant to record
           const prev = state.actions[state.actions.length - 1];

@@ -54,7 +54,8 @@ function render(s) {
   $("dot").className = "dot" + (on ? " on" : "");
   $("count").textContent = s ? s.count : 0;
   $("sub").textContent = on
-    ? `recording · ${s.transaction || "Recorded"}`
+    ? (s.paused ? `paused · ${s.transaction || "Recorded"}`
+                : `recording · ${s.transaction || "Recorded"}`)
     : s && s.count
     ? unsaved
       ? "stopped · not saved yet"
@@ -64,6 +65,8 @@ function render(s) {
   $("start").hidden = on;
   $("urlblock").hidden = on;
   $("stop").hidden = !on;
+  $("pause").hidden = !on;
+  $("pause").textContent = (s && s.paused) ? "Resume recording" : "Pause recording";
   $("reset").hidden = !(s && s.count);
   $("export").disabled = !(s && s.count);
   refreshButtons();
@@ -89,6 +92,16 @@ $("url").addEventListener("keydown", (e) => {
 $("start").onclick = async () => {
   const r = await send({ type: "start" });
   say(r.ok ? "recording - browse the app" : r.error, !r.ok);
+  render(r.ok ? r.data : null);
+};
+
+/* Pause keeps the session and the attachment; nothing in between is recorded.
+   The place to stop for a moment - log in by hand, clear a cookie banner -
+   without starting a second recording afterwards. */
+$("pause").onclick = async () => {
+  const paused = $("pause").textContent.startsWith("Pause");
+  const r = await send({ type: "setPaused", paused });
+  say(r.ok ? (paused ? "paused - nothing is being recorded" : "recording again") : r.error, !r.ok);
   render(r.ok ? r.data : null);
 };
 
