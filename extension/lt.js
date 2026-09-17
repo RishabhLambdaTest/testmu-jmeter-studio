@@ -19,6 +19,26 @@
 
 const LT_BASE = "https://api.lambdatest.com/automation/api/v1";
 
+/* How much of a session this will read. A browser tab has one heap, and a
+   session large enough to pass these makes a plan nobody would run anyway.
+   Every limit is checked before the bytes it guards are fetched where that is
+   possible, and the message names the size and the limit. */
+const LT_LIMITS = {
+  zipBytes: 120 * 1048576,        // the full-har archive as downloaded
+  inflatedBytes: 400 * 1048576,   // all of its captures, unzipped
+  memberBytes: 100 * 1048576,     // any one capture, unzipped
+  plainBytes: 50 * 1048576,       // network.har, which is parsed in one piece
+  requests: 20000,                // samplers the plan would end up with
+};
+const LT_MB = (n) => (n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0) + " MB";
+
+function ltTooBig(what, size, limit, hint) {
+  const e = new Error(`${what} is ${LT_MB(size)}, over the ${LT_MB(limit)} limit. ` +
+                      (hint || "Pick a shorter session."));
+  e.tooBig = size;
+  return e;
+}
+
 /* Hosts that are never the system under test. Converting without this points a
    thousand-user run at other people's production services.
 
@@ -416,27 +436,106 @@ function ltNoteRepeats(entries, log) {
 }
 
 
+/* ---- the plain HAR -----------------------------------------------------
+   network.har is what a session without full-har still has. It comes back as
+   JSON in one piece ({status, message, data: <the HAR>}), with no ranges, so
+   the size is enforced while it streams in rather than after. It carries no
+   request or response bodies. */
+async function ltPlainEntries(user, key, sid, log) {
+  const r = await ltFetch(LT_BASE + "/sessions/" + sid + "/log/network.har", ltHeaders(user, key));
+  const declared = parseInt(r.headers.get("Content-Length") || "0", 10);
+  if (declared > LT_LIMITS.plainBytes) {
+    throw ltTooBig("this session's network.har", declared, LT_LIMITS.plainBytes);
+  }
+  const reader = r.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    got += value.length;
+    if (got > LT_LIMITS.plainBytes) {
+      reader.cancel().catch(() => {});
+      throw ltTooBig("this session's network.har", got, LT_LIMITS.plainBytes);
+    }
+    chunks.push(value);
+  }
+  log("network.har is " + LT_MB(got));
+  let j;
+  try {
+    j = JSON.parse(await new Blob(chunks).text());
+  } catch (e) {
+    throw new Error("the session's network.har is not valid JSON");
+  }
+  const d = (j && j.data) || j || {};
+  const entries = (d.log && d.log.entries) || d.entries || null;
+  if (!Array.isArray(entries)) {
+    throw new Error((j && j.message) || "the session returned no network.har");
+  }
+  return { entries, bytes: got };
+}
+
 /* ---- the whole thing --------------------------------------------------- */
 async function ltSessionHar(user, key, sid, opts) {
   opts = opts || {};
   const log = opts.log || function () {};
-  const probe = await ltProbe(user, key, sid);
-  if (!probe.ok) {
-    const err = new Error(probe.message);
-    err.guidance = "Re-run the test with network.full.har: true in the capabilities.";
-    throw err;
-  }
-  log("archive is " + (probe.bytes / 1048576).toFixed(1) + " MB");
-  if (opts.maxBytes && probe.bytes > opts.maxBytes) {
-    const e = new Error("this session's archive is " +
-      (probe.bytes / 1048576).toFixed(0) + " MB, over the " +
-      (opts.maxBytes / 1048576).toFixed(0) + " MB limit");
-    e.tooBig = probe.bytes;
-    throw e;
-  }
 
-  const members = await ltZipIndex(user, key, sid, probe.bytes);
-  log(members.length + " capture file(s) in the archive");
+  /* full-har first: only it has the bodies a plan needs to send POSTs and to
+     correlate. Without it, network.har still gives the requests themselves. */
+  const probe = await ltProbe(user, key, sid);
+  const full = probe.ok;
+  let raw = [];
+  let bytes = 0;
+  if (full) {
+    bytes = probe.bytes;
+    log("full-har archive is " + LT_MB(bytes));
+    const zipLimit = opts.maxBytes || LT_LIMITS.zipBytes;
+    if (bytes > zipLimit) throw ltTooBig("this session's archive", bytes, zipLimit);
+    const members = await ltZipIndex(user, key, sid, bytes);
+    log(members.length + " capture file(s) in the archive");
+    const inflated = members.reduce((n, m) => n + m.usize, 0);
+    const biggest = members.reduce((n, m) => Math.max(n, m.usize), 0);
+    if (biggest > LT_LIMITS.memberBytes) {
+      throw ltTooBig("one capture in this session", biggest, LT_LIMITS.memberBytes);
+    }
+    if (inflated > LT_LIMITS.inflatedBytes) {
+      throw ltTooBig("this session's captures, unzipped,", inflated, LT_LIMITS.inflatedBytes);
+    }
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      let text;
+      try {
+        text = await ltMemberText(user, key, sid, m);
+      } catch (e) {
+        log("skipped " + m.name + ": " + e.message);
+        continue;
+      }
+      try {
+        const es = (JSON.parse(text).log || {}).entries || [];
+        for (const e of es) raw.push(ltStripBody(e));
+      } catch (e) {
+        log("skipped " + m.name + ": it is not valid HAR JSON");
+      }
+      text = null;
+      if (opts.onProgress) opts.onProgress(i + 1, members.length, raw.length);
+    }
+  } else {
+    log("no full-har for this session (" + probe.message + ") - reading network.har instead");
+    let plain;
+    try {
+      plain = await ltPlainEntries(user, key, sid, log);
+    } catch (e) {
+      if (e.tooBig) throw e;
+      const err = new Error("this session has neither full-har nor a readable network.har: " + e.message);
+      err.guidance = "Re-run the test with network.full.har: true in the capabilities.";
+      throw err;
+    }
+    raw = plain.entries;
+    bytes = plain.bytes;
+    log("network.har has no request or response bodies: POST bodies will be " +
+        "empty and nothing can be correlated. Re-run with network.full.har: true " +
+        "for a plan that can");
+  }
 
   const steps = await ltSteps(user, key, sid);
   const annotated = steps.filter(function (s) { return s.fromAnnotation; }).length;
@@ -450,32 +549,14 @@ async function ltSessionHar(user, key, sid, opts) {
 
   const entries = [];
   const hosts = new Map();
-  for (let i = 0; i < members.length; i++) {
-    const m = members[i];
-    let text;
-    try {
-      text = await ltMemberText(user, key, sid, m);
-    } catch (e) {
-      log("skipped " + m.name + ": " + e.message);
-      continue;
-    }
-    let es;
-    try {
-      es = (JSON.parse(text).log || {}).entries || [];
-    } catch (e) {
-      log("skipped " + m.name + ": it is not valid HAR JSON");
-      continue;
-    }
-    text = null;
-    for (const e of es) {
-      const url = (e.request && e.request.url) || "";
-      const host = (url.split("/")[2] || "").toLowerCase();
-      if (!host) continue;
-      hosts.set(host, (hosts.get(host) || 0) + 1);
-      entries.push(ltStripBody(e));
-    }
-    if (opts.onProgress) opts.onProgress(i + 1, members.length, entries.length);
+  for (const e of raw) {
+    const url = (e.request && e.request.url) || "";
+    const host = (url.split("/")[2] || "").toLowerCase();
+    if (!host) continue;
+    hosts.set(host, (hosts.get(host) || 0) + 1);
+    entries.push(e);
   }
+  raw = null;
   log(entries.length + " request(s) captured across " + hosts.size + " host(s)");
 
   const ranked = Array.from(hosts.entries())
@@ -616,6 +697,13 @@ async function ltSessionHar(user, key, sid, opts) {
     }
   }
 
+  if (finalEntries.length > LT_LIMITS.requests) {
+    const e = new Error(`this session would make a plan of ${finalEntries.length} requests, ` +
+                        `over the ${LT_LIMITS.requests} limit. Pick a shorter session, or another host.`);
+    e.tooBig = finalEntries.length;
+    throw e;
+  }
+
   return {
     har: {
       log: {
@@ -632,7 +720,8 @@ async function ltSessionHar(user, key, sid, opts) {
     beforeCollapse: kept.length,
     named: steps.length > 0,
     source: source,
-    bytes: probe.bytes,
+    bytes: bytes,
+    fullHar: full,
   };
 }
 

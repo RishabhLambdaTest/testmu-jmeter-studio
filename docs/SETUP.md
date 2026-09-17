@@ -210,10 +210,8 @@ no recording is needed.
 The session is read with the TestMu AI account you are signed in to. The plan
 arrives grouped into the steps the test performed.
 
-This works only for a session whose run had `"network.full.har": true` in its
-capabilities. Without it the session records no request or response bodies, and
-a plan built from that would send empty POSTs and correlate nothing, so it is
-refused rather than produced. Selenium only for now.
+A session whose run had `"network.full.har": true` in its capabilities gives a
+complete plan. A session without it still converts, from its `network.har`, but that log has no request or response bodies: the plan sends its POSTs empty and correlates nothing. The page says so as loudly as an error. Selenium only for now.
 
 [SESSIONS.md](SESSIONS.md) covers it fully.
 
@@ -256,7 +254,8 @@ and an upload that would carry a plan no XML parser can read is refused here
 rather than failing on a runner ten minutes later. The log says
 `plan.jmx parses as a JMeter plan` for each one. Then the files go up: the plan,
 plus any CSV, plugin jar or `system.properties` you attached, each named in the
-log as it goes. This is also the step that proves your account can run jobs, since
+log as it goes. More than 20 files or 200 MB goes up in several requests, and the
+log numbers them. This is also the step that proves your account can run jobs, since
 it is authenticated exactly like the trigger that follows.
 
 **4. The trigger.** The run configuration is turned into one job request, which
@@ -280,9 +279,9 @@ when you are staging files for a scheduled one.
 | New project name | Anything. Creating a project that already exists is an error, so… |
 | …or existing project ID | …paste an ID here instead to add a run to a project you have. Fill in one or the other, never both |
 | Name for the recorded plan | The filename the `.jmx` gets on the runner |
-| Add .jmx, .jar, .properties or data files | Anything else the run needs: a CSV of test data, a plugin jar the log asked for, a `system.properties` |
+| Add: Files or A folder | Anything else the run needs: a CSV of test data, a plugin jar the log asked for, a `system.properties`. *A folder* uploads a whole suite with its folder paths. A `.jmx` can be at most 50 MB; a larger set is sent in several requests of at most 200 MB and 20 files |
 | Which .jmx should the job run | Pick one, when more than one was uploaded |
-| Regions | `eastus` by default. Comma-separate them for a multi-region run, and each region gets its own copy of the job |
+| Regions and traffic | East US by default. **+ Add region** for a multi-region run; each region takes its % share of *Max users* |
 | Max users (total VU) | Total virtual users across the whole job |
 | Max users per engine | How many each machine carries. Total divided by this is how many machines start |
 | Ramp-up, Duration | Seconds. Both override whatever the `.jmx` says |
@@ -347,7 +346,9 @@ Every error the extension can produce, what it actually means, and what to do.
 
 | What you see | What it means |
 |---|---|
-| "Network full har logs are not available. Please set network.full.har: true in caps" | The run that produced this session did not capture full HAR. Nothing can be recovered after the fact; re-run the test with the capability on |
+| "plan built from network.har only" | The run that produced this session did not capture full HAR, so the plan has the requests but no bodies. Re-run the test with `network.full.har: true` for a plan that can log in and submit |
+| "this session has neither full-har nor a readable network.har" | Nothing usable was recorded. Re-run the test with the capability on |
+| "… is N MB, over the M MB limit" | The session is larger than a tab can convert. Pick a shorter session. [SESSIONS.md](SESSIONS.md#size) lists the limits |
 | "the credentials were refused (401)" | Your TestMu AI sign-in has ended. Reload the page and sign in again |
 | "those credentials cannot read this session (403)" | The session belongs to another account or organisation than the one you are signed in to |
 | "HTTP 500 from the session log API" | The log service failed. Requests already retry, so try again in a moment; roughly one call in ten fails on a large sample |
@@ -397,7 +398,9 @@ Every error the extension can produce, what it actually means, and what to do.
 | "Could not check your sign-in" | The account service could not be reached. Check the network and reload |
 | "nothing to upload - author a plan or add a file" | You reached the run page without a plan. Author one, or attach a `.jmx` with *Add files* |
 | "choose which .jmx the job should run" | More than one `.jmx` was uploaded, so pick the entry point |
-| "pick at least one region" | Regions is empty. `eastus` is a safe default |
+| "a region has a 0% share" | A region row was added and left at 0%. Give it some traffic or remove it |
+| "… a .jmx can be at most 50 MB" | HyperExecute refuses a plan that large. Filter the traffic or split the journey |
+| "the upload was refused as too large (413)" | A request went over 200 MB. The page splits uploads to stay under it, so this points at a limit in front of HyperExecute; upload fewer files at once |
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
 | The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
 | The job runs but the report is empty, and JMeter logged `Error generating the report: NullPointerException` | Zero samplers ran, so there is no data to report and HyperExecute still marks the job passed. Before 1.3.5 a recording with browser steps put a Chrome driver config at plan level, which runs for every thread in every group: with no chromedriver on the runner it killed the protocol samplers too. From 1.3.5 the `.jmx` is protocol-only and the journey ships as the Playwright script instead. Re-author the recording on 1.3.5 |

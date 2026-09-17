@@ -64,16 +64,35 @@
     <input type="text" id="planName" placeholder="plan.jmx if blank" />
     <label>Files to upload</label>
     <div class="files" id="fileList"></div>
-    <label>Add .jmx, .jar, .properties or data files</label>
-    <input type="file" id="files" multiple accept=".jmx,.jar,.properties,.csv,.json,.txt,.xml" />
+    <label>Add</label>
+    <div class="uptype" role="radiogroup" aria-label="What to add">
+      <label class="chk"><input type="radio" name="uptype" value="files" checked /> Files</label>
+      <label class="chk"><input type="radio" name="uptype" value="folder" /> A folder</label>
+    </div>
+    <div id="pickFiles">
+      <input type="file" id="files" multiple accept=".jmx,.jar,.properties,.csv,.json,.txt,.xml" />
+      <p class="hint">A .jmx, plus any .jar, .properties or data file the plan needs.</p>
+    </div>
+    <div id="pickFolder" hidden>
+      <input type="file" id="folder" webkitdirectory multiple />
+      <p class="hint">Everything in the folder is uploaded with its folder path, the
+         way the HyperExecute dashboard does it. Hidden files are left out.</p>
+    </div>
+    <p class="hint" id="uploadSummary"></p>
     <label>Which .jmx should the job run?</label>
     <select id="primary"></select>
   </fieldset>
 
   <fieldset>
     <legend>Run configuration</legend>
+    <label>Regions and traffic</label>
+    <input type="hidden" id="regions" />
+    <div class="regions" id="regionRows"></div>
+    <div class="regionacts">
+      <button type="button" id="addRegion">+ Add region</button>
+      <span class="hint" id="regionHint"></span>
+    </div>
     <div class="grid2">
-      <div><label>Regions</label><input type="text" id="regions" placeholder="one or more, comma-separated" /></div>
       <div><label>Max users (total VU)</label><input type="text" id="vusers" placeholder="from the plan" /></div>
       <div><label>Max users per engine</label><input type="text" id="maxVusers" placeholder="HyperExecute default if blank" /></div>
       <div><label>Ramp-up (s)</label><input type="text" id="rampup" placeholder="from the .jmx" /></div>

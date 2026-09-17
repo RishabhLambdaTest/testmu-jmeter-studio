@@ -14,6 +14,7 @@ const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
               "dur", "planName"];
 
 let MODES = {};
+const JMX_UPLOAD_LIMIT = 50 * 1048576;   // HyperExecute's per-.jmx upload limit
 let STATE = null;          // the last /api/author response
 let FILE = null;           // {name, content} of the picked file
 let FROM_RECORDING = false;  // author from what the recorder left on disk
@@ -172,7 +173,6 @@ async function sessionToEngine(sid) {
   const { user, key } = AUTH.creds();
   const out = await window.LT.ltSessionHar(user, key, sid, {
     log: (m) => addLog("info", m),
-    maxBytes: 120 * 1048576,
     onProgress: (done, total, seen) =>
       say(`reading capture ${done}/${total} (${seen} requests)`, "info"),
   });
@@ -190,6 +190,10 @@ async function sessionToEngine(sid) {
   const sink = await window.JmxgenEngine.openInput("session.har");
   sink.write(JSON.stringify(out.har));
   const { path } = sink.close();
+  if (!out.fullHar) {
+    addLog("warn", "this session had no full-har, so the plan is built from network.har: " +
+                   "no request or response bodies, so POSTs are sent empty and nothing is correlated");
+  }
   return { path, info: out };
 }
 
@@ -211,7 +215,7 @@ $("ltLoad").onclick = async () => {
         return `<option value="${esc(r.id)}">${esc(r.name)} — ${esc(r.status || "")} ${esc(when)}</option>`;
       }).join("");
     $("ltHint").textContent = rows.length + " recent session(s). " +
-      "Only ones run with network.full.har carry the traffic a plan needs.";
+      "Ones run with network.full.har give a complete plan; others give requests without bodies.";
   } catch (e) {
     $("ltHint").textContent = "";
     say(e.message || String(e), "bad");
@@ -272,13 +276,15 @@ $("go").onclick = async () => {
 
   if (mode === "jmx") return validateJmx();
 
+  let plainHar = false;       // a session read without its bodies
   if (mode === "ltsession") {
     const sid = body.text.trim();
     if (!sid) return say("paste a session id first", "bad");
     $("go").disabled = true;
     say("fetching the session's recording...", "info");
     try {
-      const { path } = await sessionToEngine(sid);
+      const { path, info } = await sessionToEngine(sid);
+      plainHar = !info.fullHar;
       body.mode = "har";                 // it is a recording from here on
       body.text = "";
       body.file = { name: "session.har", path };
@@ -311,8 +317,24 @@ $("go").onclick = async () => {
     for (const w of (data.verify && data.verify.warnings) || []) addLog("warn", w);
     for (const e of (data.verify && data.verify.errors) || []) addLog("error", e);
     render();
-    say("plan ready - " + nreq + " request(s), " +
-        data.size_kb + " KB", "ok");
+    /* A plan the backend will refuse is not ready, whatever else is true. The
+       upload limit is per .jmx, so it is said at build time, not at upload. */
+    const bytes = new Blob([data.jmx || ""]).size;
+    if (bytes > JMX_UPLOAD_LIMIT) {
+      const msg = `plan built, but it is ${(bytes / 1048576).toFixed(1)} MB and HyperExecute ` +
+                  `takes a .jmx of at most 50 MB - filter the traffic or pick fewer steps`;
+      addLog("error", msg);
+      say(msg, "err");
+    } else if (plainHar) {
+      /* As loud as an error: this plan builds and runs, and still cannot log in
+         or submit anything, which is the failure people find at load. */
+      say(`plan built from network.har only - ${nreq} request(s), but POST bodies are ` +
+          `empty and nothing is correlated. Re-run the test with network.full.har: true ` +
+          `for a plan that can send data.`, "err");
+    } else {
+      say("plan ready - " + nreq + " request(s), " +
+          data.size_kb + " KB", "ok");
+    }
   } catch (e) {
     addLog("error", String(e.message || e));
     say(String(e.message || e), "err");

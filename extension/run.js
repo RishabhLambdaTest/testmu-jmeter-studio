@@ -29,7 +29,7 @@ async function load() {
   const saved = (got && got.hxForm) || {};
   KEYS.forEach((k) => { if (saved[k] !== undefined) $(k).value = saved[k]; });
   CHECKS.forEach((k) => { if (saved[k] !== undefined) $(k).checked = saved[k]; });
-  if (!$("regions").value) $("regions").value = "eastus";
+  renderRegions();
   if (!$("maxVusers").value) $("maxVusers").value = "2000";
   if (WANTED_NAME) $("planName").value = WANTED_NAME;
   // INCLUDE_GEN is decided in takeHandoff(), which runs after this: at this
@@ -87,9 +87,11 @@ function renderFiles() {
     if (INCLUDE_GEN) names.push(planName());
   }
   EXTRA.forEach((f, i) => {
-    list.appendChild(row(f.name, f.on !== false, (v) => { EXTRA[i].on = v; renderFiles(); }));
+    list.appendChild(row(f.name, f.on !== false, (v) => { EXTRA[i].on = v; renderFiles(); },
+                         mb(f.file.size)));
     if (f.on !== false) names.push(f.name);
   });
+  summarise();
   if (!list.childNodes.length) {
     const s = document.createElement("span");
     s.textContent = PLAN ? "nothing selected yet"
@@ -108,13 +110,176 @@ function renderFiles() {
   if (jmx.includes(keep)) $("primary").value = keep;
 }
 
-const readFile = (f) =>
-  new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.split(",")[1]);
-    r.onerror = rej;
-    r.readAsDataURL(f);
+const mb = (n) => (n / 1048576).toFixed(n < 1048576 ? 2 : 1) + " MB";
+
+/* What will actually be sent, as the upload will send it. */
+function outgoing() {
+  const files = [];
+  if (INCLUDE_GEN && PLAN && PLAN.jmx) files.push({ name: planName(), content: PLAN.jmx });
+  for (const f of EXTRA.filter((x) => x.on !== false)) files.push({ name: f.name, content: f.file });
+  return files;
+}
+
+/* Size, request count and anything over a limit, before the button is pressed. */
+function summarise() {
+  const el = $("uploadSummary");
+  const files = outgoing();
+  if (!files.length) { el.textContent = ""; el.className = "hint"; return; }
+  const total = files.reduce((n, f) => n + new Blob([f.content]).size, 0);
+  const problems = HX.hxUploadProblems(files);
+  const batches = HX.hxUploadBatches(files).length;
+  el.textContent = problems.length
+    ? problems.join(" · ")
+    : `${files.length} file(s), ${mb(total)}` +
+      (batches > 1 ? ` - sent in ${batches} requests, since HyperExecute takes at most ` +
+                     `${HX.HX_LIMITS.requestFiles} files and ${mb(HX.HX_LIMITS.requestBytes)} per request` : "");
+  el.className = problems.length ? "hint bad" : "hint";
+}
+
+/* Adds picked files, keyed by the path they will have in the project. A file
+   picked again replaces the earlier copy rather than appearing twice. */
+function addFiles(list, useFolderPath) {
+  let skipped = 0;
+  for (const f of Array.from(list || [])) {
+    const name = useFolderPath ? (f.webkitRelativePath || f.name) : f.name;
+    // .DS_Store, .git/... - nothing a run needs, and noise in the project
+    if (name.split("/").some((part) => part.startsWith("."))) { skipped++; continue; }
+    const at = EXTRA.findIndex((x) => x.name === name);
+    const entry = { name, file: f, on: true };
+    if (at >= 0) EXTRA[at] = entry; else EXTRA.push(entry);
+  }
+  if (skipped) addLog("info", `left out ${skipped} hidden file(s)`);
+  renderFiles();
+}
+
+/* ---- regions -------------------------------------------------------------
+   The regions the HyperExecute dashboard offers, named the way it names them.
+   Each row takes a share of the total users; with no total set, every region
+   runs what the .jmx says, as the dashboard does. Stored in the hidden
+   #regions field as JSON, so the form's own persistence keeps it. */
+const HX_REGIONS = [
+  ["westus", "West US 2 (Moses Lake, Washington)"],
+  ["eastus", "East US (Richmond, Virginia)"],
+  ["centralindia", "Central India (Pune, Maharashtra)"],
+  ["southeastasia", "Southeast Asia (Singapore)"],
+  ["brazilsouth", "Brazil South (São Paulo State, Brazil)"],
+  ["mexicocentral", "Mexico Central (Querétaro State, Mexico)"],
+];
+
+function regionRows() {
+  const raw = $("regions").value.trim();
+  let rows = null;
+  try { rows = JSON.parse(raw); } catch (e) { /* an older build saved a plain list */ }
+  if (!Array.isArray(rows)) {
+    const names = raw.replace(/,/g, " ").split(/\s+/).filter(Boolean);
+    rows = names.map((region, i) => ({
+      region, traffic: i === 0 ? 100 - Math.floor(100 / names.length) * (names.length - 1)
+                               : Math.floor(100 / names.length) }));
+  }
+  rows = rows.filter((r) => r && r.region);
+  return rows.length ? rows : [{ region: "eastus", traffic: 100 }];
+}
+
+function setRegionRows(rows) {
+  $("regions").value = JSON.stringify(rows);
+  save();
+  renderRegions();
+}
+
+function totalUsers() {
+  const n = parseInt($("vusers").value.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// the dashboard's split: each region gets floor(share x total)
+const regionUsers = (traffic, total) => Math.floor((Number(traffic) || 0) / 100 * total);
+
+function renderRegions() {
+  const rows = regionRows();
+  const total = totalUsers();
+  const box = $("regionRows");
+  box.textContent = "";
+  rows.forEach((r, i) => {
+    const line = document.createElement("div");
+    line.className = "regionrow";
+
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", `Region ${i + 1}`);
+    const known = HX_REGIONS.some(([v]) => v === r.region);
+    const options = known ? HX_REGIONS : HX_REGIONS.concat([[r.region, r.region]]);
+    for (const [value, label] of options) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      // one row per region: a region already used elsewhere is not offered
+      o.disabled = value !== r.region && rows.some((x) => x.region === value);
+      sel.appendChild(o);
+    }
+    sel.value = r.region;
+    sel.onchange = () => { rows[i].region = sel.value; setRegionRows(rows); };
+
+    const pct = document.createElement("span");
+    pct.className = "pct";
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = "0"; inp.max = "100"; inp.step = "1";
+    inp.value = r.traffic;
+    inp.setAttribute("aria-label", `Share of users for region ${i + 1}, percent`);
+    inp.oninput = () => {
+      rows[i].traffic = Math.max(0, Math.min(100, parseInt(inp.value, 10) || 0));
+      $("regions").value = JSON.stringify(rows);
+      save();
+      regionSummary(rows);
+    };
+    pct.appendChild(inp);
+
+    const users = document.createElement("span");
+    users.className = "users";
+    users.dataset.row = i;
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "rm";
+    rm.textContent = "✕";
+    rm.title = "Remove this region";
+    rm.setAttribute("aria-label", `Remove region ${i + 1}`);
+    rm.hidden = rows.length === 1;
+    rm.onclick = () => { rows.splice(i, 1); setRegionRows(rows); };
+
+    line.append(sel, pct, users, rm);
+    box.appendChild(line);
   });
+  $("addRegion").disabled = rows.length >= HX_REGIONS.length;
+  regionSummary(rows);
+}
+
+function regionSummary(rows) {
+  const total = totalUsers();
+  document.querySelectorAll(".regionrow .users").forEach((el) => {
+    const r = rows[Number(el.dataset.row)];
+    el.textContent = total ? `${regionUsers(r.traffic, total).toLocaleString()} users`
+                           : "users from the .jmx";
+  });
+  const sum = rows.reduce((n, r) => n + (Number(r.traffic) || 0), 0);
+  const hint = $("regionHint");
+  if (total && sum !== 100) {
+    hint.textContent = `the shares add up to ${sum}%, so ` +
+      (sum < 100 ? `${100 - sum}% of the users will not start` : `more users start than the total`);
+    hint.className = "hint bad";
+  } else {
+    hint.textContent = total ? "each region runs its share of the total"
+                             : "set Max users to split them across regions";
+    hint.className = "hint";
+  }
+}
+
+$("addRegion").onclick = () => {
+  const rows = regionRows();
+  const free = HX_REGIONS.find(([v]) => !rows.some((r) => r.region === v));
+  if (!free) return;
+  rows.push({ region: free[0], traffic: 0 });   // the dashboard adds a row at 0%
+  setRegionRows(rows);
+};
+$("vusers").addEventListener("input", () => regionSummary(regionRows()));
 
 function vmCalc() {
   // HyperExecute takes no machine count - it divides total VU by the per-engine
@@ -155,25 +320,16 @@ async function takeHandoff() {
   INCLUDE_GEN = !!PLAN;
 }
 
-$("files").onchange = async () => {
-  // add to what is already queued rather than replacing it
-  for (const f of Array.from($("files").files || [])) {
-    if (!EXTRA.some((x) => x.name === f.name)) {
-      EXTRA.push({ name: f.name, content: await readFile(f), on: true });
-    }
-  }
-  $("files").value = "";
-  renderFiles();
-};
+// add to what is already queued rather than replacing it
+$("files").onchange = () => { addFiles($("files").files, false); $("files").value = ""; };
+$("folder").onchange = () => { addFiles($("folder").files, true); $("folder").value = ""; };
+document.querySelectorAll("input[name=uptype]").forEach((r) => r.onchange = () => {
+  const folder = document.querySelector("input[name=uptype]:checked").value === "folder";
+  $("pickFiles").hidden = folder;
+  $("pickFolder").hidden = !folder;
+});
 
 
-/* Extra files arrive base64 from the file picker; HyperExecute wants the bytes. */
-function b64ToText(b64) {
-  const bin = atob(b64 || "");
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
 
 function link(href, text) {
   const a = document.createElement("a");
@@ -227,19 +383,22 @@ async function submit(trigger) {
   try {
 
     // ---- the files ----
-    const files = [];
-    if (INCLUDE_GEN && PLAN && PLAN.jmx) files.push({ name: planName(), content: PLAN.jmx });
-    for (const f of EXTRA.filter((x) => x.on !== false)) {
-      files.push({ name: f.name, content: b64ToText(f.content) });
-    }
+    // picked files go up as their own bytes: a .jar decoded as text is corrupt
+    const files = outgoing();
     if (!files.length) throw new Error("nothing to upload - author a plan or add a file");
 
     /* Parse every .jmx before it is uploaded. A plan that no XML parser will
        read is not worth a runner's ten minutes, and the failure it produces up
        there names an XML offset rather than the cause. */
+    const tooBig = HX.hxUploadProblems(files);
+    if (tooBig.length) {
+      tooBig.forEach((p) => addLog("error", p));
+      throw new Error(tooBig[0]);
+    }
     for (const f of files) {
       if (!/\.jmx$/i.test(f.name)) continue;
-      const g = jmxGate(f.content, f.name);
+      const text = typeof f.content === "string" ? f.content : await f.content.text();
+      const g = jmxGate(text, f.name);
       if (!g.ok) {
         g.problems.forEach((p) => addLog("error", p));
         throw new Error(g.problems[0]);
@@ -251,8 +410,16 @@ async function submit(trigger) {
       (files.find((f) => f.name.toLowerCase().endsWith(".jmx")) || {}).name;
     if (!primary) throw new Error("choose which .jmx the job should run");
 
-    const regions = $("regions").value.trim().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+    const total = num("vusers");
+    const regions = regionRows().map((r) => {
+      // a region given 0 users would run the .jmx's own count; say so rather than send it
+      const users = total ? regionUsers(r.traffic, total) : null;
+      return { region: r.region, users: users || null };
+    });
     if (trigger && !regions.length) throw new Error("pick at least one region");
+    if (total && regions.some((r) => !r.users)) {
+      throw new Error("a region has a 0% share - give it some traffic or remove it");
+    }
 
     // ---- project ----
     let projectId = $("projectId").value.trim();
@@ -281,7 +448,7 @@ async function submit(trigger) {
     const jobId = await HX.hxTrigger(user, key, projectId, {
       regions, jmx: primary,
       args: ["-e", "-o", "report"], reportDir: "report",
-      duration: num("duration"), rampup: num("rampup"), users: num("vusers"),
+      duration: num("duration"), rampup: num("rampup"),
       maxVusersPerVm: num("maxVusers"), globalTimeout: num("timeout"),
       splitcsv: $("splitcsv").checked,
       jobLabel: $("label").value.trim() || null,

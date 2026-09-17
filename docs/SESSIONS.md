@@ -20,8 +20,9 @@ One capability on the run that produced the session:
 That is the whole prerequisite, and it is worth saying plainly to a customer:
 **switch it on and every automation session becomes a load test for free.**
 
-Sessions without it are refused with the exact capability to set, because a plan
-built from the alternatives would be silently wrong. See
+Sessions without it fall back to `network.har`, which gives the requests but not
+their bodies, so the plan that comes back cannot log in or submit anything. The
+page says so as loudly as an error, and names the capability to set. See
 [Why full HAR](#why-full-har-and-not-the-other-logs) below.
 
 Selenium only. Playwright sessions do not produce a full HAR today.
@@ -127,18 +128,20 @@ Three endpoints can return a session's traffic, and only one is usable:
 | Log | Available on | Carries bodies | Usable for load |
 | --- | --- | --- | --- |
 | `full-har` | most sessions | **yes** | **yes** |
-| `network.har` | rarely | no | no |
+| `network.har` | rarely | no | as a fallback: the requests, sent without bodies |
 | `network` | most | no | no |
 
 Measured across 60 sessions: `full-har` on 53, `network.har` on 2.
 
 The other two return entries with `bodySize: 86` and no `postData`, and
-`content.size: 0` with no `text`. A plan built from them would POST **nothing**
-and could not correlate a single token, because there is no response text to find
-one in. It would look fine, validate fine, and be wrong against the real
-application. So it is refused instead:
+`content.size: 0` with no `text`. A plan built from them POSTs **nothing** and
+cannot correlate a single token, because there is no response text to find one
+in. It looks fine and is wrong against the real application.
 
-![A session recorded without the capability](screenshots/session-no-har.png)
+So `full-har` is always tried first. Only when a session has none is
+`network.har` read, and the plan built from it is reported as an error-level
+message: the requests are right, the bodies are missing, and re-running with
+`"network.full.har": true` is the fix. A session with neither is refused.
 
 ---
 
@@ -151,6 +154,20 @@ the download.
 The archive is read one member at a time and filtered on the way in, so the tab
 holds one piece rather than the whole thing. The size is known before anything is
 downloaded, so a large session says so instead of appearing to hang.
+
+A browser tab has one heap, so there are limits. Each is checked before the bytes
+it guards are fetched where the API allows it, and the message gives the size and
+the limit:
+
+| Limit | Value | Why |
+|---|---|---|
+| `full-har` archive, as downloaded | 120 MB | the largest measured was 70 MB |
+| its captures, unzipped | 400 MB in total, 100 MB for any one | the largest measured was 324 MB |
+| `network.har` | 50 MB | it arrives as one JSON document and is parsed whole |
+| requests in the plan | 20,000 | past that the plan is not one anyone would run |
+
+Hitting one stops the conversion. Pick a shorter session, or another host from
+the ones the log lists.
 
 ---
 

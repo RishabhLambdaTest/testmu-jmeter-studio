@@ -62,10 +62,8 @@ Shown only when the source is *TestMu AI session*. The whole path is in
 
 The account is sent only to `api.lambdatest.com`, to read your own session logs.
 
-Only a session run with `"network.full.har": true` carries the traffic a plan
-needs. Others are refused, quoting the capability, because the alternative logs
-have no request or response bodies: a plan built from them would POST nothing
-and correlate nothing, while still looking valid. Selenium only for now.
+A session run with `"network.full.har": true` carries everything a plan needs.
+A session without it still converts, from its `network.har`, but that log has no request or response bodies: the plan sends its POSTs empty and correlates nothing. The page says so as loudly as an error. Selenium only for now.
 
 The traffic filters and *Use the think times from the recording* below apply to
 a session exactly as they do to a recording.
@@ -389,10 +387,23 @@ because two projects with the same name is worse than a message.
 | Control | What it does | When to use it |
 |---|---|---|
 | Name for the recorded plan | the filename the plan is uploaded as | when a project holds several plans |
-| Add .jmx, .jar, .properties or data files | attaches anything else the run needs | a CSV of test data, a plugin jar the log named, a `system.properties` for mTLS |
+| Add: Files | attaches a .jmx and anything else the run needs | a CSV of test data, a plugin jar the log named, a `system.properties` for mTLS |
+| Add: A folder | uploads a whole folder, each file under its folder path, hidden files left out | a suite kept as a folder: plans, data and jars together |
 | Which .jmx should the job run | the entry point | only when more than one `.jmx` is in the list |
 
-Every `.jmx` here is parsed before upload, attached ones included.
+Every `.jmx` here is parsed before upload, attached ones included. The line under
+the pickers adds up what will be sent, and flags anything over HyperExecute's
+limits before the button is pressed:
+
+| Limit | Value |
+|---|---|
+| one `.jmx` | 50 MB |
+| one request | 200 MB and 20 files |
+
+A larger set is sent in several requests, each within the request limit, and
+each adds to the project's files. A `.jmx` over 50 MB is refused before anything
+is sent; the authoring page warns about one as soon as it is built. Files go up
+as their own bytes, so a jar arrives intact.
 
 ## Run configuration
 
@@ -400,9 +411,15 @@ These override the plan. Whatever users, ramp-up and duration the `.jmx`
 carries, what is set here is what runs; **an empty field means "whatever the
 plan says"**, which is not the same as a default.
 
+With *Max users* set, each region runs its share of it, rounded down, the way
+the dashboard splits it: 1,000 users at 60% and 40% is 600 and 400. The line
+under the regions says when the shares do not add up to 100%, and a region at 0%
+has to be given some traffic or removed. With *Max users* empty, every region
+runs what the `.jmx` says.
+
 | Control | What it does | When to use it |
 |---|---|---|
-| Regions | one job per region named | one region normally; several to test from where your users are |
+| Regions and traffic | one row per region, from the regions the HyperExecute dashboard offers, each with its share of the users. **+ Add region** adds a row at 0% | one region normally; several to test from where your users are |
 | Max users (total VU) | total virtual users across the job | whenever you want a number other than the plan's |
 | Max users per engine | how many each machine carries | to control engine count: total ÷ this = machines. The line underneath does the arithmetic as you type |
 | Ramp-up (s) | seconds to reach full load | a ramp long enough that autoscaling behaves as it would in life |

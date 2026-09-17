@@ -171,7 +171,8 @@ because that is the one a run depends on.
 For when the test already ran.
 
 An automation session recorded with `"network.full.har": true` has captured
-everything a load test needs. Choose **TestMu AI session**, paste a session id or
+everything a load test needs. One without it converts from `network.har`, with no
+request or response bodies, and the page says so. Choose **TestMu AI session**, paste a session id or
 press **Load my sessions**, and the plan comes back grouped into the steps the
 test performed: `Open common/home`, `Type into product/search`,
 `Click checkout/cart/add`.

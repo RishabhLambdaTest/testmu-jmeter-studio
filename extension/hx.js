@@ -149,12 +149,62 @@ async function hxCreateProject(user, key, name, type = "jmeter", log = () => {})
   return String(id);
 }
 
-async function hxUpload(user, key, projectId, files, log = () => {}) {
-  log("info", `uploading ${files.length} file(s)…`);
+/* HyperExecute's upload limits. The backend enforces the last two per request
+   (one 200 MB budget shared by every file in it, and 20 files); the 50 MB per
+   .jmx is the dashboard's rule, applied here too so a plan the dashboard would
+   refuse is not uploaded behind its back. */
+const HX_LIMITS = {
+  jmxBytes: 50 * 1048576,
+  requestBytes: 200 * 1048576,
+  requestFiles: 20,
+};
+
+/* Files are {name, content}, where content is a Blob/File (sent as its bytes)
+   or a string. Returns the problems that would make the upload fail, before
+   anything is sent. */
+function hxUploadProblems(files) {
+  const out = [];
+  for (const f of files) {
+    const size = hxSize(f.content);
+    if (/\.jmx$/i.test(f.name) && size > HX_LIMITS.jmxBytes) {
+      out.push(`${f.name} is ${hxMB(size)}; a .jmx can be at most ${hxMB(HX_LIMITS.jmxBytes)}`);
+    } else if (size > HX_LIMITS.requestBytes) {
+      out.push(`${f.name} is ${hxMB(size)}; one file can be at most ${hxMB(HX_LIMITS.requestBytes)}`);
+    }
+  }
+  return out;
+}
+
+const hxSize = (c) => (c instanceof Blob ? c.size : new Blob([c || ""]).size);
+const hxMB = (n) => (n / 1048576).toFixed(1) + " MB";
+
+/* Pack the files into requests that each stay within the per-request limits.
+   Each request adds to the project's files, so splitting is safe. */
+function hxUploadBatches(files) {
+  const batches = [];
+  let cur = [], bytes = 0;
+  for (const f of files) {
+    const size = hxSize(f.content);
+    if (cur.length && (cur.length >= HX_LIMITS.requestFiles ||
+                       bytes + size > HX_LIMITS.requestBytes)) {
+      batches.push(cur);
+      cur = []; bytes = 0;
+    }
+    cur.push(f);
+    bytes += size;
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
+}
+
+async function hxUploadOne(user, key, projectId, files, log) {
   const form = new FormData();
   for (const f of files) {
-    form.append("files", new Blob([f.content], { type: "application/octet-stream" }), f.name);
-    log("info", "  " + f.name);
+    const blob = f.content instanceof Blob ? f.content
+      : new Blob([f.content], { type: "application/octet-stream" });
+    // the part's filename is the path in the project, folders included
+    form.append("files", blob, f.name);
+    log("info", "  " + f.name + " (" + hxMB(blob.size) + ")");
   }
   await hxHeaderRule();
   const r = await fetch(`${HX_BASE}/logistics/v1.0/project/${projectId}/files/upload`, {
@@ -166,7 +216,34 @@ async function hxUpload(user, key, projectId, files, log = () => {}) {
     },
     body: form,
   });
+  if (r.status === 413) {
+    throw new Error("the upload was refused as too large (413): HyperExecute takes at most " +
+                    hxMB(HX_LIMITS.requestBytes) + " per request");
+  }
+  if (r.status === 400) {
+    const body = await r.clone().text().catch(() => "");
+    if (/too many files/i.test(body)) {
+      throw new Error("the upload was refused: more than " + HX_LIMITS.requestFiles +
+                      " files in one request");
+    }
+  }
   if (!r.ok) throw await hxError("the upload failed", r);
+}
+
+async function hxUpload(user, key, projectId, files, log = () => {}) {
+  const problems = hxUploadProblems(files);
+  if (problems.length) {
+    problems.forEach((p) => log("error", p));
+    throw new Error(problems[0]);
+  }
+  const batches = hxUploadBatches(files);
+  const total = files.reduce((n, f) => n + hxSize(f.content), 0);
+  log("info", `uploading ${files.length} file(s), ${hxMB(total)}` +
+              (batches.length > 1 ? ` in ${batches.length} requests` : "") + "…");
+  for (let i = 0; i < batches.length; i++) {
+    if (batches.length > 1) log("info", `request ${i + 1} of ${batches.length}`);
+    await hxUploadOne(user, key, projectId, batches[i], log);
+  }
   AUTH_PROVEN = true;
   log("ok", "uploaded");
 }
@@ -176,12 +253,15 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
     region: null, jmx: cfg.jmx, splitcsv: !!cfg.splitcsv,
     args: cfg.args && cfg.args.length ? cfg.args : undefined,
   };
-  const jmeter = (cfg.regions || []).map((region) => {
-    const e = { ...entry, region };
+  // a region is a name, or {region, users} when the users are split by region
+  const jmeter = (cfg.regions || []).map((r) => {
+    const one = typeof r === "string" ? { region: r } : r;
+    const e = { ...entry, region: one.region };
     if (cfg.duration != null) e.duration = cfg.duration;
     if (cfg.rampup != null) e.rampup = cfg.rampup;
     // "users" is the wire name; "vusers" is silently dropped
-    if (cfg.users != null) e.users = cfg.users;
+    const users = one.users != null ? one.users : cfg.users;
+    if (users != null) e.users = users;
     // no "platform": HyperExecute picks the cloud that backs the region, and
     // the job context echoes it back. Sending one only ever contradicts it.
     return e;
@@ -216,4 +296,5 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   return String(jobId);
 }
 
-window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI, hxJobUrl };
+window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI, hxJobUrl,
+              HX_LIMITS, hxUploadProblems, hxUploadBatches };
