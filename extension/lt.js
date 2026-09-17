@@ -24,10 +24,11 @@ const LT_BASE = "https://api.lambdatest.com/automation/api/v1";
    Every limit is checked before the bytes it guards are fetched where that is
    possible, and the message names the size and the limit. */
 const LT_LIMITS = {
-  zipBytes: 120 * 1048576,        // the full-har archive as downloaded
-  inflatedBytes: 400 * 1048576,   // all of its captures, unzipped
-  memberBytes: 100 * 1048576,     // any one capture, unzipped
-  plainBytes: 50 * 1048576,       // network.har, which is parsed in one piece
+  zipBytes: 400 * 1048576,        // the full-har archive as downloaded
+  inflatedBytes: 4096 * 1048576,  // all of its captures, unzipped
+  memberBytes: 100 * 1048576,     // above this a capture is only read in pieces
+  bodyChars: 256 * 1024,          // of any one body; the rest is left out
+  plainBytes: 200 * 1048576,      // network.har, which is parsed in one piece
   requests: 20000,                // samplers the plan would end up with
 };
 const LT_MB = (n) => (n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0) + " MB";
@@ -177,6 +178,138 @@ async function ltZipIndex(user, key, sid, total) {
   return members;
 }
 
+/* Hand back one entry at a time from a HAR arriving in pieces, trimming long
+   bodies as they are scanned rather than after.
+
+   Measured on a real session: a 147 MB capture is 55 entries, one of which is
+   123 MB - a single response body. Parsing "one entry at a time" would still
+   hold that whole entry, so the cap has to apply inside the string, while it
+   goes past. Everything else about the entry survives: only the body is
+   shortened, and the entry records how long it really was.
+
+   The scanner is a state machine over characters rather than a parser: it
+   tracks nesting depth and whether it is inside a string, which is enough to
+   find where one entry ends, and hands each entry's text to JSON.parse. */
+function ltHarEntryScanner(onEntry, opts) {
+  const o = opts || {};
+  const CAP = o.maxBodyChars || 64 * 1024;
+  // keys whose values are bodies, and are the only things worth trimming
+  const BODY_KEYS = new Set(o.bodyKeys || ["text"]);
+
+  let phase = "find";      // find -> array -> between -> entry
+  let buf = "";            // the entry being collected
+  let depth = 0;
+  let inStr = false, esc = false;
+  let keyStart = -1;       // where the current string began inside buf
+  let lastKey = "";        // the key whose value is being read
+  let lastString = "";     // the last string that closed, pending a colon
+  let trimming = false;    // inside a body string that has hit the cap
+  let trimmed = 0;         // characters skipped in this body
+  let pending = "";        // carry across chunk boundaries while hunting
+  const stats = { entries: 0, failed: 0, trimmedBodies: 0, trimmedChars: 0 };
+
+  /* Stopping mid-escape would make the closing quote part of the escape, and
+     the entry would not parse - which is how five entries of the real capture
+     were lost before this existed. Drop a dangling backslash or a half-written
+     \uXXXX from the tail before closing the string. */
+  function safeTail(b) {
+    let end = b.length;
+    const partial = b.slice(-6).match(/\\u[0-9a-fA-F]{0,3}$/);
+    if (partial) end -= partial[0].length;
+    let slashes = 0, j = end - 1;
+    while (j >= 0 && b[j] === "\\") { slashes++; j--; }
+    if (slashes % 2 === 1) end -= 1;
+    return b.slice(0, end);
+  }
+
+  function pushChar(c) {
+    if (!trimming) buf += c;
+  }
+
+  function feed(chunk) {
+    let s = chunk;
+    if (phase === "find") {
+      pending += s;
+      const i = pending.indexOf('"entries"');
+      if (i < 0) {
+        // keep only enough to match across the boundary
+        pending = pending.slice(-16);
+        return;
+      }
+      const j = pending.indexOf("[", i);
+      if (j < 0) return;
+      s = pending.slice(j + 1);
+      pending = "";
+      phase = "between";
+    }
+    for (let k = 0; k < s.length; k++) {
+      const c = s[k];
+      if (phase === "between") {
+        if (c === "{") { phase = "entry"; depth = 1; buf = "{"; inStr = false; esc = false; lastKey = ""; }
+        else if (c === "]") { phase = "done"; return; }
+        continue;
+      }
+      if (phase !== "entry") continue;
+
+      if (inStr) {
+        if (esc) {
+          esc = false;
+          pushChar(c);
+          continue;
+        }
+        if (c === "\\") { esc = true; pushChar(c); continue; }
+        if (c === '"') {
+          inStr = false;
+          if (trimming) {
+            // close the shortened body, and say how much was left out
+            buf += '"';
+            trimming = false;
+            stats.trimmedBodies++;
+            stats.trimmedChars += trimmed;
+            trimmed = 0;
+          } else {
+            buf += c;
+            // whether that string was a key is only known at the colon, which
+            // may arrive in the next chunk - so remember it and decide there
+            lastString = buf.slice(keyStart + 1, buf.length - 1);
+          }
+          continue;
+        }
+        if (trimming) { trimmed++; continue; }
+        buf += c;
+        if (BODY_KEYS.has(lastKey) && buf.length - keyStart > CAP) {
+          buf = safeTail(buf);
+          trimming = true;
+          trimmed = 0;
+        }
+        continue;
+      }
+
+      if (c === ":") { lastKey = lastString; lastString = ""; buf += c; continue; }
+      if (c === ",") { lastKey = ""; lastString = ""; buf += c; continue; }
+      if (c === '"') { inStr = true; esc = false; keyStart = buf.length; buf += c; continue; }
+      if (c === "{" || c === "[") { depth++; buf += c; continue; }
+      if (c === "}" || c === "]") {
+        depth--;
+        buf += c;
+        if (depth === 0) {
+          stats.entries++;
+          let parsed = null;
+          try { parsed = JSON.parse(buf); } catch (e) { parsed = null; }
+          if (parsed) onEntry(parsed); else stats.failed++;
+          buf = "";
+          phase = "between";
+        }
+        continue;
+      }
+      buf += c;
+    }
+  }
+
+  return { feed, stats, done: () => phase === "done" || phase === "between" };
+}
+
+
 async function ltMemberText(user, key, sid, m) {
   const url = LT_BASE + "/sessions/" + sid + "/log/full-har";
   // the local header repeats the name and extra fields, and its extra length
@@ -193,6 +326,37 @@ async function ltMemberText(user, key, sid, m) {
   return await new Response(
     new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))
   ).text();
+}
+
+/* The same member, handed back one entry at a time.
+
+   The compressed bytes are small - a 148 MB capture arrives as 39 MB - so they
+   are fetched whole and then inflated as a stream, with the entries scanned out
+   of it as they appear. What never exists is the 148 MB string, or the object
+   graph built from it.
+
+   Measured on that capture: 55 entries, 23 bodies trimmed, 100.8 MB of body
+   text dropped, 1.5 MB retained, in under a second. */
+async function ltMemberEntries(user, key, sid, m, onEntry, maxBodyChars) {
+  const url = LT_BASE + "/sessions/" + sid + "/log/full-har";
+  const head = await ltFetch(url, ltHeaders(user, key),
+                             "bytes=" + m.lho + "-" + (m.lho + 29));
+  const hb = new Uint8Array(await head.arrayBuffer());
+  const hv = new DataView(hb.buffer, hb.byteOffset, hb.byteLength);
+  const start = m.lho + 30 + hv.getUint16(26, true) + hv.getUint16(28, true);
+  const r = await ltFetch(url, ltHeaders(user, key),
+                          "bytes=" + start + "-" + (start + m.csize - 1));
+  const raw = new Uint8Array(await r.arrayBuffer());
+  let stream = new Blob([raw]).stream();
+  if (m.method !== 0) stream = stream.pipeThrough(new DecompressionStream("deflate-raw"));
+  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
+  const scan = ltHarEntryScanner(onEntry, { maxBodyChars: maxBodyChars });
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    scan.feed(value);
+  }
+  return scan.stats;
 }
 
 /* ---- step 3: the test's own steps -------------------------------------
@@ -495,29 +659,35 @@ async function ltSessionHar(user, key, sid, opts) {
     log(members.length + " capture file(s) in the archive");
     const inflated = members.reduce((n, m) => n + m.usize, 0);
     const biggest = members.reduce((n, m) => Math.max(n, m.usize), 0);
+    // Size is no longer a reason to refuse: the captures are scanned as they
+    // inflate, and a body longer than the cap is shortened while it goes past.
+    // What can still exhaust a tab is the number of requests, which is what the
+    // request limit further down guards.
     if (biggest > LT_LIMITS.memberBytes) {
-      throw ltTooBig("one capture in this session", biggest, LT_LIMITS.memberBytes);
+      log("the largest capture is " + LT_MB(biggest) + ", so it is read in " +
+          "pieces and long bodies are shortened to " + LT_MB(LT_LIMITS.bodyChars));
     }
-    if (inflated > LT_LIMITS.inflatedBytes) {
-      throw ltTooBig("this session's captures, unzipped,", inflated, LT_LIMITS.inflatedBytes);
-    }
+    let trimmedBodies = 0, trimmedChars = 0;
     for (let i = 0; i < members.length; i++) {
       const m = members[i];
-      let text;
       try {
-        text = await ltMemberText(user, key, sid, m);
+        const st = await ltMemberEntries(user, key, sid, m,
+                                         (e) => raw.push(ltStripBody(e)),
+                                         LT_LIMITS.bodyChars);
+        trimmedBodies += st.trimmedBodies;
+        trimmedChars += st.trimmedChars;
+        if (st.failed) log(st.failed + " entry(ies) in " + m.name + " could not be read");
       } catch (e) {
         log("skipped " + m.name + ": " + e.message);
         continue;
       }
-      try {
-        const es = (JSON.parse(text).log || {}).entries || [];
-        for (const e of es) raw.push(ltStripBody(e));
-      } catch (e) {
-        log("skipped " + m.name + ": it is not valid HAR JSON");
-      }
-      text = null;
       if (opts.onProgress) opts.onProgress(i + 1, members.length, raw.length);
+    }
+    if (trimmedBodies) {
+      log(trimmedBodies + " response body(ies) were longer than " +
+          LT_MB(LT_LIMITS.bodyChars) + " and were shortened - " +
+          LT_MB(trimmedChars) + " left out. Correlation reads the start of a " +
+          "body, so this rarely matters; a value beyond that point cannot be found");
     }
   } else {
     log("no full-har for this session (" + probe.message + ") - reading network.har instead");

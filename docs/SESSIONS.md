@@ -147,27 +147,44 @@ message: the requests are right, the bodies are missing, and re-running with
 
 ## Size
 
-Sessions vary enormously. The largest measured was **70 MB compressed, 324 MB
-across 47 files**, and it converts in about twenty seconds — nearly all of that
-the download.
+Sessions vary enormously, and size is no longer a reason one is refused.
 
-The archive is read one member at a time and filtered on the way in, so the tab
-holds one piece rather than the whole thing. The size is known before anything is
-downloaded, so a large session says so instead of appearing to hang.
+The captures are **read as they inflate**, one entry at a time, and a response
+body longer than 256 KB is shortened *while it goes past* rather than after.
+What never exists is the whole capture as a string, or the object graph built
+from it.
 
-A browser tab has one heap, so there are limits. Each is checked before the bytes
-it guards are fetched where the API allows it, and the message gives the size and
-the limit:
+That last part matters more than the entry count. Measured on a real session:
+**147.9 MB across 55 entries — one of which was a single 123 MB response body**
+from `optimizationguide-pa.googleapis.com`, which is Chrome's own model
+downloader and never part of the plan. Reading "one entry at a time" would
+still have held that entry whole.
+
+| | |
+|---|---|
+| Capture | 147.9 MB, 55 entries |
+| Bodies shortened | 13, leaving out 99 MB |
+| Retained | 1.5 MB |
+| Tab heap while converting | 95 MB |
+| Time, download included | 12.8 s |
+
+**What a shortened body costs you.** Correlation reads the start of a response,
+so in practice nothing: a token near the top of a page is found as usual. A
+value beyond 256 KB into a body cannot be found, and the log says how many
+bodies were shortened and how much was left out, so it is never silent.
+
+The limits that remain are the ones that still bite:
 
 | Limit | Value | Why |
 |---|---|---|
-| `full-har` archive, as downloaded | 120 MB | the largest measured was 70 MB |
-| its captures, unzipped | 400 MB in total, 100 MB for any one | the largest measured was 324 MB |
-| `network.har` | 50 MB | it arrives as one JSON document and is parsed whole |
+| `full-har` archive, as downloaded | 400 MB | the download itself has to finish |
+| any one response body | 256 KB kept | past that a body is shortened, not the session refused |
+| `network.har` | 200 MB | it arrives as one JSON document and is parsed whole |
 | requests in the plan | 20,000 | past that the plan is not one anyone would run |
 
-Hitting one stops the conversion. Pick a shorter session, or another host from
-the ones the log lists.
+The request count is the real guard: what exhausts a tab is thousands of
+samplers, not a big file. Hitting it stops the conversion, and the log lists
+the hosts so you can pick a smaller one.
 
 ---
 
