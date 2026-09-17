@@ -333,10 +333,16 @@ async function hxTriggerYaml(user, key, cfg, log = () => {}) {
        its command did, and k6 never opens one - so without this the job's
        status would never reflect the run. */
     scenarioCommandStatusOnly: true,
-    /* The script writes these itself, so they arrive whether or not the
-       machine can reach a reporting service. */
+    /* k6's own dashboard as the job's report - report + partialReports is
+       what puts a page on the Reports tab, where a location is a folder rather
+       than a file. The summary files stay as artefacts as well, because a run
+       too short for the dashboard still produces them. */
+    report: true,
+    partialReports: [{ location: "k6-report", type: "html" }],
+    mergeArtifacts: true,
     uploadArtefacts: cfg.uploadArtefacts || [
-      { name: "k6-report", path: ["k6-summary.json", "k6-summary.txt", "k6-report.html"] },
+      { name: "k6-report", path: ["k6-report/**/*", "k6-summary.json",
+                                  "k6-summary.txt", "k6-report.html"] },
     ],
   };
   /* One task per machine, each with its own share of the users. HyperExecute

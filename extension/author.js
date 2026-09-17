@@ -955,8 +955,12 @@ $("k6run").onclick = async () => {
       ["BASE", c.base], ["MAX_FAILED", c.maxFailed], ["MAX_P95", c.maxP95],
     ];
     if (machines > 1) env.push(["SHARD", "$shard"], ["SHARDS", machines]);
-    const cmd = "k6 run " + env.filter(([, v]) => v !== "" && v != null)
-      .map(([k, v]) => `-e ${k}=${v}`).join(" ") + ` ${name}`;
+    /* k6's own dashboard, written out as a page when the run is long enough
+       for it to have something to chart. */
+    const cmd = "mkdir -p k6-report && K6_WEB_DASHBOARD=true " +
+      "K6_WEB_DASHBOARD_EXPORT=k6-report/index.html k6 run " +
+      env.filter(([, v]) => v !== "" && v != null)
+         .map(([k, v]) => `-e ${k}=${v}`).join(" ") + ` ${name}`;
     const jobId = await window.HX.hxTriggerYaml(user, key, {
       projectId, machines, shardVar: "shard", shards,
       testSuites: [cmd],
