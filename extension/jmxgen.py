@@ -2257,6 +2257,61 @@ def spec_to_k6(spec, filename="load_test.js"):
     return "\n".join(out) + "\n"
 
 
+HX_K6_ADDON = "v0.52.0"   # the version HyperExecute documents as a runtime addon
+
+
+def spec_to_hyperexecute_yaml(spec, script="load_test.js", users=None, machines=1,
+                              k6_version=HX_K6_ADDON):
+    """The HyperExecute job that runs the k6 script across machines.
+
+    HyperExecute splits *discovered test cases* across the machines named by
+    concurrency: with one .js file and concurrency 5, one machine runs it and
+    four idle. So discovery emits one line per shard and every shard runs the
+    same script with its own slice of the users. That is the k6 equivalent of
+    what the run form does for JMeter, where users are an override on one plan.
+
+    A shard also knows which slice of the test data is its own, so no two
+    machines replay the same rows.
+    """
+    tg = (spec.get("thread_groups") or [{}])[0]
+    total = int(users if users is not None else (tg.get("threads") or 1))
+    n = max(1, int(machines or 1))
+    per = max(1, total // n)
+    ramp = int(tg.get("ramp_up") or 0)
+    dur = int(tg.get("duration") or 0)
+    shards = " ".join(str(i) for i in range(1, n + 1))
+    rows = [
+        'version: "0.1"',
+        "runson: linux",
+        "",
+        "# %d user(s) over %d machine(s): each shard runs %d." % (total, n, per),
+        "# Raising concurrency alone does not add users - the shard list has to",
+        "# grow with it, which is why both are written from the same number.",
+        "autosplit: true",
+        "concurrency: %d" % n,
+        "",
+        "runtime:",
+        "  addons:",
+        "    - name: k6",
+        '      version: "%s"' % k6_version,
+        "",
+        "pre:",
+        "  - k6 version",
+        "",
+        "testDiscovery:",
+        "  type: raw",
+        "  mode: dynamic",
+        "  command: for s in %s; do echo $s; done" % shards,
+        "",
+        "testRunnerCommand: k6 run -e VUS=%d -e RAMP=%ds -e DURATION=%ds "
+        "-e SHARD=$test -e SHARDS=%d %s" % (per, ramp, dur, n, script),
+        "",
+        "jobLabel: [k6, jmxgen]",
+        "",
+    ]
+    return "\n".join(rows)
+
+
 def spec_has_browser_steps(spec):
     """True when the plan carries anything Playwright could run."""
     for tg in spec.get("thread_groups") or []:
