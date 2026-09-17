@@ -222,6 +222,22 @@
         </div>
       </div>
       <p class="hint" id="k6note"></p>
+      <div class="grid2">
+        <div>
+          <label for="k6project">Project name</label>
+          <input type="text" id="k6project" placeholder="k6-<plan name>" />
+        </div>
+        <div>
+          <label for="k6existing">…or an existing project</label>
+          <select id="k6existing"><option value="">create a new one</option></select>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="k6allprojects" />
+        Show every custom project, not only the k6 ones</label>
+      <div class="acts">
+        <button id="k6run" class="go" type="button">Run on HyperExecute…</button>
+      </div>
+      <p class="hint" id="k6jobLink" hidden></p>
     </details>
     <p class="hint" id="dualNote" hidden></p>
   </section>
@@ -252,6 +268,7 @@
 <script src="xmlgate.js"></script>
 <script src="jmxcheck.js"></script>
 <script src="replay.js"></script>
+<script src="hx.js"></script>
 <script src="db.js"></script>
 <script src="engine.js"></script>
 <script src="author.js"></script>

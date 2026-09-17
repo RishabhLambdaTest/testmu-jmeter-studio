@@ -592,6 +592,7 @@ function render() {
   }
   renderHosts();
   k6Note();
+  if (!K6_PROJECTS.length) k6LoadProjects();
   const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
@@ -869,6 +870,84 @@ function k6Note() {
 }
 $("k6users").oninput = k6Note;
 $("k6machines").oninput = k6Note;
+
+/* Running k6 on HyperExecute is a different shape from running a .jmx, so it
+   stays here rather than going through the run page: a YAML job wants the
+   config inline and the script uploaded to a project, where a JMeter job wants
+   a plan and a region split. Everything it uses - create, upload, the job link -
+   is the same code the run page uses.
+
+   The project list defaults to creating one. A load test fired into a project
+   holding somebody's Selenium suite is a mistake worth designing out, so the
+   existing ones are filtered to the k6- prefix until asked otherwise. */
+const K6_PREFIX = "k6-";
+let K6_PROJECTS = [];
+
+async function k6LoadProjects() {
+  const sel = $("k6existing");
+  try {
+    const { user, key } = AUTH.creds();
+    K6_PROJECTS = await window.HX.hxListProjects(user, key, () => {}, "custom");
+  } catch (e) {
+    return;   // the field stays on "create a new one"
+  }
+  k6FillProjects();
+}
+
+function k6FillProjects() {
+  const sel = $("k6existing");
+  const all = $("k6allprojects").checked;
+  const rows = all ? K6_PROJECTS : K6_PROJECTS.filter((p) => p.name.startsWith(K6_PREFIX));
+  sel.innerHTML = '<option value="">create a new one</option>' +
+    rows.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  $("k6allprojects").parentElement.hidden = K6_PROJECTS.length === rows.length && !all;
+}
+$("k6allprojects").onchange = k6FillProjects;
+
+$("k6run").onclick = async () => {
+  if (!STATE || !STATE.k6) return say("generate a plan first", "bad");
+  const btn = $("k6run");
+  btn.disabled = true;
+  try {
+    const { user, key } = AUTH.creds();
+    const machines = Math.max(1, Number($("k6machines").value) || 1);
+    const users = Number($("k6users").value) || (STATE.load && STATE.load.threads) || 1;
+    const per = Math.max(1, Math.floor(users / machines));
+    const name = stem() + "_load_test.js";
+
+    let projectId = $("k6existing").value;
+    if (!projectId) {
+      const wanted = ($("k6project").value.trim() || K6_PREFIX + stem()).slice(0, 60);
+      projectId = await window.HX.hxCreateProject(user, key, wanted, "custom", addLog);
+    }
+    addLog("info", "uploading " + name + "…");
+    await window.HX.hxUpload(user, key, projectId,
+                             [{ name, content: new Blob([STATE.k6]) }], addLog);
+
+    const ramp = (STATE.load && STATE.load.ramp_up) || 0;
+    const dur = (STATE.load && STATE.load.duration) || 0;
+    const shards = Array.from({ length: machines }, (_, i) => String(i + 1));
+    const cmd = `k6 run -e VUS=${per} -e RAMP=${ramp}s -e DURATION=${dur}s` +
+                (machines > 1 ? ` -e SHARD=$shard -e SHARDS=${machines}` : "") +
+                ` ${name}`;
+    const jobId = await window.HX.hxTriggerYaml(user, key, {
+      projectId, machines, shardVar: "shard", shards,
+      testSuites: [cmd],
+      jobLabel: ["jmeter-studio", "k6"],
+    }, addLog);
+
+    const url = window.HX.hxJobUrl(jobId);
+    say(`job ${jobId} started - ${users} user(s) over ${machines} machine(s)`, "ok");
+    addLog("ok", "job dashboard: " + url);
+    $("k6jobLink").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noreferrer">open the job</a>`;
+    $("k6jobLink").hidden = false;
+  } catch (e) {
+    say(e.message || String(e), "bad");
+    addLog("err", e.message || String(e));
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 $("k6dl").onclick = async () => {
   if (!STATE || !STATE.k6) return say("generate a plan first", "bad");

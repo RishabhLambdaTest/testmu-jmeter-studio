@@ -20,6 +20,9 @@ const HX_UI = "https://hyperexecute.lambdatest.com/hyperexecute";
 const hxJobUrl = (jobId) => `${HX_UI}/task?jobId=${encodeURIComponent(jobId)}`;
 const HX_ORIGIN = "https://hyperexecute.lambdatest.com";
 const HX_RULE_ID = 8801;
+/* Pinned: the runtime addon HyperExecute documents. A wrong version is only
+   found on the machine, at install time, not when the job is accepted. */
+const HX_K6_VERSION = "v0.52.0";
 
 /* Origin and Referer are forbidden header names: fetch() silently drops
    whatever you set, so every call from here otherwise arrives as
@@ -107,10 +110,10 @@ async function hxError(action, response) {
    someone to paste an id. Filtered to jmeter server-side: uploading a plan
    into a Playwright project fails later, at trigger time, for a reason nobody
    would connect back to this choice. */
-async function hxListProjects(user, key, log = () => {}) {
+async function hxListProjects(user, key, log = () => {}, type = "jmeter") {
   await hxHeaderRule();
   const r = await fetch(
-    `${HX_BASE}/sentinel/v1.0/projects?per_page=100&type=jmeter`,
+    `${HX_BASE}/sentinel/v1.0/projects?per_page=100&type=${encodeURIComponent(type)}`,
     { headers: hxHeaders(user, key) });
   if (!r.ok) throw await hxError("could not list the projects", r);
   const j = await r.json();
@@ -296,5 +299,55 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   return String(jobId);
 }
 
-window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI, hxJobUrl,
+/* A job described by a config rather than by a plan.
+
+   The JMeter path posts a `jmeter[]` spec to the older project-scoped route and
+   HyperExecute builds the job around it. Anything else - k6 here - goes to
+   /v1.0/trigger-job with the whole config inline, which is the same thing the
+   YAML file says, as JSON.
+
+   Three things about this route, each learned by trying it:
+
+   - `projectID` on its own is not enough. That path resolves the project's Git
+     details and answers `unsupported URL format` for a project that has none.
+     The config has to be inline, with the project id inside it.
+   - With no `sourcePayload`, the platform defaults to "project", and the files
+     uploaded to that project become the working directory on the machine. That
+     is what carries the script, so nothing has to be committed anywhere.
+   - The answer carries `jobID` at the top level, where the older route nests
+     `jobId` under `data`. Both spellings are read below. */
+async function hxTriggerYaml(user, key, cfg, log = () => {}) {
+  const machines = Math.max(1, Number(cfg.machines) || 1);
+  const config = {
+    version: "0.1",
+    projectID: cfg.projectId,
+    runson: cfg.runson || "linux",
+    concurrency: machines,
+    runtime: { addons: [{ name: "k6", version: cfg.k6Version || HX_K6_VERSION }] },
+    testSuites: cfg.testSuites,
+    jobLabel: cfg.jobLabel || [],
+  };
+  /* One task per machine, each with its own share of the users. HyperExecute
+     hands every task the whole testSuites list, so five entries would run five
+     k6 invocations on one machine; a matrix row becomes a task of its own, and
+     $shard resolves per task. */
+  if (machines > 1 && cfg.shardVar) config.matrix = { [cfg.shardVar]: cfg.shards };
+  if (cfg.uploadArtefacts) config.uploadArtefacts = cfg.uploadArtefacts;
+
+  log("info", "triggering: " + JSON.stringify(config));
+  await hxHeaderRule();
+  const r = await fetch(`${HX_BASE}/reception/api/v1.0/trigger-job`, {
+    method: "POST",
+    headers: hxHeaders(user, key),
+    body: JSON.stringify({ hyperExecuteConfig: config, triggerSource: "jmeter-studio" }),
+  });
+  if (!r.ok) throw await hxError("the trigger failed", r);
+  const j = await r.json();
+  const jobId = j.jobID || j.jobId || (j.data && (j.data.jobID || j.data.jobId));
+  if (!jobId) throw new Error("the trigger was rejected: " + JSON.stringify(j).slice(0, 240));
+  log("ok", "job " + jobId);
+  return String(jobId);
+}
+
+window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxTriggerYaml, hxHeaderRule, HX_UI, hxJobUrl,
               HX_LIMITS, hxUploadProblems, hxUploadBatches };
