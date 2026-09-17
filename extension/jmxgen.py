@@ -972,10 +972,33 @@ def build_steps(steps):
                         gui("OnceOnlyControllerGui", "OnceOnlyController", s.get("name", "Once Only")),
                         [], children)
             continue
-        out += build_sampler(s)
+        block = build_sampler(s)
         if s.get("think_time") is not None:
-            out += build_timer(s["think_time"])
+            # INSIDE the sampler, never beside it. A timer's scope is every
+            # sampler under its parent, so six sibling timers in one transaction
+            # make each request wait the sum of all six: a plan that reads as
+            # "2s between steps" actually paces at fourteen. As a child it
+            # applies to this request alone.
+            block = _with_children(block, build_timer(s["think_time"]))
+        out += block
     return out
+
+
+def _with_children(block, extra):
+    """Put `extra` inside the trailing hashTree of a rendered element."""
+    if not extra:
+        return block
+    out = list(block)
+    if out and out[-1].strip() == "<hashTree/>":
+        indent_ = out[-1][:len(out[-1]) - len(out[-1].lstrip())]
+        out[-1] = indent_ + "<hashTree>"
+        out += indent(extra, 1)
+        out.append(indent_ + "</hashTree>")
+        return out
+    for i in range(len(out) - 1, -1, -1):
+        if out[i].strip() == "</hashTree>":
+            return out[:i] + indent(extra, 1) + out[i:]
+    return out + extra
 
 
 def build_jsr223_post(name, script, language="groovy"):
@@ -1973,6 +1996,31 @@ def _path_segments(url):
     return out
 
 
+# Headers that are the browser's, not the application's: never correlated.
+HDR_NEVER = {
+    "host", "connection", "content-length", "content-type", "accept",
+    "accept-encoding", "accept-language", "accept-charset", "cache-control",
+    "pragma", "user-agent", "referer", "origin", "cookie", "dnt", "te",
+    "upgrade-insecure-requests", "range", "if-modified-since", "if-none-match",
+    "x-requested-with",
+}
+HDR_ALWAYS = {"authorization"}
+HDR_TOKENISH = re.compile(
+    r"(token|auth|session|csrf|xsrf|api[-_]?key|nonce|signature|sig|"
+    r"request[-_]?id|transaction[-_]?id|correlation[-_]?id|trace)", re.I)
+
+
+def _app_headers(req):
+    """Headers the application asked for, as opposed to the browser's own."""
+    out = {}
+    for h in req.get("headers") or []:
+        n = (h.get("name") or "").lower()
+        if n in HDR_NEVER or n.startswith("sec-") or n.startswith(":"):
+            continue
+        out[n] = h.get("value") or ""
+    return out
+
+
 def _candidate_values(req):
     """(source_label, value) pairs from a HAR request that might be dynamic."""
     out = []
@@ -2006,8 +2054,12 @@ def _candidate_values(req):
         out.append((label, seg))
     for h in req.get("headers") or []:
         hname = (h.get("name") or "").lower()
-        if hname in ("authorization", "x-csrf-token", "x-xsrf-token", "x-auth-token",
-                     "x-api-key", "x-session-id"):
+        if hname in HDR_NEVER or hname.startswith("sec-"):
+            continue
+        # a header the app invented (X-Request-Token, X-Transaction-Id) carries a
+        # token as often as Authorization does; the value still has to look
+        # dynamic and be traceable to a response before anything is wired up
+        if hname in HDR_ALWAYS or HDR_TOKENISH.search(hname):
             value = h.get("value") or ""
             # "Bearer eyJ..." - correlate the credential, not the scheme word
             m = re.match(r"^(Bearer|Basic|Token|JWT)\s+(\S+)$", value, re.I)
@@ -2067,18 +2119,68 @@ def _extractor_from_rule(rule, var, body, value):
     return None
 
 
+def _json_path_to(body, value):
+    """The exact path of `value` in a JSON document: ($.order.id, key).
+
+    `$..id` takes whichever id comes first, which is the wrong one as soon as a
+    response carries more than one. The precise path survives that, and still
+    survives the fields around it changing."""
+    try:
+        doc = json.loads(body)
+    except Exception:
+        return None, None
+    found = []
+
+    def walk(node, path, key):
+        if found:
+            return
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, "%s.%s" % (path, k), k)
+        elif isinstance(node, list):
+            for i, v in enumerate(node[:20]):
+                walk(v, "%s[%d]" % (path, i), key)
+        elif node is not None and not isinstance(node, bool):
+            if str(node) == value:
+                found.append((path, key))
+
+    walk(doc, "$", None)
+    return found[0] if found else (None, None)
+
+
+# A boundary ends at the first delimiter after the value. Taking 25 characters
+# of whatever followed bakes the next field into the pattern: a right boundary
+# of `", "status": "placed"}` stops matching the day the status changes.
+GENERIC_KEYS = {"id", "value", "key", "name", "code", "token", "data",
+                "result", "item", "text", "type", "status"}
+
+BOUNDARY_STOP = '"\'<>&;,)]}\n\r\t '
+
+
 def _extractor_from_body(value, body, label):
     """No rule matched - infer from where the value sits in the response."""
     var = re.sub(r"\W+", "_", label).strip("_").upper()[:40] or "CORR"
-    m = re.search(r'"([\w.\-]{1,60})"\s*:\s*"%s"' % re.escape(value), body)
+
+    path, key = _json_path_to(body, value)
+    if path:
+        # "id" names nothing: a cart id and an order id would both become ${ID},
+        # and the second extractor would quietly overwrite the first. Keep the
+        # name the request used when the response's own key is that generic.
+        if key and (key.lower() not in GENERIC_KEYS or not label or label == key):
+            var = re.sub(r"\W+", "_", key).strip("_").upper()[:40] or var
+        return {"type": "json", "var": var, "query": path}, var
+
+    m = re.search(r'"([\w.\-]{1,60})"\s*:\s*"?%s"?' % re.escape(value), body)
     if m:
         var = re.sub(r"\W+", "_", m.group(1)).strip("_").upper()[:40] or var
         return {"type": "json", "var": var, "query": "$..%s" % m.group(1)}, var
+
     idx = body.find(value)
     if idx < 0:
         return None, None
     left = body[max(0, idx - 40):idx][-25:].split("\n")[-1]
-    right = body[idx + len(value):idx + len(value) + 40][:25].split("\n")[0]
+    after = body[idx + len(value):idx + len(value) + 40]
+    right = after[0] if after and after[0] in BOUNDARY_STOP else after[:25].split("\n")[0]
     if not left or not right:
         return None, None
     return {"type": "boundary", "var": var, "left": left, "right": right}, var
@@ -2090,11 +2192,21 @@ def _extractor_from_headers(value, headers_text, label):
     idx = headers_text.find(value)
     if idx < 0:
         return None, None
-    left = headers_text[max(0, idx - 40):idx][-25:].split("\n")[-1]
+    before = headers_text[max(0, idx - 60):idx].split("\n")[-1]
+    # Anchor on the shortest thing that identifies the value. A Location or a
+    # Set-Cookie is named - code=, SESSIONID= - and anchoring on the rest of the
+    # URL breaks the moment the server answers with a relative Location, or
+    # moves host. A header with no name before the value keeps its own name.
+    m = re.search(r"([\w.\-]{1,40})=$", before)
+    if m:
+        left = m.group(1) + "="
+    else:
+        m = re.match(r"^([\w.\-]{1,40}):\s*$", before)
+        left = (m.group(1) + ": ") if m else before[-25:]
     if not left:
         return None, None
     ex = {"type": "regex", "var": var, "scope_field": "true",
-          "query": "%s([^&;\\s\"]+)" % re.escape(left), "template": "$1$"}
+          "query": "%s([^&;,\\s\"]+)" % re.escape(left), "template": "$1$"}
     return ex, var
 
 
@@ -2133,7 +2245,7 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
     # preceding response rather than walking from the beginning of the session
     pos_of = {src[0]: p for p, src in enumerate(sources)}
 
-    found, made = [], {}
+    found, made, taken = [], {}, set()
     for idx in kept:
         step = steps_by_entry.get(idx)
         if step is None:
@@ -2186,8 +2298,15 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
             if not ex:
                 continue
 
-            if any(e.get("var") == ex["var"] for e in src_step.get("extract", [])):
-                ex["var"] = ex["var"] + "_%d" % len(found)
+            # one name per value across the whole plan: two extractors sharing a
+            # name means the second silently replaces the first at run time
+            if ex["var"] in taken:
+                base = ex["var"]
+                n = 2
+                while "%s_%d" % (base, n) in taken:
+                    n += 1
+                ex["var"] = "%s_%d" % (base, n)
+            taken.add(ex["var"])
             var = ex["var"]
 
             src_step.setdefault("extract", []).append(ex)
@@ -2405,6 +2524,26 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             if loc:
                 redirect_targets.setdefault(
                     urllib.parse.urljoin(e.get("request", {}).get("url", ""), loc), []).append(ridx)
+    # Following a redirect sends only what the first request carried. When the
+    # target asked for something of its own - an app header, a token in the
+    # query - following it silently drops that, and the hop fails at run time.
+    # Keep such a target as its own sampler and stop the parent following.
+    no_follow = set()
+    kept_targets = set()
+    for turl, parents in list(redirect_targets.items()):
+        tidx = next((i for i, e in enumerate(entries)
+                     if (e.get("request") or {}).get("url") == turl and i > min(parents)), None)
+        if tidx is None:
+            continue
+        own = _app_headers(entries[tidx].get("request") or {})
+        for pidx in parents:
+            if pidx >= tidx:
+                continue
+            theirs = _app_headers(entries[pidx].get("request") or {})
+            if {k: v for k, v in own.items() if theirs.get(k) != v}:
+                kept_targets.add(turl)
+                no_follow.add(pidx)
+
     skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0}
 
     for idx, e in enumerate(entries):
@@ -2489,7 +2628,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             step["params"] = {p.get("name"): p.get("value", "") for p in pd["params"] if p.get("name")}
         elif pd.get("text"):
             step["body"] = pd["text"]
-        if any(j < idx for j in redirect_targets.get(url, ())):
+        if url not in kept_targets and any(j < idx for j in redirect_targets.get(url, ())):
             skipped["filtered"] += 1
             continue
         code = str((e.get("response") or {}).get("status") or "")
@@ -2537,6 +2676,11 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         if ann.get("pause_after_ms"):
             groups[gname].append({"pause": int(ann["pause_after_ms"]),
                                   "name": "Pause after %s" % step["name"][:40]})
+
+    for pidx in no_follow:
+        st_ = steps_by_entry.get(pidx)
+        if st_ is not None:
+            st_["follow_redirects"] = False
 
     if real_think_time:
         _apply_real_think_times(groups, order, max_think_ms)
