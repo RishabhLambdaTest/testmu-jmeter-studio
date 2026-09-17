@@ -321,12 +321,19 @@ long it took. A failure is one of:
 | `no value for ${TOKEN}` | nothing defined it: its extractor is missing or ran on a failed request |
 | `the browser followed this redirect…` | not a failure. The plan does not follow this redirect and JMeter would stop at it; a browser cannot be told not to |
 
+![The Checks tab after a replay, each request with its code](screenshots/author-replay.png)
+
 **Values that look dynamic.** Under the results, every failing request is
 searched for values that the *recording* shows an earlier response handing out.
 Each becomes a suggestion: the variable, the value, which request it came from
 and which one needs it. Tick the ones you want and press **Apply the ticked
 correlations** - each adds the extractor to the source request and replaces the
 value everywhere it appears. Then replay again.
+
+![The suggestions under the replay results](screenshots/author-replay-suggestions.png)
+
+The results and the suggestions share one scrolling box, so the suggestions sit
+below the requests: scroll inside it to reach them.
 
 That is the same conclusion BlazeMeter's correlation wizard reaches by replaying
 in JMeter and comparing; this runs in the browser, so there is nothing to
@@ -380,6 +387,8 @@ path and checks: read it to confirm the plan contains what you meant to test.
 *Correlations* is every dynamic value that was wired between requests, with the
 rule, a confidence and the hop, so you can disagree with one. *Checks* holds
 validation results once you have run one.
+
+![The host checklist, with one host in the plan](screenshots/author-hosts.png)
 
 ### Editing the plan
 

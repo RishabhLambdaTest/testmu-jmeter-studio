@@ -165,6 +165,8 @@ as it is, in the browser, and the result is a report rather than a plan.
 Each kind of problem is one finding: how many there are, which characters, and
 the first five places by line and column. A 37 MB plan is checked in under a second.
 
+![A plan that fails the check, with the report underneath](screenshots/author-validate.png)
+
 JMeter itself is more forgiving than this. A plan carrying `&#x1f;` can still open
 in JMeter, while the XML parser HyperExecute uses to read uploaded plans rejects
 it with `illegal character code U+001F`. The report follows the strict reading,

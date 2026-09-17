@@ -138,6 +138,8 @@ to TestMu AI in this browser. If you are not, the page shows **Sign in to
 TestMu AI**; sign in on the tab it opens and the page unlocks by itself. The
 account you are signed in to is named at the top right.
 
+![The sign-in card covering the authoring page](screenshots/auth-gate.png)
+
 Click the toolbar icon:
 
 ![The extension popup, idle](screenshots/popup-idle.png)
