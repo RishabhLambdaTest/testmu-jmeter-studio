@@ -206,6 +206,28 @@ fixtures rather than their marketing:
 | Checks | only if the HAR carries them | only your own Postman tests | status only | yes | assertions from the plan |
 | Think time | recorded gaps, min 500 ms | none | a fixed constant | generator option | recorded, optionally randomised |
 | Correlation | **none** | none | none | rules you write, or AI | **automatic, and shown** |
+| Report | none | none | none | — | k6's own dashboard, as a job artefact |
+| Ways in | a HAR | a collection | a spec | its own recording | **eight** |
+| Starts the job | no | no | no | Grafana Cloud | **yes, no CLI or repo** |
+
+Each of those eight was checked by generating a script from it and having k6
+itself parse the result:
+
+| Source | Requests | Groups | Checks | Extractors |
+|---|---|---|---|---|
+| Browser recording (HAR) | 4 | 1 | 4 | 2 |
+| TestMu AI session | 21 | 10 | 18 | 1 |
+| OpenAPI | 3 | 1 | 3 | 0 |
+| Postman | 3 | 2 | 0 | 1 |
+| Excel / CSV | 3 | 2 | 4 | 1 |
+| cURL | 3 | 1 | 3 | 0 |
+| An existing `.jmx` | 6 | 1 | 3 | 0 |
+| URL list | crawls live, same pipeline | | | |
+
+A source never needs k6-specific work: they all produce one spec, and the k6
+script is a rendering of it, the same way the `.jmx` is. That is also why the
+extractor column is not zero for Postman and Excel - correlation happens before
+either emitter runs.
 
 **Correlation is the problem everyone punts.** har-to-k6 only emits a variable
 when the input HAR already carries a hand-written LI-HAR `variables` block —
@@ -233,6 +255,40 @@ Ours is deterministic, runs in your browser, sends nothing anywhere, and is
 measured: 8 of 8 planted cases, 15 of 15 samples against a server that rejects
 stale values. Theirs may well correlate things a rule pack never would. Both
 statements can be true, and the honest pitch says so.
+
+### Where the k6 tools are ahead
+
+**k6 Studio records through a system proxy**, so it sees mobile and native
+traffic that a Chrome extension cannot. Its rule editor is interactive - write a
+rule, see what it matches - where ours is a JSON or YAML pack. And its
+autocorrelation will catch shapes no rule pack anticipated.
+
+**postman-to-k6 has higher fidelity on collections.** It bundles a shim that
+*runs* your pre-request and test scripts. We pattern-match the common lines -
+`to.have.status(...)`, `pm.environment.set("x", pm.response.json().y)`,
+`to.include(...)` - into assertions and extractors, which covers an ordinary
+collection and quietly ignores anything scripted beyond it.
+
+**openapi-generator covers a spec exhaustively**, every endpoint and every
+parameter, where we author the journey you describe rather than the whole
+surface.
+
+**Grafana Cloud k6** is the execution and reporting half: dashboards, trends,
+run comparison. The same gap as with BlazeMeter, and the same answer -
+HyperExecute runs the test, and the trends are not there yet.
+
+**One more, on our side of the line:** k6's dashboard is collected as a job
+artefact rather than shown on HyperExecute's Reports tab. That tab combines
+reports from frameworks it knows how to parse, and k6 is not among them -
+declaring the dashboard as one of those fails the report step outright.
+
+### Running it
+
+The other tools hand you a file. From here, **Run on HyperExecute** creates a
+project, uploads the script and starts the job - no CLI, no repo, no binary.
+Proven end to end: a session id became a 21-request, 10-transaction k6 script
+that ran on their machines, with k6 v2.2.0 installed as a runtime addon, the
+dashboard collected, and the job reporting completed rather than skipped.
 
 ## Where we are stronger
 
