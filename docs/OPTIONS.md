@@ -368,6 +368,7 @@ for the fourth time.
 | Replay once | the plan run once, here, with per-request results and correlation suggestions | the target reachable from this browser | before any run that costs money |
 | Run on HyperExecute… | project, upload, trigger, dashboard | a TestMu AI sign-in | when the plan is ready to carry load |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
+| Download k6 test | `<plan>_load_test.js` and `hyperexecute.yaml` | k6, if you run it | when the test should run on k6 rather than JMeter |
 
 Download and *Run on HyperExecute…* both parse the plan first. A plan that no
 XML parser will read is refused here, with the line and column, rather than
@@ -381,6 +382,42 @@ large enough that the tree itself is the cost. Past about three hundred
 samplers it says so, because beyond that the plan is a memory cost on every
 thread before a single request is sent. It matters most for a converted
 session, which nobody hand-reviews.
+
+### k6 job
+
+The same plan, for the other engine. Everything under **k6 job** is blank until
+you disagree with the plan: blank means "whatever the plan already says".
+
+| Field | Blank means | What it changes |
+|---|---|---|
+| Users in total | the plan's thread count | how many virtual users, divided across the machines |
+| Machines | one | how many machines the job runs on, as a matrix of shards |
+| Ramp over | the plan's ramp | how long to reach that many users, e.g. `2m` |
+| Run for | the plan's duration | how long to hold them, e.g. `30m` |
+| Send it to | the host in the plan | the base URL, so a plan recorded against production can run against staging |
+| Fail above … % failed requests | 1% | a k6 threshold, which is what decides the exit code |
+| …or above a p(95) of | no budget | a 95th-percentile budget in milliseconds, as a second threshold |
+| Project name | `k6-<plan>` | the HyperExecute project to create |
+| …or an existing project | create a new one | an existing **custom** project, listed k6-first |
+| Show every custom project | off | lists the org's other custom projects too |
+
+The line underneath reads the settings back as a sentence - *"1000 user(s) over
+5 machine(s): 200 per machine · ramp 2m · for 30m · against
+https://staging.example.com · fails above 5% failed requests"* - so a wrong
+number is visible before the job starts.
+
+**Machines multiply, they do not divide the work twice.** 1000 users over 5
+machines is 200 users each, all running the same journey: the load your target
+sees is 1000. Users left over after the division are reported in that line
+rather than silently dropped.
+
+**Run on HyperExecute…** under those fields creates the project, uploads the
+script and starts the job - no CLI, no repo, no YAML file. **Download k6 test**
+gives you the same thing as two files to run yourself.
+
+Both thresholds matter more than they look: a k6 check that fails does not
+change the exit status, only a threshold does. Without them a job whose every
+request failed still finishes green.
 
 Three tabs sit above them. *Requests* is every sampler with its group, method,
 path and checks: read it to confirm the plan contains what you meant to test.
