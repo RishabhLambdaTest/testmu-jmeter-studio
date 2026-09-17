@@ -39,7 +39,7 @@
         </span>
         <span class="jg-title">
           <span class="jg-word"><b>TestMu</b> <i>AI</i></span>
-          <span class="jg-product">JMeter Studio</span>
+          <span class="jg-product">JMeter Studio <span class="jg-beta">Beta</span></span>
         </span>
         <span class="jg-count" id="jg-count">0</span>
         <button class="jg-x jg-min" id="jg-hide"

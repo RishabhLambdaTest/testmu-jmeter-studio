@@ -36,6 +36,13 @@
                             flex-direction: column; gap: 0; }
 #jmxgen-overlay .jg-word { font-weight: 700; letter-spacing: -.01em;
                            color: #121212; }
+/* the beta pill, as brand.css draws .tm-beta; this file cannot see those
+   tokens, so the literals are repeated and change together */
+#jmxgen-overlay .jg-beta { display: inline-block; margin-left: 4px; padding: 0 5px;
+  border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa;
+  color: #636c76; font-size: 8.5px; line-height: 12px; font-weight: 600;
+  font-style: normal; letter-spacing: .04em; text-transform: uppercase;
+  vertical-align: 1px; }
 #jmxgen-overlay .jg-product { color: #6e7781; font-size: 9.5px;
                               font-weight: 500; white-space: nowrap; }
 #jmxgen-overlay .jg-count {

@@ -22,7 +22,7 @@ if you want, on BlazeMeter.
 | Where the recording goes | uploaded to the vendor | stays in your browser |
 | What you end up owning | a test inside the platform | a `.jmx` file |
 | Install to first plan | account, login, workspace | unzip, Load unpacked, about 5 minutes |
-| Ways in | recorder, JMX upload, Taurus | recorder plus six more: cURL, OpenAPI, Postman, Excel, URL list, existing JMX |
+| Ways in | recorder, JMX upload | recorder plus six more: cURL, OpenAPI, Postman, Excel, URL list, existing JMX |
 | Lock-in | the platform is the test | none; the `.jmx` runs anywhere |
 
 ## What customers actually ask
@@ -189,7 +189,6 @@ need, and the plan still runs anywhere else you choose to take it.
 | What you have there | What to do here |
 |---|---|
 | A JMX exported from BlazeMeter | *Source → Existing .jmx*, or `jmxgen import-jmx`; clean it, then run it |
-| A Taurus YAML | the studio does not read Taurus YAML; bring the `.jmx` it points at through *Source → Existing .jmx* |
 | A BlazeMeter recording (HAR) | *Source → Recording (HAR)*; correlation runs on it here |
 | Shared CSV test data | drop it in Test data, and HyperExecute splits it across engines |
 | Threshold-based pass/fail | JMeter assertions in the plan, plus the CI exit code |

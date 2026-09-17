@@ -121,7 +121,8 @@
 .tm-product { color:var(--text-mute); font-size:10px; letter-spacing:.01em;
               white-space:nowrap; text-transform:none; font-weight:500 }
 /* the product is in beta, and says so beside its name. Neutral on purpose:
-   the orange is the dashboard's upsell and the green is the primary action */
+   the orange is the dashboard's upsell and the green is the primary action.
+   overlay.css repeats these literals as .jg-beta; change both together */
 .tm-beta { display:inline-block; margin-left:4px; padding:0 5px;
            border:1px solid var(--line); border-radius:6px;
            background:var(--sunk); color:var(--text-dim);
