@@ -1,25 +1,23 @@
 /* Authoring from the extension.
  *
  * The engine runs here, in WebAssembly, so every source in the dropdown works
- * with nothing installed. A local console is optional and buys exactly one
- * thing: Validate, which needs a real JMeter binary to run the plan once.
+ * with nothing installed. Validate .jmx is the one entry that builds nothing:
+ * it checks an existing plan's XML (jmxcheck.js).
  */
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_ENDPOINT = "http://localhost:8770";
 /* [storage key, element id]. realThink moved key when its default became on,
    so an "off" saved by an older build is not inherited silently. */
 const CHECKS = [["realThink2", "realThink"], ["noCorrelate", "noCorrelate"]];
 const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
               "loginBody", "loginToken", "csvFile", "csvCols", "threads", "ramp",
-              "dur", "endpoint", "planName"];
+              "dur", "planName"];
 
 let MODES = {};
 let STATE = null;          // the last /api/author response
 let FILE = null;           // {name, content} of the picked file
 let FROM_RECORDING = false;  // author from what the recorder left on disk
 
-const base = () => ($("endpoint").value.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, "");
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -39,7 +37,6 @@ async function load() {
   // saved "off" from before would otherwise keep handing people a plan with no
   // pacing, which is the setting this rename exists to stop inheriting.
   CHECKS.forEach(([key, id]) => { if (v[key] !== undefined) $(id).checked = v[key]; });
-  if (!$("endpoint").value) $("endpoint").value = DEFAULT_ENDPOINT;
 }
 
 async function save() {
@@ -87,33 +84,14 @@ $("logToggle").onclick = (e) => {
 };
 
 /* ---- where the work happens -------------------------------------------
-   The engine runs inside the extension, so nothing needs installing. The local
-   console is looked for anyway: it is the only thing that can run JMeter, so
-   when it is there Validate works too. */
+   Everything runs inside the extension; there is nothing else to look for. */
 
-let CONSOLE_UP = false;
-
-async function ping() {
-  const el = $("svc");
-  try {
-    const r = await fetch(base() + "/api/ping", { cache: "no-store" });
-    CONSOLE_UP = r.ok;
-  } catch (e) {
-    CONSOLE_UP = false;
-  }
-  $("validate").disabled = !CONSOLE_UP;
-  $("validate").title = CONSOLE_UP
-    ? "Run the plan once against the real target"
-    : "Needs the local console - it is the only thing that can run JMeter";
+function engineStatus() {
   if (window.JmxgenEngine && window.JmxgenEngine.isReady()) {
-    el.textContent = CONSOLE_UP
-      ? "engine ready - local console found, so Validate is available too"
-      : "engine ready - everything runs in this extension";
-    el.className = "svc up";
+    $("svc").textContent = "engine ready - everything runs in this extension";
+    $("svc").className = "svc up";
   }
-  return CONSOLE_UP;
 }
-$("endpoint").onchange = () => { save(); ping().then(loadModes); };
 
 /* ---- source picker ----------------------------------------------------- */
 
@@ -124,7 +102,7 @@ const BUILTIN_MODES = {
   curl:    { label: "cURL command(s)", input: "text" },
   excel:   { label: "Excel / CSV sheet", input: "file", ext: ".xlsx,.csv" },
   urls:    { label: "Page URL list (probe)", input: "text" },
-  jmx:     { label: "Existing .jmx (import)", input: "file", ext: ".jmx" },
+  jmx:     { label: "Validate .jmx (check the XML)", input: "file", ext: ".jmx" },
   ltsession: { label: "TestMu AI session (session id)", input: "text" },
 };
 
@@ -163,6 +141,12 @@ function syncInputs() {
   // a load test and a spin loop, so the control sits with the load profile
   // rather than folded away under filters
   $("thinkRow").hidden = !["har", "ltsession"].includes($("mode").value);
+  // validating builds nothing, so nothing about building applies
+  const checking = $("mode").value === "jmx";
+  ["optAuth", "optData", "loadBox"].forEach((id) => { $(id).hidden = checking; });
+  $("go").textContent = checking ? "Validate .jmx" : "Generate plan";
+  $("checkResult").hidden = true;
+  if (checking) $("results").hidden = true;
 }
 $("mode").onchange = () => { syncInputs(); save(); };
 
@@ -287,6 +271,8 @@ $("go").onclick = async () => {
   };
   const body = { mode: mode, options: opts, text: $("text").value.trim() };
 
+  if (mode === "jmx") return validateJmx();
+
   if (mode === "ltsession") {
     const sid = body.text.trim();
     if (!sid) return say("paste a session id first", "bad");
@@ -335,6 +321,39 @@ $("go").onclick = async () => {
     $("go").disabled = false;
   }
 };
+
+/* ---- Validate .jmx ------------------------------------------------------
+   Checks the picked file as it is. No plan is built, so the result is a report
+   rather than the Requests table. */
+async function validateJmx() {
+  const f = ($("file").files || [])[0];
+  if (!f) return say("choose a .jmx to validate", "bad");
+  $("go").disabled = true;
+  $("results").hidden = true;
+  $("checkResult").hidden = true;
+  STATE = null;
+  say(`checking ${f.name}…`, "info");
+  addLog("info", `validating ${f.name} (${(f.size / 1048576).toFixed(1)} MB)`);
+  try {
+    const r = await window.JmxCheck.check(f);
+    window.JmxCheck.render($("checkResult"), r);
+    r.errors.forEach((e) => addLog("error", e.message));
+    (r.parser || []).forEach((p) => addLog("error", p));
+    r.warnings.forEach((w) => addLog("warn", w.message));
+    if (r.ok) {
+      addLog("ok", `${f.name} is valid XML and a JMeter plan`);
+      say(r.warnings.length ? `valid, with ${r.warnings.length} warning(s)` : `${f.name} is valid`,
+          r.warnings.length ? "warn" : "ok");
+    } else {
+      say(`${f.name} is not valid - see the report below`, "err");
+    }
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say(String(e.message || e), "err");
+  } finally {
+    $("go").disabled = false;
+  }
+}
 
 /* ---- editing the plan --------------------------------------------------
    Every edit is applied to the spec and the plan is rebuilt from it, so an
@@ -557,20 +576,14 @@ function showTab(which) {
       ? `<table><thead><tr><th>Variable</th><th>Rule</th><th>Confidence</th><th>From</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="empty">Nothing dynamic was found. Only a recording carries the responses correlation needs.</div>';
   } else {
-    const checks = STATE.checks;
-    if (!checks) {
-      el.innerHTML = '<div class="empty">Press Validate to run the plan once against the real target.</div>';
-      return;
-    }
-    const rows = (checks.samples || []).map((s) =>
-      `<tr><td class="mono">${esc(s.label || "")}</td>
-       <td><span class="pill ${s.success ? "ok" : "bad"}">${esc(s.code || "")}</span></td>
-       <td>${esc(s.assertion || s.message || "")}</td></tr>`).join("");
+    const v = STATE.verify || {};
+    const rows = (v.errors || []).map((e) =>
+      `<tr><td><span class="pill bad">error</span></td><td>${esc(e)}</td></tr>`).join("") +
+      (v.warnings || []).map((w) =>
+      `<tr><td><span class="pill warn">warning</span></td><td>${esc(w)}</td></tr>`).join("");
     el.innerHTML = rows
-      ? `<table><thead><tr><th>Request</th><th>Code</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`
-      : `<div class="empty">Nothing ran.${
-            checks.reason ? " JMeter said: " + esc(checks.reason) : ""
-          }<br />A data file the plan references may be missing beside it, or no thread group is enabled.</div>`;
+      ? `<table><thead><tr><th></th><th>What the plan check found</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<div class="empty">The plan check found nothing to report.</div>';
   }
 }
 document.querySelectorAll(".tabs button").forEach((b) =>
@@ -614,51 +627,6 @@ $("download").onclick = () => {
 $("playwright").onclick = () =>
   STATE && saveText(STATE.playwright, stem() + "_browser_test.py",
                     "one browser, functional check");
-
-$("validate").onclick = async () => {
-  if (!STATE) return;
-  if (!CONSOLE_UP) {
-    return say("Validate runs the plan through JMeter, which a browser cannot do. " +
-               "Start the local console, or validate by running it on HyperExecute.", "err");
-  }
-  addLog("info", "replaying once through the local console…");
-  $("validate").disabled = true;
-  say("running the plan once…", "info");
-  try {
-    // Validate is the one thing that needs the JMeter binary, so it goes to
-    // the local console when one is running. The plan is posted with it: the
-    // console has no session for a plan this page built.
-    const r = await fetch(base() + "/api/replay", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jmx: STATE.jmx, name: stem() + ".jmx" }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || "HTTP " + r.status);
-    STATE.checks = data;
-    showTab("checks");
-    const samples = data.samples || [];
-    const bad = samples.filter((s) => !s.success).length;
-    if (!samples.length) {
-      // A run that executed nothing is not a pass. Both look like an empty
-      // failure list, and reporting the wrong one is how a broken plan reaches
-      // five hundred users.
-      const why = data.reason || "the plan did not execute";
-      addLog("error", "validate ran nothing - " + why);
-      say("nothing ran - " + why, "err");
-    } else if (bad) {
-      addLog("error", bad + " of " + samples.length + " request(s) failed");
-      say(bad + " request(s) failed - see Checks", "err");
-    } else {
-      addLog("ok", "validate passed - " + samples.length + " request(s), every variable resolved");
-      say("every request passed - " + samples.length + " sampler(s)", "ok");
-    }
-  } catch (e) {
-    say(String(e.message || e), "err");
-  } finally {
-    $("validate").disabled = false;
-  }
-};
 
 $("ship").onclick = async () => {
   if (!STATE) return;
@@ -770,9 +738,7 @@ async function takeRecording() {
   await load();
   await loadModes();
   await AUTH.ready();    // the gate covers the page until someone is signed in
-  await ping();                       // console check - cheap, and may fail
-  // Boot the engine up front so the first Generate is not the slow one. The
-  // status line only becomes accurate once this resolves, so ping again after.
+  // Boot the engine up front so the first Generate is not the slow one.
   try {
     await window.JmxgenEngine.boot();
   } catch (e) {
@@ -780,7 +746,7 @@ async function takeRecording() {
     $("svc").className = "svc down";
     return;
   }
-  await ping();
+  engineStatus();
 
   // only now can anything be generated: the engine is up
   const q = new URLSearchParams(location.search);

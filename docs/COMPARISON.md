@@ -22,7 +22,7 @@ if you want, on BlazeMeter.
 | Where the recording goes | uploaded to the vendor | stays in your browser |
 | What you end up owning | a test inside the platform | a `.jmx` file |
 | Install to first plan | account, login, workspace | unzip, Load unpacked, about 5 minutes |
-| Ways in | recorder, JMX upload | recorder plus six more: cURL, OpenAPI, Postman, Excel, URL list, existing JMX |
+| Ways in | recorder, JMX upload | recorder plus six more: cURL, OpenAPI, Postman, Excel, URL list, a TestMu AI session; an existing JMX is validated |
 | Lock-in | the platform is the test | none; the `.jmx` runs anywhere |
 
 ## What customers actually ask
@@ -38,7 +38,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | "The report is 4,000 lines of URLs" | transactions | name one while recording; it becomes a Transaction Controller |
 | "How do I know a 200 wasn't an error page?" | assertions | Assert 200 and Assert text, added on the request in front of you |
 | "Will this behave like real traffic?" | open against closed workload | closed thread groups, and arrival-rate groups |
-| "How do I know it works before I spend a run?" | pre-flight | single-user validate: per-request codes, plus any `${VAR}` that never resolved |
+| "How do I know it works before I spend a run?" | pre-flight | every plan is checked as it is built, and *Validate .jmx* checks an existing one's XML with line and column |
 | "Where do the credentials go?" | secrets | nowhere; the studio uses your TestMu AI sign-in and stores no key |
 | "Our APIs need client certificates" | mTLS | keystore and JVM properties generated, and validated at build time |
 | "Can I check the UI didn't break too?" | protocol and browser | one recording emits a `.jmx` and a Playwright test |
@@ -69,7 +69,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | Import and clean an existing `.jmx` | upload only | import to an editable spec and re-emit clean; `optimize` repairs bloated plans |
 | Correlation | through the JMeter Correlation Recorder plugin | built in, with provenance for every value |
 | Static validation of the result | — | validity, loadability, missing files, undefined variables, and a heap and CPU lint |
-| Single-user pre-flight | debug run | replay with per-request codes and unresolved variables |
+| Single-user pre-flight | debug run | no; plans are checked statically, not replayed |
 
 ### Execution
 
@@ -180,15 +180,14 @@ Recording a load test should not mean uploading your logged-in session to a
 vendor, and the thing you get back should be a file you own. JMeter Studio
 authors a real JMeter plan, from a recording or from the curl command, OpenAPI
 spec, Postman collection or spreadsheet you already have, entirely inside Chrome,
-with dynamic tokens correlated and shown, and validates it at one user before you
-spend a run. HyperExecute then runs it across as many machines and regions as you
+with dynamic tokens correlated and shown, and checked before you spend a run. HyperExecute then runs it across as many machines and regions as you
 need, and the plan still runs anywhere else you choose to take it.
 
 ## Migrating from BlazeMeter
 
 | What you have there | What to do here |
 |---|---|
-| A JMX exported from BlazeMeter | *Source → Existing .jmx*, or `jmxgen import-jmx`; clean it, then run it |
+| A JMX exported from BlazeMeter | *Source → Validate .jmx* to check it, then run it from the run page |
 | A BlazeMeter recording (HAR) | *Source → Recording (HAR)*; correlation runs on it here |
 | Shared CSV test data | drop it in Test data, and HyperExecute splits it across engines |
 | Threshold-based pass/fail | JMeter assertions in the plan, plus the CI exit code |

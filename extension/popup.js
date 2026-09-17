@@ -106,17 +106,14 @@ $("txset").onclick = async () => {
   say(r.ok ? `transaction → ${name}` : r.error, !r.ok);
 };
 
-/* The console is optional and always has been optional here: the plan is built
-   by the engine inside the extension. A running console only adds Validate,
-   which needs a real JMeter binary, so its absence is a note and not a fault. */
+/* Everything is built by the engine inside the extension, so there is nothing
+   to find here: the line only says so. */
 async function checkService() {
   const r = await send({ type: "ping" });
   const el = $("svc");
   const up = !!(r.ok && r.data && r.data.up);
   $("endpoint").value = (r.data && r.data.endpoint) || "http://localhost:8770";
-  el.textContent = up
-    ? "local console found — single-user Validate is available too"
-    : "everything runs in this extension — no install needed";
+  el.textContent = "everything runs in this extension — no install needed";
   el.className = "svc " + (up ? "up" : "note");
   refreshButtons();
 }

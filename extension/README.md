@@ -93,9 +93,3 @@ Plus a plan-level block, when the load profile should travel with the recording:
 { "log": { "_jmxgen": { "name": "Shop journey", "threads": 25, "ramp_up": 60, "duration": 900 } } }
 ```
 
-## The optional console
-
-One feature needs it: **Validate (single user)**, which runs the plan once
-against the real target — that needs a JMeter binary, which a browser does not
-have. Start it with `jmxgen console` and the popup says so. Everything else
-works without it.

@@ -165,8 +165,7 @@ value, replace a value with a variable, reorder it or remove it. You never have
 to record again to fix a plan.
 [EDITING.md](EDITING.md) covers each verb, with the case each one is for. *Correlations* lists the dynamic values it wired
 between requests, each with the rule that matched, a confidence, and the hop it
-travels. *Checks* holds the results of a single-user validation run, once you
-have done one.
+travels. *Checks* lists what the plan check found: errors first, then warnings.
 
 The Log panel underneath carries everything: engine progress, Python's own
 output, and any warning about a JMeter plugin the runner will need. Its **copy**
@@ -382,9 +381,8 @@ Every error the extension can produce, what it actually means, and what to do.
 | 0 correlated, on a source that is not a recording | Expected. Correlation needs real responses, and only a recording carries them. The Correlations tab says as much |
 | "needs jmeter-plugins-casutg on the runner" | The plan uses arrival-rate thread groups. Upload that jar with the plan, or install it into JMeter's `lib/ext` |
 | "needs jmeter-plugins-webdriver on the runner" | Only a hand-written spec that asks for WebDriver samplers can produce this; the extension never puts browser steps in the `.jmx`. Upload that jar with the plan, and note the runner also needs a chromedriver |
-| **Validate (single user)** is greyed out | Validate runs the plan through real JMeter, which a browser cannot do. It needs the local console from the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen). Everything else works without it |
 | The errors count is above zero | Open the Checks tab. A plan with errors is never shipped silently |
-| Validate says "nothing ran" | JMeter started and executed no samplers. The message carries JMeter's own reason, and it is usually a data file the plan references that is not sitting beside it. Upload the CSV with the plan, or clear the Test data fields |
+| Validate .jmx says "a reference to a character XML 1.0 does not allow" | The plan carries control characters, usually a recorded binary or gzip request body. JMeter may still open it, but HyperExecute's parser will not. Remove or re-record that request body |
 
 ### While running on HyperExecute
 
@@ -403,7 +401,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
 | The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
 | The job runs but the report is empty, and JMeter logged `Error generating the report: NullPointerException` | Zero samplers ran, so there is no data to report and HyperExecute still marks the job passed. Before 1.3.5 a recording with browser steps put a Chrome driver config at plan level, which runs for every thread in every group: with no chromedriver on the runner it killed the protocol samplers too. From 1.3.5 the `.jmx` is protocol-only and the journey ships as the Playwright script instead. Re-author the recording on 1.3.5 |
-| The job runs but the report is empty | The plan ran and every request failed. Validate at one user first, since that is the failure it catches cheaply |
+| The job runs but the report is empty | The plan ran and every request failed. Check the target is reachable from HyperExecute's regions, and run a short job at a few users first |
 
 ### If none of that covers it
 
@@ -455,11 +453,12 @@ Chromium browser works.
 whichever TestMu AI account the browser profile is signed in to, and stores no
 credentials of its own.
 
-**What about the JMeter plans we already have?** *Source → Existing .jmx* imports
-one, shows you what is in it, and re-emits it clean.
+**What about the JMeter plans we already have?** *Source → Validate .jmx* checks
+one: whether it is valid XML, a JMeter plan, and free of characters that stop it
+parsing. Run it on HyperExecute from the run page.
 
 **Do I need JMeter installed?** Not to author a plan, download it, or run it on
-HyperExecute. Only to run one locally, or to use Validate.
+HyperExecute. Only to run one on your own machine.
 
 ---
 
@@ -487,17 +486,3 @@ visibility to Unlisted, and share the link. Everyone then gets updates without
 touching a folder. Listing copy, the permission justifications a reviewer will
 ask for, and the data-use disclosure are all written up in
 [`extension/STORE_LISTING.md`](../extension/STORE_LISTING.md).
-
----
-
-## Optional: the local console
-
-Nothing above needs it, and it is not in this repository. One feature depends on
-it. Validate (single user) runs the plan once against the real target and reports
-per-request status codes along with any `${VARIABLE}` that never resolved, which
-needs a real JMeter binary that a browser cannot provide.
-
-It ships with the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) as
-`jmxgen console`. Start it and the popup says "local console found, single-user
-Validate is available too" instead of "everything runs in this extension". That
-is the only difference it makes.

@@ -116,11 +116,11 @@ nobody has to guess what is proven and what is merely written.
 | Path | State |
 |---|---|
 | Record a logged-in journey against a live public API | 8 requests, transactions preserved, the JWT from `POST /auth/login` correlated at high confidence |
-| All eight sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, existing `.jmx`, TestMu AI session |
+| All eight sources, in the extension | pass, 0 errors: OpenAPI file and URL, Postman, HAR, cURL, Excel, URL list, TestMu AI session, plus Validate .jmx |
 | The three artifacts | `.jmx` valid, Playwright with ranked locators, HAR |
 | The XML gate | a real plan passes; truncated, unclosed, non-JMeter, sampler-less, control-character and empty inputs are each refused by name |
 | Annotating while recording | assertions, extractors, transactions and drops all reach the plan |
-| Validate against real JMeter | pass, failure and nothing-ran each reported distinctly (needs the optional local console) |
+| Validate .jmx | a real plan passes; bad encoding, raw and escaped control characters, bare `&`, unclosed tags, non-JMeter and thread-group-less files are each reported with line and column; a 37 MB plan in under a second |
 | An hour-shaped recording | 40,000 requests written in 1.1 s; survives worker eviction and a browser restart |
 | Test data | a `CSVDataSet` referencing the file, split across engines at run time |
 | A live HyperExecute run | create, upload and trigger from the extension against the real API; the job completed and the plan's requests reached the target |

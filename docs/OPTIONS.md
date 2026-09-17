@@ -35,7 +35,6 @@ Where blank means something specific:
 | Max users per engine | prefilled with 2000; clear it and HyperExecute's own default applies |
 | Global timeout, Job label | not sent |
 | Existing project id | a project is created from the name |
-| Where jmxgen runs | `localhost:8770` |
 
 Everything else is genuinely optional, and the examples that used to sit in
 these boxes are in the sections below instead, where they can be explained.
@@ -268,7 +267,6 @@ for the fourth time.
 | Button | What you get | Needs | When to use it |
 |---|---|---|---|
 | Download .jmx | the plan | nothing | always, if you want to keep it or open it in JMeter |
-| Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console | before any run that costs money |
 | Run on HyperExecute… | project, upload, trigger, dashboard | a TestMu AI sign-in | when the plan is ready to carry load |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
 
@@ -277,7 +275,7 @@ XML parser will read is refused here, with the line and column, rather than
 failing on a runner ten minutes later.
 
 Every plan is also run through the scale checklist as it is built, and the log
-says what it found. It is the same set of checks the console applies: listeners
+says what it found. It covers listeners
 that hold results in heap, an unbounded loop with no scheduler, missing
 timeouts, disabled elements still parsed into memory, functional mode, a plan
 large enough that the tree itself is the cost. Past about three hundred
@@ -357,8 +355,7 @@ for every feature.
 The Log panel underneath holds everything the engine did. **copy** puts it on the
 clipboard, **clear** empties it, **hide** collapses it.
 
-*Where jmxgen runs* is the address of the optional local console, and only
-Validate uses it. Everything else runs inside the extension.
+Everything on this page runs inside the extension.
 
 ---
 

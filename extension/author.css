@@ -42,6 +42,7 @@ td.mono { font-family:var(--mono); font-size:11.5px }
 .pill.low { color:var(--bad); border-color:#ff818266 }
 .pill.ok { color:var(--good); border-color:#4ac26b66 }
 .pill.bad { color:var(--bad); border-color:#ff818266 }
+.pill.warn { color:var(--warn); border-color:#d4a72c66 }
 
 /* ---- log ----
    Everything the engine says lands here: Python's own stdout, progress lines,
@@ -134,3 +135,26 @@ tr.inspector td { background: var(--surface); padding: 10px 12px; }
    to paste a document. */
 textarea[rows="1"] { min-height: 0; height: 38px; resize: none;
                      white-space: nowrap; overflow-x: auto; }
+
+/* ---- Validate .jmx report ---------------------------------------------- */
+.checkres { margin:14px 0 0; background:var(--surface); border:1px solid var(--line);
+            border-radius:var(--r); padding:12px 14px }
+.checkres[hidden] { display:none }
+.checkres .verdict { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px;
+                     padding:8px 10px; border-radius:var(--r); margin-bottom:10px }
+.checkres .verdict strong { font-size:14px }
+.checkres .verdict span { font-size:12px; color:var(--text-dim); overflow-wrap:anywhere }
+.checkres .verdict.ok   { background:var(--good-wash); color:var(--good) }
+.checkres .verdict.warn { background:var(--warn-wash); color:var(--warn) }
+.checkres .verdict.bad  { background:var(--bad-wash);  color:var(--bad) }
+.checkres table.checks td { padding:5px 4px; border-bottom:1px solid var(--line-soft) }
+.checkres table.checks td:last-child { text-align:right; white-space:nowrap }
+.checkres .findings { list-style:none; margin:10px 0 0; padding:0 }
+.checkres .findings li { padding:7px 0; border-bottom:1px solid var(--line-soft);
+                         font-size:12.5px; overflow-wrap:anywhere }
+.checkres .findings li.bad .kind  { color:var(--bad) }
+.checkres .findings li.warn .kind { color:var(--warn) }
+.checkres .findings .kind { font-weight:600; text-transform:uppercase; font-size:10.5px;
+                            letter-spacing:.04em; margin-right:4px }
+.checkres .findings .where { font-family:var(--mono); font-size:11px; color:var(--text-mute);
+                             margin-top:3px }

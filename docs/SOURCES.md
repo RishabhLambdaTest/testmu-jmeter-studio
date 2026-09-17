@@ -138,17 +138,31 @@ It fetches the page and reads the HTML for scripts, stylesheets, images and
 forms, then drops third-party and tracker hosts. No spec, no recording, no time:
 this is the escape hatch.
 
-## 7. Existing plans
+## 7. Validate .jmx
 
-For when you have inherited one.
+For when you already have a plan and want to know whether it will parse.
 
-Upload `sample/existing-plan.jmx`, or run
-`jmxgen import-jmx sample/existing-plan.jmx --spec plan.yaml -o clean.jmx`.
+Choose **Validate .jmx (check the XML)**, pick the file and press
+**Validate .jmx**. Nothing is converted, rebuilt or uploaded: the file is checked
+as it is, in the browser, and the result is a report rather than a plan.
 
-The plan comes back as an editable spec, so you can see what is in it, filter it,
-and re-emit it clean. Anything jmxgen does not model is preserved as it was
-rather than dropped. For plans that are bloated or broken, `jmxgen optimize` is
-the companion.
+| Check | What it catches |
+|---|---|
+| Encoding | bytes that are not valid in the encoding the file declares (UTF-8 if none) |
+| Characters XML does not allow | control characters, raw or written as references such as `&#x1f;`. Escaping does not make them legal, and a recorded binary or gzip body is the usual source |
+| Well-formed (fast-xml-parser) | unclosed or mismatched tags, a bare `&` or `<`, with line and column |
+| Well-formed and a JMeter plan (the browser's XML parser) | the strict parse, plus `<jmeterTestPlan>`, a `TestPlan`, a thread group and a sampler |
+| Invisible pasted characters | a warning, not an error: no-break and zero-width spaces, stray byte order marks |
+
+Each kind of problem is one finding: how many there are, which characters, and
+the first five places by line and column. A 37 MB plan is checked in under a second.
+
+JMeter itself is more forgiving than this. A plan carrying `&#x1f;` can still open
+in JMeter, while the XML parser HyperExecute uses to read uploaded plans rejects
+it with `illegal character code U+001F`. The report follows the strict reading,
+because that is the one a run depends on.
+
+`sample/existing-plan.jmx` passes.
 
 ---
 
@@ -227,9 +241,5 @@ In the extension the same settings live under *Authentication* and *Test data*.
 | Action | What it does | What it needs |
 |---|---|---|
 | Download .jmx | the plan itself | nothing |
-| Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials |
+| Run on HyperExecute… | project, upload, trigger, dashboard | a TestMu AI sign-in |
 | Download browser test .py | a Playwright script for the browser steps | Playwright, if you run it |
-| Validate (single user) | runs it once, reporting codes and unresolved variables | the local console and JMeter |
-
-Validate is the cheap gate. Finding a broken extractor at one user costs seconds.
-Finding it at 500 costs a run.
