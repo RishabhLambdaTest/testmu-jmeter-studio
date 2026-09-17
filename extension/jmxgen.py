@@ -2389,8 +2389,10 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     # A recording contains every hop of a redirect chain, but JMeter samplers follow
     # redirects themselves - keeping the targets too would request each one twice.
     # Keep the head of the chain, drop what following it would fetch anyway.
-    redirect_targets = set()
-    for e in entries:
+    # Only a LATER request is dropped: a page that redirects to its own URL
+    # (a logout that clears the session and reloads) is the head, not a hop.
+    redirect_targets = {}          # url -> indices of the entries that redirected there
+    for ridx, e in enumerate(entries):
         resp = e.get("response") or {}
         status = int(resp.get("status") or 0)
         if 300 <= status < 400:
@@ -2401,8 +2403,8 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
                         loc = h.get("value") or ""
                         break
             if loc:
-                redirect_targets.add(
-                    urllib.parse.urljoin(e.get("request", {}).get("url", ""), loc))
+                redirect_targets.setdefault(
+                    urllib.parse.urljoin(e.get("request", {}).get("url", ""), loc), []).append(ridx)
     skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0}
 
     for idx, e in enumerate(entries):
@@ -2487,7 +2489,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             step["params"] = {p.get("name"): p.get("value", "") for p in pd["params"] if p.get("name")}
         elif pd.get("text"):
             step["body"] = pd["text"]
-        if url in redirect_targets:
+        if any(j < idx for j in redirect_targets.get(url, ())):
             skipped["filtered"] += 1
             continue
         code = str((e.get("response") or {}).get("status") or "")
@@ -2588,9 +2590,23 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             "steps": actions_to_steps(recorded),
         })
 
+    # A HAR without bodies (a plain network.har, or a proxy that dropped them)
+    # still builds, but its POSTs go out empty and nothing can be correlated.
+    # Say so, rather than let the plan look complete.
+    bodies_missing = 0
+    for i in kept:
+        rq = entries[i].get("request") or {}
+        if (rq.get("method") or "GET").upper() in ("POST", "PUT", "PATCH") \
+                and (rq.get("bodySize") or 0) > 0 \
+                and not ((rq.get("postData") or {}).get("text") or (rq.get("postData") or {}).get("params")):
+            bodies_missing += 1
+    no_response_bodies = bool(kept) and not any(
+        ((entries[i].get("response") or {}).get("content") or {}).get("text") for i in kept)
+
     return spec, {"kept": len(kept), "total": len(entries), "skipped": skipped,
                   "correlated": correlated, "pages": len(order),
-                  "actions": len(recorded)}
+                  "actions": len(recorded), "bodies_missing": bodies_missing,
+                  "no_response_bodies": no_response_bodies}
 
 
 # --------------------------------------------------------------------------

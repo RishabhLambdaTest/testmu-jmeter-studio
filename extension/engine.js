@@ -249,7 +249,9 @@ elif mode == "har":
         real_think_time=bool(opts.get("real_think_time")),
         rules=jmxgen.load_rules(None))
     report.update({"kept": info["kept"], "total": info["total"],
-                   "pages": info["pages"], "correlated": info["correlated"]})
+                   "pages": info["pages"], "correlated": info["correlated"],
+                   "bodies_missing": info.get("bodies_missing", 0),
+                   "no_response_bodies": info.get("no_response_bodies", False)})
 else:
     raise ValueError("unknown mode: %s" % mode)
 

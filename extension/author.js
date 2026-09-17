@@ -325,6 +325,17 @@ $("go").onclick = async () => {
                   `takes a .jmx of at most 50 MB - filter the traffic or pick fewer steps`;
       addLog("error", msg);
       say(msg, "err");
+    } else if (!plainHar && ((data.report || {}).bodies_missing || (data.report || {}).no_response_bodies)) {
+      /* The same failure as a plain network.har, arriving as a file: the HAR
+         was saved without bodies. As loud as an error, for the same reason. */
+      const r = data.report;
+      const what = [
+        r.bodies_missing ? `${r.bodies_missing} POST/PUT request(s) were recorded without their body` : "",
+        r.no_response_bodies ? "no response carries a body, so nothing could be correlated" : "",
+      ].filter(Boolean).join("; ");
+      addLog("warn", "this HAR has no bodies: " + what);
+      say(`plan built - ${nreq} request(s), but this HAR has no bodies: ${what}. ` +
+          `Save the HAR with content, or use a session run with network.full.har: true.`, "err");
     } else if (plainHar) {
       /* As loud as an error: this plan builds and runs, and still cannot log in
          or submit anything, which is the failure people find at load. */

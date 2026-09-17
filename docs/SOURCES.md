@@ -105,6 +105,14 @@ Switching to *Keep: web* keeps the assets your own domain served: 26 of the 58,
 because third-party hosts are still refused. One recording, either an API-level
 or a browser-level plan, decided at generation time rather than at record time.
 
+A redirect is recorded as two requests, and the plan keeps only the first: JMeter
+follows the redirect itself, so keeping the target would request it twice. A page
+that redirects to its own address, as a logout often does, is kept.
+
+A HAR saved without bodies still builds, but its POSTs go out empty and nothing
+can be correlated. The page says so as loudly as an error, naming how many
+requests lost their body. Save the HAR with content to avoid it.
+
 Cross-origin APIs also arrive with a CORS preflight in front of every call.
 Those are dropped: the browser sends `OPTIONS` because its security model
 demands it, JMeter never does, and a preflight sampler would double the request
