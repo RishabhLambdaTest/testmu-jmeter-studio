@@ -23,6 +23,10 @@ let FROM_RECORDING = false;  // author from what the recorder left on disk
 /* Set when the hosts were chosen by hand: the third-party rule would otherwise
    drop the very host that was just ticked. */
 let HOSTS_CHOSEN = false;
+/* Every edit is a whole spec, so undo is a pointer into a list of them rather
+   than an inverse for each operation. Ten deep: enough to get out of a wrong
+   turn, small enough that a big plan does not sit in memory ten times over. */
+const HISTORY = { past: [], future: [], limit: 10 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -514,7 +518,13 @@ function applyRebuild(data, what) {
   const newW = (now.warnings || []).filter((w) => !beforeW.has(w));
   const newE = (now.errors || []).filter((e) => !beforeE.has(e));
 
+  if (STATE.spec_json && !data.fromHistory) {
+    HISTORY.past.push(STATE.spec_json);
+    if (HISTORY.past.length > HISTORY.limit) HISTORY.past.shift();
+    HISTORY.future.length = 0;
+  }
   STATE = Object.assign({}, STATE, data);
+  syncHistoryButtons();
   newW.forEach((w) => addLog("warn", w));
   newE.forEach((e) => addLog("error", e));
   render();
@@ -601,7 +611,8 @@ function showTab(which) {
     // Browser steps are not in the .jmx - they leave as the Playwright script -
     // so listing them here as if they were samplers overstates the plan.
     const rows = planSteps().map((s, i) =>
-      `<tr class="steprow" data-i="${i}" data-at="${esc(JSON.stringify(s.at || []))}">
+      `<tr class="steprow" data-i="${i}" data-at="${esc(JSON.stringify(s.at || []))}"
+           data-find="${esc([s.group, s.method, s.name, s.path].filter(Boolean).join(" ").toLowerCase())}">
        <td>${esc(s.group || "")}</td><td class="mono">${esc(s.method || "")}</td>
        <td class="mono">${esc(s.name || s.path || "")}</td>
        <td>${esc(s.asserts == null ? "" : s.asserts)}</td>
@@ -616,6 +627,7 @@ function showTab(which) {
       : '<div class="empty">No requests in this plan.</div>';
     el.querySelectorAll(".steprow").forEach((tr) =>
       tr.onclick = () => openInspector(tr));
+    if ($("find").value.trim()) applyFind();
   } else if (which === "corr") {
     const rows = (STATE.correlations || []).map((c) =>
       `<tr><td class="mono">\${${esc(c.var)}}</td><td>${esc(c.rule || "")}</td>
@@ -639,6 +651,52 @@ function showTab(which) {
 }
 document.querySelectorAll(".tabs button").forEach((b) =>
   b.onclick = () => showTab(b.dataset.tab));
+
+/* ---- undo, redo and find ------------------------------------------------ */
+
+function syncHistoryButtons() {
+  $("undo").disabled = !HISTORY.past.length;
+  $("redo").disabled = !HISTORY.future.length;
+}
+
+async function toHistory(from, to, what) {
+  const spec = from.pop();
+  if (!spec) return;
+  to.push(STATE.spec_json);
+  say(what + "…", "info");
+  try {
+    const data = await JmxgenEngine.rebuild(spec, null, []);
+    data.fromHistory = true;
+    STATE.replay = null;               // the plan changed under it
+    applyRebuild(data, what);
+    syncHistoryButtons();
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say(String(e.message || e), "err");
+  }
+}
+
+$("undo").onclick = () => toHistory(HISTORY.past, HISTORY.future, "undo");
+$("redo").onclick = () => toHistory(HISTORY.future, HISTORY.past, "redo");
+
+/* Find filters the table rather than searching the plan: a 600-request plan is
+   unreadable otherwise, and the thing you are looking for is a path. */
+function applyFind() {
+  const q = $("find").value.trim().toLowerCase();
+  const rows = document.querySelectorAll("#tabbody tbody tr");
+  let shown = 0;
+  rows.forEach((tr) => {
+    if (tr.classList.contains("inspector")) return;
+    // the row shows a short name; the path and its query are what people search
+    const hay = (tr.dataset.find || tr.textContent).toLowerCase();
+    const hit = !q || hay.includes(q);
+    tr.hidden = !hit;
+    if (hit) shown++;
+  });
+  const note = $("findNote");
+  if (note) note.textContent = q ? `${shown} of ${rows.length} request(s) match` : "";
+}
+$("find").oninput = applyFind;
 
 /* ---- replaying the plan once -------------------------------------------
    The pre-flight that used to need JMeter. One user, in order, from this page,

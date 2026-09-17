@@ -168,10 +168,18 @@
 
   <section id="results" hidden>
     <div class="cards" id="cards"></div>
+    <div class="tabbar">
     <div class="tabs">
       <button data-tab="steps" class="on">Requests</button>
       <button data-tab="corr">Correlations</button>
       <button data-tab="checks">Checks</button>
+    </div>
+    <div class="tabtools">
+      <input type="search" id="find" placeholder="find a request" aria-label="Find a request" />
+      <button id="undo" title="Undo the last edit" disabled>Undo</button>
+      <button id="redo" title="Redo" disabled>Redo</button>
+      <span class="hint" id="findNote"></span>
+    </div>
     </div>
     <div class="tabbody" id="tabbody"></div>
 

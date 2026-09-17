@@ -6,6 +6,18 @@ is still sitting there as a literal. None of that is worth re-recording for.
 
 Everything on this page happens on the result page, after **Generate plan**.
 
+
+## Undo, redo and find
+
+Above the table: **Undo** steps back through the last ten edits, **Redo** goes
+forward again, and **find a request** filters the table as you type, matching
+the method, the group, the name and the path - so `account` finds
+`/index.php?route=account/login` even though the table shows a shorter name.
+
+Undo restores the whole plan as it was before the edit, because every edit
+rebuilds the plan from the spec. A replay result is dropped when you undo: it
+described a plan that no longer exists.
+
 ## Where it is
 
 The **Requests** tab. Every row is editable, and says so on the right.

@@ -137,6 +137,13 @@ textarea[rows="1"] { min-height: 0; height: 38px; resize: none;
                      white-space: nowrap; overflow-x: auto; }
 
 /* ---- Validate .jmx report ---------------------------------------------- */
+.tabbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px }
+.tabtools { display:flex; align-items:center; gap:6px; margin-left:auto }
+.tabtools input[type=search] { width:170px; padding:5px 8px; font:inherit; font-size:12px;
+  border:1px solid var(--line); border-radius:var(--r); background:var(--field); color:var(--text) }
+.tabtools button { padding:5px 9px; font-size:12px }
+.tabtools button[disabled] { color:var(--text-disabled); background:var(--sunk); cursor:default }
+
 .hosts { display:flex; flex-direction:column; gap:4px; margin:8px 0 0 }
 .hosts label { display:flex; align-items:center; gap:8px; font-size:12.5px }
 .hosts .n { color:var(--text-mute); font-size:11.5px }
