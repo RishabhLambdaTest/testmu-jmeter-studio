@@ -130,8 +130,13 @@ and `⌘⇧8` (`Ctrl+Shift+8`) starts and stops recording.
 
 ## 3. Your first plan
 
-The quickest way to see it work needs nothing but the browser. No recording, no
-credentials.
+The quickest way to see it work needs nothing but the browser and your TestMu AI
+sign-in. No recording, no access key.
+
+**Sign in first.** The authoring and run pages open only for someone signed in
+to TestMu AI in this browser. If you are not, the page shows **Sign in to
+TestMu AI**; sign in on the tab it opens and the page unlocks by itself. The
+account you are signed in to is named at the top right.
 
 Click the toolbar icon:
 
@@ -200,11 +205,11 @@ If your team runs Selenium on TestMu AI, the traffic may already be captured and
 no recording is needed.
 
 1. Open the authoring page and choose **TestMu AI session (session id)**.
-2. Fill in your username and access key, the same pair the run page uses.
-3. Paste a session id, or press **Load my sessions** and choose one.
-4. **Generate plan.**
+2. Paste a session id, or press **Load my sessions** and choose one.
+3. **Generate plan.**
 
-The plan arrives grouped into the steps the test performed.
+The session is read with the TestMu AI account you are signed in to. The plan
+arrives grouped into the steps the test performed.
 
 This works only for a session whose run had `"network.full.har": true` in its
 capabilities. Without it the session records no request or response bodies, and
@@ -227,13 +232,13 @@ The page runs the same sequence every time, and the Log names each one as it
 happens. Knowing the order is what makes a failure readable: whatever step the
 log stopped on is the step that failed, and everything above it succeeded.
 
-**1. Credentials.** Username and access key go in the top two fields. The
-username is the LambdaTest *username*, not the email you sign in with; both sit
-on `accounts.lambdatest.com/detail/profile`. *Remember on this machine* keeps
-them in Chrome's extension storage for this profile only.
+**1. The account.** The page uses the TestMu AI account you are signed in to,
+named at the top right. There is no username or access key to fill in: the
+extension asks TestMu AI for them when the page opens and keeps them only while
+the page is open. Signing out of TestMu AI locks the page again.
 
-**2. The project.** A HyperExecute job lives inside a project. Once your
-credentials are filled in, the page asks your account what it has and offers
+**2. The project.** A HyperExecute job lives inside a project. The page asks
+your account what it has and offers
 them in a dropdown, so nothing has to be pasted. Pick one, or choose
 **+ New project…** and give a name.
 
@@ -252,7 +257,7 @@ and an upload that would carry a plan no XML parser can read is refused here
 rather than failing on a runner ten minutes later. The log says
 `plan.jmx parses as a JMeter plan` for each one. Then the files go up: the plan,
 plus any CSV, plugin jar or `system.properties` you attached, each named in the
-log as it goes. This is also the step that proves your credentials work, since
+log as it goes. This is also the step that proves your account can run jobs, since
 it is authenticated exactly like the trigger that follows.
 
 **4. The trigger.** The run configuration is turned into one job request, which
@@ -273,9 +278,6 @@ when you are staging files for a scheduled one.
 
 | Field | |
 |---|---|
-| Username | Your LambdaTest username, not the email you sign in with. Both are at `accounts.lambdatest.com/detail/profile` |
-| Access key | From the same page |
-| Remember on this machine | Stores both in Chrome's extension storage, on this profile only. Nothing is sent anywhere else |
 | New project name | Anything. Creating a project that already exists is an error, so… |
 | …or existing project ID | …paste an ID here instead to add a run to a project you have. Fill in one or the other, never both |
 | Name for the recorded plan | The filename the `.jmx` gets on the runner |
@@ -296,11 +298,16 @@ not mean one user; it means whatever the `.jmx` carries, which is often one. If
 the dashboard shows a number you did not expect, the printed trigger payload in
 the log is where to look.
 
-### Where your credentials go
+### Where your account goes
 
-From the form to LambdaTest, and nowhere else. The extension calls the
-HyperExecute API directly from your browser. There is no server in the middle and
-nothing is proxied through a third party.
+When a page opens, the extension reads your TestMu AI sign-in from the browser
+and asks `accounts.lambdatest.com` for the matching username and access key. It
+keeps them in that page's memory only; nothing is saved to disk, and closing the
+page forgets them. They are sent to LambdaTest and HyperExecute and nowhere else.
+There is no server in the middle and nothing is proxied through a third party.
+
+Versions before the sign-in could save an access key in extension storage.
+Updating removes it.
 
 ---
 
@@ -315,7 +322,7 @@ its identity as long as the folder path does.
 path. Remove the card and load it again from the new location.
 
 **Loading from a different path gives it a new extension ID.** Storage is per ID,
-so remembered credentials and saved form values start out empty again. That is
+so saved form values start out empty again. That is
 the one real cost of moving it.
 
 **Removing it.** Use *Remove* on the card, which deletes its stored settings.
@@ -342,9 +349,8 @@ Every error the extension can produce, what it actually means, and what to do.
 | What you see | What it means |
 |---|---|
 | "Network full har logs are not available. Please set network.full.har: true in caps" | The run that produced this session did not capture full HAR. Nothing can be recovered after the fact; re-run the test with the capability on |
-| "fill in your TestMu AI username and access key above" | The account fields are empty. They are on the authoring page itself, next to the session id, and are shared with the run page |
-| "the credentials were refused (401)" | Wrong username or access key. The username is not the sign-in email |
-| "those credentials cannot read this session (403)" | The session belongs to another account or organisation |
+| "the credentials were refused (401)" | Your TestMu AI sign-in has ended. Reload the page and sign in again |
+| "those credentials cannot read this session (403)" | The session belongs to another account or organisation than the one you are signed in to |
 | "HTTP 500 from the session log API" | The log service failed. Requests already retry, so try again in a moment; roughly one call in ten fails on a large sample |
 | "nothing was recorded from *host*" | Everything captured came from other hosts. The log lists them with counts |
 | One transaction where the test had several | The log says which of the three causes applies: fewer requests than steps, all the traffic arriving inside one step, or timelines that do not meet |
@@ -384,11 +390,13 @@ Every error the extension can produce, what it actually means, and what to do.
 
 | What you see | What it means |
 |---|---|
-| "HyperExecute rejected the credentials (HTTP 401)" | Nearly always the email in the username field. It wants the username; both are on `accounts.lambdatest.com/detail/profile`. HyperExecute answers every credential problem with the same `1002 - Invalid Authentication Token`, which is why the message spells out the likely cause |
+| "HyperExecute rejected the credentials (HTTP 401)" | Your TestMu AI sign-in ended while the page was open. Reload the page, sign in again if asked, and retry. HyperExecute answers every credential problem with the same `1002 - Invalid Authentication Token` |
 | "the trigger failed: HTTP 403" | Not your credentials, whatever an older build's wording said. HyperExecute refuses a request carrying `Origin: chrome-extension://…`, while accepting the identical request with the dashboard's own origin, and `Origin` and `Referer` are two headers a browser will not let a script set. Fixed in 1.3.3, which sets them through `declarativeNetRequest`. Verified both ways against the live API: with the rule the job triggers, and a build with the rule disabled reproduces the 403 exactly. If you are on 1.3.2 or earlier, update |
-| A 403 *before* anything uploaded | This one really is the credentials. See the 401 row |
+| A 403 *before* anything uploaded | This one really is the account. See the 401 row |
 | "A project named X already exists" | Open it on the Projects dashboard, copy its id into *existing project ID*, and leave the name blank. Or choose a different name |
-| "username and access key are both needed" | One of the two fields is empty |
+| "Sign in to use JMeter Studio" covers the page | You are not signed in to TestMu AI in this browser. Press the button and sign in; the page unlocks by itself |
+| "Your TestMu AI session has ended" | The sign-in expired. Sign in again |
+| "Could not check your sign-in" | The account service could not be reached. Check the network and reload |
 | "nothing to upload - author a plan or add a file" | You reached the run page without a plan. Author one, or attach a `.jmx` with *Add files* |
 | "choose which .jmx the job should run" | More than one `.jmx` was uploaded, so pick the entry point |
 | "pick at least one region" | Regions is empty. `eastus` is a safe default |
@@ -411,7 +419,8 @@ enough to diagnose anything on this page.
 **Does my recording go anywhere?**
 No. Capture, authoring and the finished plan all stay in your browser. The only
 outbound requests are to the site you are recording and, if you use it, to the
-HyperExecute API with your own credentials. There is no analytics, no telemetry
+TestMu AI account service and the HyperExecute API, as the account you are
+signed in to. There is no analytics, no telemetry
 and no third-party endpoint of any kind.
 
 **Why does it need debugger permission? That sounds serious.**
@@ -442,8 +451,9 @@ being recorded. Nothing runs on other tabs.
 implement `chrome.debugger`, so response bodies cannot be captured at all. Any
 Chromium browser works.
 
-**Can several people share one LambdaTest account?** Yes. Credentials are stored
-per browser profile and stay there.
+**Can several people share one LambdaTest account?** Yes. The studio uses
+whichever TestMu AI account the browser profile is signed in to, and stores no
+credentials of its own.
 
 **What about the JMeter plans we already have?** *Source → Existing .jmx* imports
 one, shows you what is in it, and re-emits it clean.

@@ -5,6 +5,7 @@
   "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
     "debugger",
+    "cookies",
     "tabs",
     "storage",
     "declarativeNetRequestWithHostAccess",

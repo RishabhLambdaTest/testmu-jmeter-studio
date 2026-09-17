@@ -8,6 +8,16 @@
 
 importScripts("db.js");
 
+/* Versions before the TestMu AI sign-in saved the access key in local storage.
+   An update removes it at once, rather than waiting for a page to be opened. */
+chrome.runtime.onInstalled.addListener(async () => {
+  const got = await chrome.storage.local.get("hxForm").catch(() => null);
+  const form = got && got.hxForm;
+  if (!form || !("key" in form || "user" in form || "remember" in form)) return;
+  delete form.key; delete form.user; delete form.remember;
+  await chrome.storage.local.set({ hxForm: form }).catch(() => {});
+});
+
 const PROTOCOL = "1.3";
 const RECORDABLE = /^https?:\/\//i;
 

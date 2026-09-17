@@ -32,11 +32,10 @@ Selenium only. Playwright sessions do not produce a full HAR today.
 
 Open the authoring page and choose **TestMu AI session (session id)**.
 
-![The session source, with the account fields](screenshots/session-source.png)
+![The session source](screenshots/session-source.png)
 
-The account is the same one the run page uses, so if you have already filled it
-in there, it is here too. It is sent only to `api.lambdatest.com`, to read your
-own session logs.
+Sessions are read with the TestMu AI account you are signed in to, from
+`api.lambdatest.com`. There is no account to fill in.
 
 You can paste a session id, or press **Load my sessions** and choose one.
 

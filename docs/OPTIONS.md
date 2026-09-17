@@ -58,9 +58,6 @@ Shown only when the source is *TestMu AI session*. The whole path is in
 | Control | What it does | When to use it |
 |---|---|---|
 | Session id | the id of an automation session on your account | always, unless you pick one from the list below |
-| TestMu AI username | the same account the run page uses | the first time. Filling it in either place fills both |
-| Access key | from `accounts.lambdatest.com/detail/profile` | the first time |
-| Remember on this machine | keeps both in extension storage, this profile only | leave it on unless the machine is shared |
 | Load my sessions | lists your 40 most recent sessions with status and time | when you do not have an id to hand |
 | …or pick a recent session | fills the id from that list | after loading them |
 
@@ -272,7 +269,7 @@ for the fourth time.
 |---|---|---|---|
 | Download .jmx | the plan | nothing | always, if you want to keep it or open it in JMeter |
 | Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console | before any run that costs money |
-| Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials | when the plan is ready to carry load |
+| Run on HyperExecute… | project, upload, trigger, dashboard | a TestMu AI sign-in | when the plan is ready to carry load |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
 
 Download and *Run on HyperExecute…* both parse the plan first. A plan that no
@@ -371,13 +368,11 @@ Reached with *Run on HyperExecute…*, from either the popup or the authoring
 page. [SETUP.md](SETUP.md#5-running-it-on-hyperexecute) walks the five steps it
 performs in order; this is what each control is for.
 
-## Credentials
+## Account
 
-| Control | What it does | When to use it |
-|---|---|---|
-| Username | your LambdaTest **username**, not the sign-in email | always. Both are on `accounts.lambdatest.com/detail/profile` |
-| Access key | from the same page | always |
-| Remember on this machine | keeps both in extension storage, this browser profile only | leave it on unless the machine is shared |
+There are no credential fields. The page uses the TestMu AI account the browser
+is signed in to, named at the top right, and stays locked behind **Sign in to
+TestMu AI** until there is one.
 
 ## Project
 
@@ -387,7 +382,7 @@ A job lives inside a project. Fill in one field or the other, never both.
 |---|---|---|
 | Which project should this run go into? | lists the JMeter projects on your account | every run. Pick one and the id is filled in for you |
 | + New project… | reveals a name box; the project is created when you press the button | the first run for a given service |
-| New project name / existing project id | the original two fields | only appear when the list could not load, or before credentials are filled in |
+| New project name / existing project id | the original two fields | only appear when the list could not load |
 
 Creating a name that already exists is an error rather than a silent reuse,
 because two projects with the same name is worse than a message.

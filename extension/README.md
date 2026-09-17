@@ -8,7 +8,8 @@ ready-to-run JMeter plan. Then trigger it on HyperExecute from the same window.
 No console, no CLI, no Python, no server. `jmxgen.py` runs here in WebAssembly
 (Pyodide), and HyperExecute is called directly — an MV3 extension with host
 permissions is not subject to CORS, so there is no reason to route anything
-through localhost, and the access key never leaves the machine.
+through localhost. The account is the browser's TestMu AI sign-in (`auth.js`);
+no access key is typed or stored.
 
 **User-facing docs live in [`../docs/`](../docs/):**
 [SETUP](../docs/SETUP.md) · [SOURCES](../docs/SOURCES.md) ·

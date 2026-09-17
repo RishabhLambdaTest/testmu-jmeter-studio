@@ -1,15 +1,15 @@
 /* Run on HyperExecute - a full page, not the popup.
  *
- * The popup closes the moment you click anything outside it, so a form holding a
- * typed access key cannot live there: switching tabs to copy the key would throw
- * the whole thing away. This is a real tab, and every field is persisted as you
- * type, so nothing is lost however you leave it. */
+ * A real tab rather than the popup, which closes the moment you click anything
+ * outside it. Every field is persisted as you type, so nothing is lost however
+ * you leave it. The account is the signed-in TestMu AI one (auth.js), and is
+ * never part of what is saved. */
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_ENDPOINT = "http://localhost:8770";
-const KEYS = ["user", "project", "projectId", "regions",
+const KEYS = ["project", "projectId", "regions",
               "vusers", "maxVusers", "rampup", "duration", "timeout", "label", "planName", "endpoint"];
-const CHECKS = ["remember", "splitcsv"];
+const CHECKS = ["splitcsv"];
 
 /* The plan is handed over in session storage rather than by a server session:
    the authoring page built it in-process, so there is no id to look up. */
@@ -31,7 +31,6 @@ async function load() {
   const saved = (got && got.hxForm) || {};
   KEYS.forEach((k) => { if (saved[k] !== undefined) $(k).value = saved[k]; });
   CHECKS.forEach((k) => { if (saved[k] !== undefined) $(k).checked = saved[k]; });
-  if (saved.remember !== false && saved.key) $("key").value = saved.key;
   if (!$("regions").value) $("regions").value = "eastus";
   if (!$("maxVusers").value) $("maxVusers").value = "2000";
   if (!$("endpoint").value) $("endpoint").value = DEFAULT_ENDPOINT;
@@ -44,7 +43,6 @@ async function save() {
   const out = {};
   KEYS.forEach((k) => (out[k] = $(k).value.trim()));
   CHECKS.forEach((k) => (out[k] = $(k).checked));
-  if ($("remember").checked) out.key = $("key").value;
   await chrome.storage.local.set({ hxForm: out });
 }
 
@@ -54,8 +52,8 @@ const base = () => ($("endpoint").value.trim() || DEFAULT_ENDPOINT).replace(/\/+
    is not subject to CORS - so a missing local console is not an error here. It
    is only worth mentioning because it changes nothing. */
 async function ping() {
-  show($("svc"), "uploads go straight to HyperExecute - your access key never " +
-                 "leaves this machine", "ok");
+  show($("svc"), "uploads go straight to HyperExecute with your TestMu AI " +
+                 "sign-in - nothing passes through another server", "ok");
   return true;
 }
 
@@ -231,8 +229,7 @@ if ($("logCopy")) {
 async function submit(trigger) {
   await save();
 
-  const user = $("user").value.trim();
-  const key = $("key").value;
+  const { user, key } = AUTH.creds();
   const num = (id) => {
     const v = $(id).value.trim();
     if (!v) return null;
@@ -244,7 +241,6 @@ async function submit(trigger) {
   $("go").disabled = $("uploadOnly").disabled = true;
   show($("msg"), trigger ? "creating project, uploading and triggering…" : "uploading…", "info");
   try {
-    if (!user || !key) throw new Error("username and access key are both needed");
 
     // ---- the files ----
     const files = [];
@@ -338,12 +334,7 @@ function showManual(why) {
 }
 
 async function loadProjects() {
-  const user = $("user").value.trim();
-  const key = $("key").value.trim();
-  if (!user || !key) {
-    return showManual("Fill in the username and access key and the list of " +
-                      "your projects loads here.");
-  }
+  const { user, key } = AUTH.creds();
   $("projectPick").hidden = false;
   $("projectManual").hidden = true;
   $("projectSel").innerHTML = '<option>loading…</option>';
@@ -383,25 +374,20 @@ function syncProject() {
 }
 $("projectSel").onchange = syncProject;
 
-let listTimer = null;
-["user", "key"].forEach((id) => $(id).addEventListener("input", () => {
-  clearTimeout(listTimer);
-  listTimer = setTimeout(loadProjects, 600);   // wait for the paste to finish
-}));
-
 $("go").onclick = () => submit(true);
 $("uploadOnly").onclick = () => submit(false);
 
 (async () => {
   await load();
   await takeHandoff();          // before anything renders the file list
-  KEYS.concat(["key"]).forEach((k) => $(k).addEventListener("input", save));
+  KEYS.forEach((k) => $(k).addEventListener("input", save));
   $("planName").addEventListener("input", renderFiles);   // the list shows the name
   CHECKS.forEach((k) => $(k).addEventListener("change", save));
   renderFiles();
   vmCalc();
   await prefillLoad();
-  await loadProjects();      // saved credentials mean the list is ready at once
+  await AUTH.ready();        // the gate covers the page until someone is signed in
+  await loadProjects();
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
   ping();
 })();

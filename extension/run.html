@@ -24,6 +24,7 @@
       </span>
       <span class="tm-sub">Run</span>
     </span>
+    <span class="tm-account" id="account" hidden></span>
     <span class="tm-controls">
       <button class="tm-ctl min" id="pgMin" title="Back to the previous tab"
               aria-label="Back to the previous tab">&minus;</button>
@@ -41,18 +42,6 @@
   </header>
 
   <div class="banner" id="svc"></div>
-
-  <fieldset>
-    <legend>Credentials</legend>
-    <div class="grid2">
-      <div><label>Username</label><input type="text" id="user" spellcheck="false" /></div>
-      <div><label>Access key</label><input type="password" id="key" /></div>
-    </div>
-    <label class="chk"><input type="checkbox" id="remember" checked />
-      Remember on this machine</label>
-    <p class="hint">Leave blank to use LAMBDATEST_USERNAME / LAMBDATEST_ACCESS_KEY
-       on the machine running jmxgen.</p>
-  </fieldset>
 
   <fieldset>
     <legend>Project</legend>
@@ -123,6 +112,7 @@
     <button id="go" class="go">Create &amp; trigger</button>
   </div>
 </div>
+<script src="auth.js"></script>
 <script src="xmlgate.js"></script>
 <script src="hx.js"></script>
 <script src="run.js"></script>

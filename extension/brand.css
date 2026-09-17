@@ -152,3 +152,26 @@
 @media (prefers-reduced-motion: reduce) {
   .tm-ctl { transition:none }
 }
+
+/* ---- signing in ---------------------------------------------------------
+   auth.js covers a signed-out page with this card, and names the signed-in
+   account in the page bar. */
+.authgate { position:fixed; inset:0; z-index:1000; display:grid; place-items:center;
+            padding:16px; background:rgba(246, 248, 250, .92) }
+.authgate[hidden] { display:none }
+.authcard { max-width:380px; width:100%; background:var(--surface);
+            border:1px solid var(--line); border-radius:var(--r-lg);
+            box-shadow:var(--shadow); padding:22px 22px 18px; text-align:left }
+.authcard h2 { margin:0 0 8px; font-size:16px; color:var(--text) }
+.authcard p { margin:0 0 14px; font-size:12.5px; line-height:1.5; color:var(--text-dim) }
+.authcard .authnote { margin:12px 0 0; font-size:11.5px; color:var(--text-mute) }
+.authcard button.go { background:var(--brand); color:var(--on-brand);
+                      border:1px solid transparent; border-radius:var(--r);
+                      padding:7px 14px; font:600 13px var(--sans); cursor:pointer }
+.authcard button.go:hover { background:var(--brand-hi) }
+.authcard button.go:focus-visible { outline:none; box-shadow:var(--ring) }
+.authcard button[hidden] { display:none }
+.tm-account { margin-left:auto; margin-right:10px; font-size:11.5px; color:var(--text-dim); white-space:nowrap;
+              overflow:hidden; text-overflow:ellipsis; max-width:220px }
+.tm-account[hidden] { display:none }
+.tm-account:not([hidden]) + .tm-controls { margin-left:0 }

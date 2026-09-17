@@ -183,14 +183,10 @@ function readFile(file) {
 
 /* ---- TestMu AI session -------------------------------------------------
    The session's own recording becomes a HAR the engine already knows how to
-   author from, so nothing downstream changes. Credentials are the ones the
-   run page already stores - the same LambdaTest account. */
+   author from, so nothing downstream changes. It is read with the signed-in
+   TestMu AI account. */
 async function sessionToEngine(sid) {
-  const { user, key } = ltCreds();
-  if (!user || !key) {
-    throw new Error("fill in your TestMu AI username and access key above");
-  }
-  await ltSaveCreds();
+  const { user, key } = AUTH.creds();
   const out = await window.LT.ltSessionHar(user, key, sid, {
     log: (m) => addLog("info", m),
     maxBytes: 120 * 1048576,
@@ -216,41 +212,11 @@ async function sessionToEngine(sid) {
 
 
 
-/* ---- the TestMu AI account --------------------------------------------
-   Shared with the run page through the same stored form, so entering it in
-   either place is enough. Authoring from a session used to send people to the
-   run page and back, which is not a flow anyone should have to discover. */
-async function ltLoadCreds() {
-  const got = await chrome.storage.local.get("hxForm");
-  const saved = (got && got.hxForm) || {};
-  if (saved.user) $("ltUser").value = saved.user;
-  if (saved.remember !== false && saved.key) $("ltKey").value = saved.key;
-  $("ltRemember").checked = saved.remember !== false;
-}
-
-async function ltSaveCreds() {
-  const got = await chrome.storage.local.get("hxForm");
-  const form = Object.assign({}, (got && got.hxForm) || {});
-  form.user = $("ltUser").value.trim();
-  form.remember = $("ltRemember").checked;
-  form.key = $("ltRemember").checked ? $("ltKey").value.trim() : "";
-  await chrome.storage.local.set({ hxForm: form });
-}
-
-function ltCreds() {
-  return { user: $("ltUser").value.trim(), key: $("ltKey").value.trim() };
-}
-
-["ltUser", "ltKey"].forEach((id) => { $(id).onchange = ltSaveCreds; });
-$("ltRemember").onchange = ltSaveCreds;
-
 $("ltLoad").onclick = async () => {
-  const { user, key } = ltCreds();
-  if (!user || !key) return say("fill in the username and access key first", "bad");
+  const { user, key } = AUTH.creds();
   $("ltLoad").disabled = true;
   $("ltHint").textContent = "looking for your recent sessions…";
   try {
-    await ltSaveCreds();
     const rows = await window.LT.ltListSessions(user, key, 40);
     if (!rows.length) {
       $("ltHint").textContent = "no sessions on this account yet";
@@ -803,7 +769,7 @@ async function takeRecording() {
 (async () => {
   await load();
   await loadModes();
-  await ltLoadCreds();   // so a saved account is already there
+  await AUTH.ready();    // the gate covers the page until someone is signed in
   await ping();                       // console check - cheap, and may fail
   // Boot the engine up front so the first Generate is not the slow one. The
   // status line only becomes accurate once this resolves, so ping again after.

@@ -32,6 +32,7 @@ The engine runs locally in WebAssembly; there is no server in the middle.
 |---|---|
 | `debugger` | The DevTools protocol is the only API that exposes **response bodies**, which are required to correlate dynamic tokens. `webRequest` cannot read response bodies. |
 | `tabs` | To attach to the tab being recorded and to follow OAuth/SSO popups opened from it. |
+| `cookies` | Reads the TestMu AI sign-in cookie (`accessToken` on lambdatest.com) so the studio can use the signed-in account instead of asking for an access key. No other cookie is read. |
 | `storage` | Checkpoints the in-progress recording to session storage so an evicted service worker does not lose it. |
 | `downloads` | To save the exported HAR file the user asked for. |
 | `offscreen` | A service worker cannot create blob URLs; the offscreen document builds the HAR file for download. |
@@ -41,7 +42,8 @@ The engine runs locally in WebAssembly; there is no server in the middle.
 
 - Does **not** collect or transmit user data. All capture and all authoring stay local.
 - No analytics and no third-party endpoints. The only outbound calls are to the site
-  you are recording and, if you use it, to the HyperExecute API with your own credentials.
+  you are recording, to the TestMu AI account service to look up the signed-in account,
+  and, if you use it, to the HyperExecute API as that account. No access key is stored.
 - The exported HAR is written to the user's own Downloads folder.
 
 ## Assets needed for the listing

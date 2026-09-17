@@ -8,15 +8,17 @@ load on anything. HyperExecute runs it when you are ready.
 
 There is nothing to install. The authoring engine ships inside the extension and
 runs in WebAssembly, and runs are triggered directly against the HyperExecute
-API, so your access key never leaves the machine.
+API as the TestMu AI account you are signed in to. No access key is typed or
+stored.
 
 ## Get it running
 
 ```
 1. unzip dist/testmu-jmeter-studio-1.6.7-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
-3. toolbar icon  →  cURL  →  paste a request  →  Generate plan
-4. Run on HyperExecute…  →  credentials  →  Create & trigger
+3. sign in to TestMu AI in the same browser
+   toolbar icon  →  cURL  →  paste a request  →  Generate plan
+4. Run on HyperExecute…  →  pick a project  →  Create & trigger
 ```
 
 Five minutes, start to finish. [docs/SETUP.md](docs/SETUP.md) has the same thing

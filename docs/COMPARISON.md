@@ -39,7 +39,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | "How do I know a 200 wasn't an error page?" | assertions | Assert 200 and Assert text, added on the request in front of you |
 | "Will this behave like real traffic?" | open against closed workload | closed thread groups, and arrival-rate groups |
 | "How do I know it works before I spend a run?" | pre-flight | single-user validate: per-request codes, plus any `${VAR}` that never resolved |
-| "Where do the credentials go?" | secrets | nowhere; the form talks to LambdaTest, with no server in between |
+| "Where do the credentials go?" | secrets | nowhere; the studio uses your TestMu AI sign-in and stores no key |
 | "Our APIs need client certificates" | mTLS | keystore and JVM properties generated, and validated at build time |
 | "Can I check the UI didn't break too?" | protocol and browser | one recording emits a `.jmx` and a Playwright test |
 | "Can I take it with me?" | lock-in | it is a `.jmx` |
