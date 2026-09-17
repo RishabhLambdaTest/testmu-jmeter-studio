@@ -8,14 +8,23 @@
 
 importScripts("db.js");
 
-/* Versions before the TestMu AI sign-in saved the access key in local storage.
-   An update removes it at once, rather than waiting for a page to be opened. */
+/* Older versions saved the access key in local storage, and the address of a
+   local console that no longer exists. An update removes both at once, rather
+   than waiting for a page to be opened. */
 chrome.runtime.onInstalled.addListener(async () => {
-  const got = await chrome.storage.local.get("hxForm").catch(() => null);
-  const form = got && got.hxForm;
-  if (!form || !("key" in form || "user" in form || "remember" in form)) return;
-  delete form.key; delete form.user; delete form.remember;
-  await chrome.storage.local.set({ hxForm: form }).catch(() => {});
+  const got = await chrome.storage.local.get(["hxForm", "jmxgen.author"]).catch(() => null);
+  if (!got) return;
+  await chrome.storage.local.remove("endpoint").catch(() => {});
+  const form = got.hxForm;
+  if (form) {
+    ["key", "user", "remember", "endpoint"].forEach((k) => delete form[k]);
+    await chrome.storage.local.set({ hxForm: form }).catch(() => {});
+  }
+  const author = got["jmxgen.author"];
+  if (author && "endpoint" in author) {
+    delete author.endpoint;
+    await chrome.storage.local.set({ "jmxgen.author": author }).catch(() => {});
+  }
 });
 
 const PROTOCOL = "1.3";
@@ -914,9 +923,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await setRecordingOptions(msg.options) });
         case "devices":
           return sendResponse({ ok: true, data: Object.keys(DEVICES) });
-        case "setEndpoint":
-          await chrome.storage.local.set({endpoint: msg.endpoint || DEFAULT_ENDPOINT});
-          return sendResponse({ ok: true, data: msg.endpoint || DEFAULT_ENDPOINT });
         case "reset": {
           if (state && (state.count || 0) && !state.exported && !msg.force) {
             return sendResponse({

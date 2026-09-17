@@ -106,15 +106,9 @@ $("txset").onclick = async () => {
   say(r.ok ? `transaction → ${name}` : r.error, !r.ok);
 };
 
-/* Everything is built by the engine inside the extension, so there is nothing
-   to find here: the line only says so. */
-async function checkService() {
-  const r = await send({ type: "ping" });
-  const el = $("svc");
-  const up = !!(r.ok && r.data && r.data.up);
-  $("endpoint").value = (r.data && r.data.endpoint) || "http://localhost:8770";
-  el.textContent = "everything runs in this extension — no install needed";
-  el.className = "svc " + (up ? "up" : "note");
+/* Everything is built by the engine inside the extension; the status line in
+   popup.html says so and never changes. */
+function checkService() {
   refreshButtons();
 }
 
@@ -138,8 +132,8 @@ $("send").onclick = async () => {
 };
 
 /* The recorder only captures a browser journey. Every other source opens the
-   extension's own authoring page with that source preselected - it drives the
-   console's API but keeps the whole flow inside the extension. */
+   extension's own authoring page with that source preselected, so the whole
+   flow stays inside the extension. */
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.onclick = async () => {
     await chrome.tabs.create({
@@ -204,12 +198,6 @@ $("winMax").onclick = async () => {
   window.close();
 };
 $("winClose").onclick = () => window.close();
-
-$("saveEndpoint").onclick = async () => {
-  const r = await send({ type: "setEndpoint", endpoint: $("endpoint").value.trim() });
-  say(r.ok ? "saved" : r.error, !r.ok);
-  checkService();
-};
 
 $("export").onclick = async () => {
   const r = await send({ type: "export" });

@@ -6,15 +6,13 @@
  * never part of what is saved. */
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_ENDPOINT = "http://localhost:8770";
 const KEYS = ["project", "projectId", "regions",
-              "vusers", "maxVusers", "rampup", "duration", "timeout", "label", "planName", "endpoint"];
+              "vusers", "maxVusers", "rampup", "duration", "timeout", "label", "planName"];
 const CHECKS = ["splitcsv"];
 
 /* The plan is handed over in session storage rather than by a server session:
    the authoring page built it in-process, so there is no id to look up. */
 const HANDOFF = new URLSearchParams(location.search).get("handoff") || null;
-let SESSION = new URLSearchParams(location.search).get("session") || null;
 let PLAN = null;          // {jmx, name, load} from the authoring page
 // the authoring page passes the name already chosen there, so it is not retyped
 const WANTED_NAME = new URLSearchParams(location.search).get("name") || "";
@@ -33,7 +31,6 @@ async function load() {
   CHECKS.forEach((k) => { if (saved[k] !== undefined) $(k).checked = saved[k]; });
   if (!$("regions").value) $("regions").value = "eastus";
   if (!$("maxVusers").value) $("maxVusers").value = "2000";
-  if (!$("endpoint").value) $("endpoint").value = DEFAULT_ENDPOINT;
   if (WANTED_NAME) $("planName").value = WANTED_NAME;
   // INCLUDE_GEN is decided in takeHandoff(), which runs after this: at this
   // point PLAN is always still null.
@@ -46,15 +43,11 @@ async function save() {
   await chrome.storage.local.set({ hxForm: out });
 }
 
-const base = () => ($("endpoint").value.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, "");
-
 /* This page talks to HyperExecute directly - an extension with host permissions
-   is not subject to CORS - so a missing local console is not an error here. It
-   is only worth mentioning because it changes nothing. */
-async function ping() {
+   is not subject to CORS - so there is nothing in between to mention. */
+function showRoute() {
   show($("svc"), "uploads go straight to HyperExecute with your TestMu AI " +
                  "sign-in - nothing passes through another server", "ok");
-  return true;
 }
 
 function planName() {
@@ -88,7 +81,7 @@ function renderFiles() {
   const list = $("fileList");
   list.textContent = "";
   const names = [];
-  if (SESSION || PLAN) {
+  if (PLAN) {
     list.appendChild(row(planName(), INCLUDE_GEN, (v) => { INCLUDE_GEN = v; renderFiles(); },
                          "from this recording"));
     if (INCLUDE_GEN) names.push(planName());
@@ -99,7 +92,7 @@ function renderFiles() {
   });
   if (!list.childNodes.length) {
     const s = document.createElement("span");
-    s.textContent = (SESSION || PLAN) ? "nothing selected yet"
+    s.textContent = PLAN ? "nothing selected yet"
                             : "no recording handed over - add a .jmx below";
     s.style.opacity = ".6";
     list.appendChild(s);
@@ -139,22 +132,14 @@ function vmCalc() {
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
 async function prefillLoad() {
-  const load = PLAN ? (PLAN.load || {}) : await loadFromConsole();
-  if (!load) return;
+  if (!PLAN) return;
+  const load = PLAN.load || {};
   {
     if (load.threads && !$("vusers").value) $("vusers").value = load.threads;
     if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
     if (load.duration && !$("duration").value) $("duration").value = load.duration;
     vmCalc();
   }
-}
-
-async function loadFromConsole() {
-  if (!SESSION) return null;
-  try {
-    const r = await fetch(base() + "/api/session/" + SESSION, { cache: "no-store" });
-    return r.ok ? (await r.json()).load || {} : null;
-  } catch (e) { return null; }   // the form still works without it
 }
 
 /* Pick up the plan the authoring page put in session storage. */
@@ -167,7 +152,7 @@ async function takeHandoff() {
     if (PLAN.name) $("planName").value = PLAN.name;
   }
   // only now is it known whether a plan was handed over at all
-  INCLUDE_GEN = !!(SESSION || PLAN);
+  INCLUDE_GEN = !!PLAN;
 }
 
 $("files").onchange = async () => {
@@ -180,7 +165,6 @@ $("files").onchange = async () => {
   $("files").value = "";
   renderFiles();
 };
-$("endpoint").onchange = () => { save(); ping(); };
 
 
 /* Extra files arrive base64 from the file picker; HyperExecute wants the bytes. */
@@ -389,7 +373,7 @@ $("uploadOnly").onclick = () => submit(false);
   await AUTH.ready();        // the gate covers the page until someone is signed in
   await loadProjects();
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
-  ping();
+  showRoute();
 })();
 
 /* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */

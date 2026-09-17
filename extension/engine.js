@@ -9,9 +9,8 @@
  *
  * Two things Python-in-WASM cannot do, and how they are handled:
  *   - sockets      -> HTTP goes out through the page's fetch (see pyFetch)
- *   - subprocesses -> `replay` needs the JMeter binary, so it stays with the
- *                     local console when one is running. Everything else works
- *                     with nothing installed.
+ *   - subprocesses -> nothing that needs one (running JMeter) is offered in
+ *                     the extension, so everything works with nothing installed.
  *
  * Every line Python prints is forwarded to the UI, so a failure is read in the
  * extension rather than hunted for in a terminal nobody opened.
@@ -147,8 +146,8 @@ async function prefetch(payload) {
 }
 
 /* ---- authoring --------------------------------------------------------
-   Mirrors the console's /api/author contract exactly, so the pages that
-   already speak it need no new shape to learn. */
+   One call in, one JSON result out: the report, the plan, its checks and
+   the spec it was built from. */
 
 /* Writing an input file straight onto Pyodide's filesystem.
  *

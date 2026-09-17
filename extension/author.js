@@ -107,8 +107,7 @@ const BUILTIN_MODES = {
 };
 
 async function loadModes() {
-  // the list is the engine's, so the dropdown is right whether or not a
-  // console is running
+  // the list is the engine's, built into the extension
   MODES = BUILTIN_MODES;
   const want = $("mode").value;
   $("mode").innerHTML = Object.entries(MODES)
@@ -226,8 +225,8 @@ $("ltPick").onchange = () => {
 };
 
 /* ---- will this plan survive being scaled? ------------------------------
-   A converted session is nobody's hand-written plan, so the checks that used
-   to live only in the console run here and say what they found. */
+   A converted session is nobody's hand-written plan, so these checks run
+   here and say what they found. */
 const SAMPLER_BUDGET = 300;
 
 async function reportScale(data, nreq) {
