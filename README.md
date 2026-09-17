@@ -47,6 +47,9 @@ the test, a token the correlator missed, data that should come from a CSV.
 which is what decides whether the report reads as three steps or two hundred
 URLs.
 
+[**k6**](docs/K6.md) covers the second engine: the same plan as a k6 script and
+the HyperExecute job that shards it across machines.
+
 [**Options**](docs/OPTIONS.md) explains every control in the extension, with a
 worked example for each. Reference rather than reading: the defaults are right
 most of the time.

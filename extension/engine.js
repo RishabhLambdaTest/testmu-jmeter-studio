@@ -331,6 +331,10 @@ json.dumps({
   "has_browser_steps": jmxgen.spec_has_browser_steps(spec),
   "playwright": jmxgen.spec_to_playwright(spec, "browser_test.py")
                 if jmxgen.spec_has_browser_steps(spec) else "",
+  # the same plan for the other engine: rendered every time, because it costs
+  # a few milliseconds and the page cannot know which one is wanted
+  "k6": jmxgen.spec_to_k6(spec, "load_test.js"),
+  "k6_yaml": jmxgen.spec_to_hyperexecute_yaml(spec, "load_test.js"),
   "spec_json": json.dumps(spec),
 })
 `);
@@ -373,6 +377,23 @@ import json, jmxgen
 json.dumps(jmxgen.suggest_extractor(_body, _heads, _value, _label))
 `);
   return JSON.parse(out);
+}
+
+/* The k6 job, sized by the run form rather than by the plan.
+
+   HyperExecute splits discovered test cases across machines, so the shard list
+   and the machine count have to be written together; the engine owns that
+   arithmetic because the .jmx side owns the equivalent. */
+async function k6Yaml(specJson, users, machines) {
+  const py = await boot();
+  py.globals.set("_spec", specJson);
+  py.globals.set("_users", Number(users) || 0);
+  py.globals.set("_machines", Number(machines) || 1);
+  return await runPy(py, `
+import json, jmxgen
+jmxgen.spec_to_hyperexecute_yaml(json.loads(_spec), "load_test.js",
+                                 users=_users or None, machines=_machines)
+`);
 }
 
 /* Re-emit from an edited spec, so the pages can drop steps or reject
@@ -471,6 +492,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
 // Called directly by the page that hosts it; the message listener below is for
 // anything else in the extension that wants a plan built.
 window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, lint, suggestExtractor, traceValue,
+                        k6Yaml,
                         isReady: () => !!pyodide };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

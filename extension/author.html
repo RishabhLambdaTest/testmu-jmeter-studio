@@ -204,7 +204,25 @@
     </div>
     <div class="acts">
       <button id="playwright" hidden>Download browser test .py</button>
+      <button id="k6dl">Download k6 test</button>
     </div>
+    <!-- k6 takes its users from inside the script, and HyperExecute splits
+         discovered test cases rather than users, so the machine count has to
+         be part of generating the job rather than a run-time override. -->
+    <details id="k6opts">
+      <summary>k6 job</summary>
+      <div class="grid2">
+        <div>
+          <label for="k6users">Users in total</label>
+          <input type="number" id="k6users" min="1" placeholder="the plan's own users" />
+        </div>
+        <div>
+          <label for="k6machines">Machines</label>
+          <input type="number" id="k6machines" min="1" value="1" />
+        </div>
+      </div>
+      <p class="hint" id="k6note"></p>
+    </details>
     <p class="hint" id="dualNote" hidden></p>
   </section>
 

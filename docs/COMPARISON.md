@@ -174,7 +174,7 @@ extractors and assertions, and proposes the correlations the failures needed |
 | Split CSV across engines | yes | yes |
 | Override users, ramp and duration at run time | yes | yes; the form overrides the plan |
 | Upload plugin jars with the plan | yes | yes |
-| Non-JMeter engines (Gatling, Locust, k6) | yes | no; JMeter is the only engine here |
+| Non-JMeter engines | Gatling, Locust and k6 natively | **k6 as well as JMeter**: the same plan is emitted as a k6 script and its HyperExecute job. Gatling and Locust, no |
 | HTML report artifact | yes | yes, in every trigger by default |
 
 ### The platform around it
@@ -253,8 +253,8 @@ have JMeter assertions and a CI exit code.
 *The surrounding platform.* Mock services, test-data generation, API monitoring,
 scheduled runs, APM integrations.
 
-*Multi-engine support.* Gatling, Locust and k6 natively. JMeter Studio authors
-JMeter plans only.
+*Multi-engine support.* Gatling and Locust natively. JMeter Studio authors
+JMeter and k6 from one plan, and nothing else.
 
 *A recorder that has met the whole internet.* Theirs has been in the store for
 years and has seen every authentication scheme and single-page framework there

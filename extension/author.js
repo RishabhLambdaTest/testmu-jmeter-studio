@@ -591,6 +591,7 @@ function render() {
     $("specYaml").value = STATE.spec_yaml;
   }
   renderHosts();
+  k6Note();
   const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
@@ -850,6 +851,41 @@ $("download").onclick = () => {
 $("playwright").onclick = () =>
   STATE && saveText(STATE.playwright, stem() + "_browser_test.py",
                     "one browser, functional check");
+
+/* The k6 pair. Two files, because the script carries the journey and the YAML
+   carries the job: HyperExecute splits discovered test cases across machines,
+   so a script alone would leave every machine but one idle. Both are named
+   after the plan, and the note says the arithmetic out loud rather than
+   leaving someone to find out that raising concurrency changed nothing. */
+function k6Note() {
+  if (!STATE || !STATE.k6) return;
+  const plan = (STATE.load && STATE.load.threads) || 0;
+  const users = Number($("k6users").value) || plan || 1;
+  const machines = Math.max(1, Number($("k6machines").value) || 1);
+  const per = Math.max(1, Math.floor(users / machines));
+  $("k6note").textContent =
+    `${users} user(s) over ${machines} machine(s): ${per} per machine` +
+    (users % machines ? ` (${users - per * machines} left over - raise the users or drop a machine)` : "");
+}
+$("k6users").oninput = k6Note;
+$("k6machines").oninput = k6Note;
+
+$("k6dl").onclick = async () => {
+  if (!STATE || !STATE.k6) return say("generate a plan first", "bad");
+  const machines = Math.max(1, Number($("k6machines").value) || 1);
+  const users = Number($("k6users").value) || 0;
+  let yaml = STATE.k6_yaml;
+  try {
+    // regenerated rather than patched here: the shard list and the machine
+    // count are one decision, and the engine already owns it
+    yaml = await window.JmxgenEngine.k6Yaml(STATE.spec_json, users, machines);
+  } catch (e) {
+    return say("could not build the k6 job: " + (e.message || e), "bad");
+  }
+  saveText(STATE.k6, stem() + "_load_test.js", "");
+  saveText(yaml, "hyperexecute.yaml", "the job that runs it");
+  addLog("ok", `k6 test and job saved - run it with: k6 run ${stem()}_load_test.js`);
+};
 
 $("ship").onclick = async () => {
   if (!STATE) return;
