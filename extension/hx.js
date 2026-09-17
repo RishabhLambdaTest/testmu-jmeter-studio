@@ -20,9 +20,12 @@ const HX_UI = "https://hyperexecute.lambdatest.com/hyperexecute";
 const hxJobUrl = (jobId) => `${HX_UI}/task?jobId=${encodeURIComponent(jobId)}`;
 const HX_ORIGIN = "https://hyperexecute.lambdatest.com";
 const HX_RULE_ID = 8801;
-/* Pinned: the runtime addon HyperExecute documents. A wrong version is only
-   found on the machine, at install time, not when the job is accepted. */
-const HX_K6_VERSION = "v0.52.0";
+/* Pinned, and checked by running it: "Successfully installed k6 with ver
+   v2.2.0" on a linux runner. HyperExecute's docs still say versions up to
+   0.52, which is out of date. A wrong version is only found on the machine, at
+   install time, not when the job is accepted - so this is a value that has to
+   be verified rather than assumed. */
+const HX_K6_VERSION = "v2.2.0";
 
 /* Origin and Referer are forbidden header names: fetch() silently drops
    whatever you set, so every call from here otherwise arrives as

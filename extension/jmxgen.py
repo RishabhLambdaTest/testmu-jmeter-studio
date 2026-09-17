@@ -2255,6 +2255,12 @@ def spec_to_k6(spec, filename="load_test.js"):
         "const VUS = Number(__ENV.VUS || %d);" % int(tg.get("threads") or 1),
         "const RAMP = __ENV.RAMP || %s;" % json.dumps("%ds" % int(tg.get("ramp_up") or 0)),
         "const DURATION = __ENV.DURATION || %s;" % json.dumps("%ds" % int(tg.get("duration") or 0)),
+        "// What a failing run means, as numbers rather than as a policy:",
+        "// the share of checks that must pass, the share of requests that may",
+        "// fail, and an optional 95th-percentile budget in milliseconds.",
+        'const MIN_CHECKS = __ENV.MIN_CHECKS || "0.99";',
+        'const MAX_FAILED = __ENV.MAX_FAILED || "0.01";',
+        'const MAX_P95 = __ENV.MAX_P95 || "";',
         "",
         "export const options = {",
         "  // A virtual user that keeps every response body costs memory for",
@@ -2275,9 +2281,13 @@ def spec_to_k6(spec, filename="load_test.js"):
         "  // Checks alone are decorative in CI: k6 documents that a failed check",
         "  // does not change the exit status, and only a threshold does. Without",
         "  // these a job whose every request 502'd still finishes green.",
+        "  // What counts as a failed run. Checks alone never change the exit",
+        "  // status, so these are what a job reads. Every one is overridable",
+        "  // without editing the file.",
         "  thresholds: {",
-        '    checks: ["rate>0.99"],',
-        '    http_req_failed: ["rate<0.01"],',
+        '    checks: ["rate>" + MIN_CHECKS],',
+        '    http_req_failed: ["rate<" + MAX_FAILED],',
+        "    ...(MAX_P95 ? { http_req_duration: [\"p(95)<\" + MAX_P95] } : {}),",
         "  },",
         "};",
         "",
@@ -2338,11 +2348,12 @@ def spec_to_k6(spec, filename="load_test.js"):
     return "\n".join(out) + "\n"
 
 
-HX_K6_ADDON = "v0.52.0"   # the version HyperExecute documents as a runtime addon
+HX_K6_ADDON = "v2.2.0"   # verified installing on a HyperExecute linux runner
 
 
 def spec_to_hyperexecute_yaml(spec, script="load_test.js", users=None, machines=1,
-                              k6_version=HX_K6_ADDON):
+                              k6_version=HX_K6_ADDON, ramp=None, duration=None,
+                              base=None, min_checks=None, max_failed=None, max_p95=None):
     """The HyperExecute job that runs the k6 script across machines.
 
     HyperExecute splits *discovered test cases* across the machines named by
@@ -2358,8 +2369,13 @@ def spec_to_hyperexecute_yaml(spec, script="load_test.js", users=None, machines=
     total = int(users if users is not None else (tg.get("threads") or 1))
     n = max(1, int(machines or 1))
     per = max(1, total // n)
-    ramp = int(tg.get("ramp_up") or 0)
-    dur = int(tg.get("duration") or 0)
+    ramp = ramp if ramp not in (None, "") else "%ds" % int(tg.get("ramp_up") or 0)
+    dur = duration if duration not in (None, "") else "%ds" % int(tg.get("duration") or 0)
+    env = [("VUS", per), ("RAMP", ramp), ("DURATION", dur), ("BASE", base),
+           ("MIN_CHECKS", min_checks), ("MAX_FAILED", max_failed), ("MAX_P95", max_p95)]
+    if machines and int(machines) > 1:
+        env += [("SHARD", "$shard"), ("SHARDS", n)]
+    flags = " ".join("-e %s=%s" % (k, v) for k, v in env if v not in (None, ""))
     shards = " ".join(str(i) for i in range(1, n + 1))
     rows = [
         'version: "0.1"',
@@ -2379,13 +2395,16 @@ def spec_to_hyperexecute_yaml(spec, script="load_test.js", users=None, machines=
         "pre:",
         "  - k6 version",
         "",
-        "testDiscovery:",
-        "  type: raw",
-        "  mode: dynamic",
-        "  command: for s in %s; do echo $s; done" % shards,
+        "# One task per row, each on its own machine, with $shard resolved per",
+        "# task. Every task is handed the whole testSuites list, so five entries",
+        "# would instead run five k6 invocations on one machine.",
+        "matrix:",
+        "  shard: [%s]" % ", ".join('"%s"' % x for x in shards.split()),
         "",
-        "testRunnerCommand: k6 run -e VUS=%d -e RAMP=%ds -e DURATION=%ds "
-        "-e SHARD=$test -e SHARDS=%d %s" % (per, ramp, dur, n, script),
+        "# The same command the extension sends when it triggers the job over",
+        "# the API, so the two ways of running this behave alike.",
+        "testSuites:",
+        "  - k6 run %s %s" % (flags, script),
         "",
         "# Without this, a stage that opened no browser session is reported as",
         "# skipped, whatever the command did. k6 never opens one, so the job's",

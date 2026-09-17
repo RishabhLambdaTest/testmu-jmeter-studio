@@ -858,18 +858,42 @@ $("playwright").onclick = () =>
    so a script alone would leave every machine but one idle. Both are named
    after the plan, and the note says the arithmetic out loud rather than
    leaving someone to find out that raising concurrency changed nothing. */
+/* What the job runs, as the form says rather than as the plan assumed. Blank
+   means "whatever the plan already says", so the fields stay empty until
+   someone has a reason to disagree with it. */
+function k6Settings() {
+  const machines = Math.max(1, Number($("k6machines").value) || 1);
+  const users = Number($("k6users").value) || (STATE && STATE.load && STATE.load.threads) || 1;
+  const failed = $("k6failed").value.trim();
+  return {
+    machines, users,
+    perMachine: Math.max(1, Math.floor(users / machines)),
+    ramp: $("k6ramp").value.trim(),
+    duration: $("k6duration").value.trim(),
+    base: $("k6base").value.trim(),
+    // the form asks for a percentage because that is how people say it; k6
+    // wants a rate
+    maxFailed: failed === "" ? "" : String(Number(failed) / 100),
+    maxP95: $("k6p95").value.trim(),
+  };
+}
+
 function k6Note() {
   if (!STATE || !STATE.k6) return;
-  const plan = (STATE.load && STATE.load.threads) || 0;
-  const users = Number($("k6users").value) || plan || 1;
-  const machines = Math.max(1, Number($("k6machines").value) || 1);
-  const per = Math.max(1, Math.floor(users / machines));
-  $("k6note").textContent =
-    `${users} user(s) over ${machines} machine(s): ${per} per machine` +
-    (users % machines ? ` (${users - per * machines} left over - raise the users or drop a machine)` : "");
+  const c = k6Settings();
+  const bits = [`${c.users} user(s) over ${c.machines} machine(s): ${c.perMachine} per machine`];
+  if (c.users % c.machines) {
+    bits.push(`${c.users - c.perMachine * c.machines} left over - raise the users or drop a machine`);
+  }
+  if (c.ramp) bits.push("ramp " + c.ramp);
+  if (c.duration) bits.push("for " + c.duration);
+  if (c.base) bits.push("against " + c.base);
+  if (c.maxFailed) bits.push(`fails above ${Number(c.maxFailed) * 100}% failed requests`);
+  if (c.maxP95) bits.push(`fails above p(95) ${c.maxP95} ms`);
+  $("k6note").textContent = bits.join(" · ");
 }
-$("k6users").oninput = k6Note;
-$("k6machines").oninput = k6Note;
+["k6users", "k6machines", "k6ramp", "k6duration", "k6base", "k6failed", "k6p95"]
+  .forEach((id) => { $(id).oninput = k6Note; });
 
 /* Running k6 on HyperExecute is a different shape from running a .jmx, so it
    stays here rather than going through the run page: a YAML job wants the
@@ -910,9 +934,8 @@ $("k6run").onclick = async () => {
   btn.disabled = true;
   try {
     const { user, key } = AUTH.creds();
-    const machines = Math.max(1, Number($("k6machines").value) || 1);
-    const users = Number($("k6users").value) || (STATE.load && STATE.load.threads) || 1;
-    const per = Math.max(1, Math.floor(users / machines));
+    const c = k6Settings();
+    const { machines, users, perMachine: per } = c;
     const name = stem() + "_load_test.js";
 
     let projectId = $("k6existing").value;
@@ -924,12 +947,16 @@ $("k6run").onclick = async () => {
     await window.HX.hxUpload(user, key, projectId,
                              [{ name, content: new Blob([STATE.k6]) }], addLog);
 
-    const ramp = (STATE.load && STATE.load.ramp_up) || 0;
-    const dur = (STATE.load && STATE.load.duration) || 0;
     const shards = Array.from({ length: machines }, (_, i) => String(i + 1));
-    const cmd = `k6 run -e VUS=${per} -e RAMP=${ramp}s -e DURATION=${dur}s` +
-                (machines > 1 ? ` -e SHARD=$shard -e SHARDS=${machines}` : "") +
-                ` ${name}`;
+    const env = [
+      ["VUS", per],
+      ["RAMP", c.ramp || `${(STATE.load && STATE.load.ramp_up) || 0}s`],
+      ["DURATION", c.duration || `${(STATE.load && STATE.load.duration) || 0}s`],
+      ["BASE", c.base], ["MAX_FAILED", c.maxFailed], ["MAX_P95", c.maxP95],
+    ];
+    if (machines > 1) env.push(["SHARD", "$shard"], ["SHARDS", machines]);
+    const cmd = "k6 run " + env.filter(([, v]) => v !== "" && v != null)
+      .map(([k, v]) => `-e ${k}=${v}`).join(" ") + ` ${name}`;
     const jobId = await window.HX.hxTriggerYaml(user, key, {
       projectId, machines, shardVar: "shard", shards,
       testSuites: [cmd],
@@ -951,13 +978,12 @@ $("k6run").onclick = async () => {
 
 $("k6dl").onclick = async () => {
   if (!STATE || !STATE.k6) return say("generate a plan first", "bad");
-  const machines = Math.max(1, Number($("k6machines").value) || 1);
-  const users = Number($("k6users").value) || 0;
+  const c = k6Settings();
   let yaml = STATE.k6_yaml;
   try {
     // regenerated rather than patched here: the shard list and the machine
     // count are one decision, and the engine already owns it
-    yaml = await window.JmxgenEngine.k6Yaml(STATE.spec_json, users, machines);
+    yaml = await window.JmxgenEngine.k6Yaml(STATE.spec_json, c);
   } catch (e) {
     return say("could not build the k6 job: " + (e.message || e), "bad");
   }

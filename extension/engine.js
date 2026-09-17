@@ -384,15 +384,24 @@ json.dumps(jmxgen.suggest_extractor(_body, _heads, _value, _label))
    HyperExecute splits discovered test cases across machines, so the shard list
    and the machine count have to be written together; the engine owns that
    arithmetic because the .jmx side owns the equivalent. */
-async function k6Yaml(specJson, users, machines) {
+async function k6Yaml(specJson, settings) {
+  const c = settings || {};
   const py = await boot();
   py.globals.set("_spec", specJson);
-  py.globals.set("_users", Number(users) || 0);
-  py.globals.set("_machines", Number(machines) || 1);
+  py.globals.set("_cfg", JSON.stringify({
+    users: Number(c.users) || 0,
+    machines: Number(c.machines) || 1,
+    ramp: c.ramp || "", duration: c.duration || "", base: c.base || "",
+    max_failed: c.maxFailed || "", max_p95: c.maxP95 || "",
+  }));
   return await runPy(py, `
 import json, jmxgen
+_c = json.loads(_cfg)
 jmxgen.spec_to_hyperexecute_yaml(json.loads(_spec), "load_test.js",
-                                 users=_users or None, machines=_machines)
+                                 users=_c["users"] or None, machines=_c["machines"],
+                                 ramp=_c["ramp"], duration=_c["duration"],
+                                 base=_c["base"], max_failed=_c["max_failed"],
+                                 max_p95=_c["max_p95"])
 `);
 }
 
