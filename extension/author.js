@@ -645,8 +645,6 @@ $("download").onclick = () => {
 /* One recording yields two artifacts, and the split matters enough to say it
    in the page rather than leave people to discover it: the .jmx carries the
    load, the browser test proves the journey. */
-$("taurus").onclick = () =>
-  STATE && saveText(STATE.taurus, stem() + ".taurus.yml", "runs under bzt or BlazeMeter");
 $("playwright").onclick = () =>
   STATE && saveText(STATE.playwright, stem() + "_browser_test.py",
                     "one browser, functional check");

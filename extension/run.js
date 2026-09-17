@@ -310,7 +310,9 @@ async function submit(trigger) {
 
     show($("msg"), `${created ? "created" : "using"} project ${projectId} · ` +
                    `uploaded ${files.length} file(s) · job ${jobId}`, "ok");
-    link(`${HX.HX_UI}/jobs/${jobId}`, "open the job");
+    const jobUrl = HX.hxJobUrl(jobId);
+    link(jobUrl, "open the job");
+    addLog("ok", "job dashboard: " + jobUrl);
   } catch (e) {
     addLog("error", String(e.message || e));
     show($("msg"), String(e.message || e), "err");

@@ -15,6 +15,9 @@
 
 const HX_BASE = "https://api-hyperexecute.lambdatest.com";
 const HX_UI = "https://hyperexecute.lambdatest.com/hyperexecute";
+/* The job page, in the form the HyperExecute CLI prints. /jobs/<id> is not a
+   job page; task?jobId= is the one that shows the run live. */
+const hxJobUrl = (jobId) => `${HX_UI}/task?jobId=${encodeURIComponent(jobId)}`;
 const HX_ORIGIN = "https://hyperexecute.lambdatest.com";
 const HX_RULE_ID = 8801;
 
@@ -213,4 +216,4 @@ async function hxTrigger(user, key, projectId, cfg, log = () => {}) {
   return String(jobId);
 }
 
-window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI };
+window.HX = { hxCreateProject, hxListProjects, hxUpload, hxTrigger, hxHeaderRule, HX_UI, hxJobUrl };

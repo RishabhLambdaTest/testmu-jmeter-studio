@@ -295,7 +295,6 @@ json.dumps({
   "correlations": report.get("correlated") or [],
   "load": jmxgen._plan_load(spec) if hasattr(jmxgen, "_plan_load") else {},
   "jmx": xml,
-  "taurus": jmxgen.dump_taurus(spec),
   "has_browser_steps": jmxgen.spec_has_browser_steps(spec),
   "playwright": jmxgen.spec_to_playwright(spec, "browser_test.py")
                 if jmxgen.spec_has_browser_steps(spec) else "",
@@ -330,7 +329,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
             "steps": jmxgen._flatten(spec),
             "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
-            "taurus": jmxgen.dump_taurus(spec), "spec_json": json.dumps(spec)})
+            "spec_json": json.dumps(spec)})
 `);
   return JSON.parse(out);
 }
@@ -391,7 +390,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
             "steps": jmxgen._flatten(spec), "notes": _notes,
             "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
-            "taurus": jmxgen.dump_taurus(spec), "spec_json": json.dumps(spec)})
+            "spec_json": json.dumps(spec)})
 `);
   return JSON.parse(out);
 }

@@ -42,7 +42,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | "Where do the credentials go?" | secrets | nowhere; the form talks to LambdaTest, with no server in between |
 | "Our APIs need client certificates" | mTLS | keystore and JVM properties generated, and validated at build time |
 | "Can I check the UI didn't break too?" | protocol and browser | one recording emits a `.jmx` and a Playwright test |
-| "Can I take it with me?" | lock-in | it is a `.jmx`, and it exports Taurus YAML |
+| "Can I take it with me?" | lock-in | it is a `.jmx` |
 
 ## Feature by feature
 
@@ -58,7 +58,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | Survives a browser restart | it is on their server | yes, and it is offered back when you return |
 | CORS preflights | filtered | filtered |
 | The recording leaves your machine | yes, uploaded | no |
-| What you get out | a test inside the platform | `.jmx`, HAR, Taurus YAML and Playwright, downloaded |
+| What you get out | a test inside the platform | `.jmx`, HAR and Playwright, downloaded |
 
 ### Authoring
 
@@ -79,7 +79,7 @@ These are the real evaluation criteria. Everything else is packaging.
 | Split CSV across engines | yes | yes |
 | Override users, ramp and duration at run time | yes | yes; the form overrides the plan |
 | Upload plugin jars with the plan | yes | yes |
-| Non-JMeter engines (Gatling, Locust, k6) | yes | JMeter is the engine here; Taurus export bridges the rest |
+| Non-JMeter engines (Gatling, Locust, k6) | yes | no; JMeter is the only engine here |
 | HTML report artifact | yes | yes, in every trigger by default |
 
 ### The platform around it
@@ -142,8 +142,7 @@ Unzip, load, author, run. The engine ships inside the extension and runs in
 WebAssembly.
 
 **No lock-in, in either direction.** The output is a `.jmx`. It runs on
-HyperExecute, on a laptop, in Jenkins, and through the Taurus export on
-BlazeMeter too. A customer can leave, which is exactly why they will try it.
+HyperExecute, on a laptop, in Jenkins, and on BlazeMeter too. A customer can leave, which is exactly why they will try it.
 
 ## Where BlazeMeter is ahead
 
@@ -159,8 +158,8 @@ have JMeter assertions and a CI exit code.
 *The surrounding platform.* Mock services, test-data generation, API monitoring,
 scheduled runs, APM integrations.
 
-*Multi-engine support.* Gatling, Locust and k6 natively. Taurus export narrows
-the gap without closing it.
+*Multi-engine support.* Gatling, Locust and k6 natively. JMeter Studio authors
+JMeter plans only.
 
 *A recorder that has met the whole internet.* Theirs has been in the store for
 years and has seen every authentication scheme and single-page framework there
@@ -190,7 +189,7 @@ need, and the plan still runs anywhere else you choose to take it.
 | What you have there | What to do here |
 |---|---|
 | A JMX exported from BlazeMeter | *Source → Existing .jmx*, or `jmxgen import-jmx`; clean it, then run it |
-| A Taurus YAML | keep it. The export round-trips, and the `.jmx` is what runs |
+| A Taurus YAML | the studio does not read Taurus YAML; bring the `.jmx` it points at through *Source → Existing .jmx* |
 | A BlazeMeter recording (HAR) | *Source → Recording (HAR)*; correlation runs on it here |
 | Shared CSV test data | drop it in Test data, and HyperExecute splits it across engines |
 | Threshold-based pass/fail | JMeter assertions in the plan, plus the CI exit code |

@@ -1,6 +1,6 @@
 # Chrome Web Store submission
 
-**Name:** TestMu AI — JMeter Studio
+**Name:** TestMu AI — JMeter Studio (Beta)
 **Category:** Developer Tools
 **Visibility:** Unlisted (share the link with customers) or Private to the org
 

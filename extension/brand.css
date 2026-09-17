@@ -120,6 +120,13 @@
    its own second line */
 .tm-product { color:var(--text-mute); font-size:10px; letter-spacing:.01em;
               white-space:nowrap; text-transform:none; font-weight:500 }
+/* the product is in beta, and says so beside its name. Neutral on purpose:
+   the orange is the dashboard's upsell and the green is the primary action */
+.tm-beta { display:inline-block; margin-left:4px; padding:0 5px;
+           border:1px solid var(--line); border-radius:6px;
+           background:var(--sunk); color:var(--text-dim);
+           font-size:9px; line-height:13px; font-weight:600;
+           letter-spacing:.04em; text-transform:uppercase; vertical-align:1px }
 .tm-lock { display:flex; flex-direction:column; gap:1px; min-width:0 }
 .tm-sub { color:var(--text-mute); font-size:10px; letter-spacing:.08em;
           text-transform:uppercase; white-space:nowrap }

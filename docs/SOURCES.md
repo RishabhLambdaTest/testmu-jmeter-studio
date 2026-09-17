@@ -228,7 +228,6 @@ In the extension the same settings live under *Authentication* and *Test data*.
 |---|---|---|
 | Download .jmx | the plan itself | nothing |
 | Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials |
-| Download Taurus .yml | the same test as a `bzt` config | `bzt`, if you use it |
 | Download browser test .py | a Playwright script for the browser steps | Playwright, if you run it |
 | Validate (single user) | runs it once, reporting codes and unresolved variables | the local console and JMeter |
 

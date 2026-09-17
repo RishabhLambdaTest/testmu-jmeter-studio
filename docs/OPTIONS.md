@@ -273,7 +273,6 @@ for the fourth time.
 | Download .jmx | the plan | nothing | always, if you want to keep it or open it in JMeter |
 | Validate (single user) | one real run, per-request codes, and any `${VAR}` that never resolved | the local console | before any run that costs money |
 | Run on HyperExecute… | project, upload, trigger, dashboard | LambdaTest credentials | when the plan is ready to carry load |
-| Download Taurus .yml | the same test as a `bzt` config | `bzt`, if you use it | when your CI already speaks Taurus |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
 
 Download and *Run on HyperExecute…* both parse the plan first. A plan that no

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "TestMu AI — JMeter Studio",
+  "name": "TestMu AI — JMeter Studio (Beta)",
   "version": "1.6.7",
   "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
@@ -19,7 +19,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "TestMu AI — JMeter Studio",
+    "default_title": "TestMu AI — JMeter Studio (Beta)",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
