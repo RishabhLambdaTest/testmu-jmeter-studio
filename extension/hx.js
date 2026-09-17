@@ -333,12 +333,13 @@ async function hxTriggerYaml(user, key, cfg, log = () => {}) {
        its command did, and k6 never opens one - so without this the job's
        status would never reflect the run. */
     scenarioCommandStatusOnly: true,
-    /* k6's own dashboard as the job's report - report + partialReports is
-       what puts a page on the Reports tab, where a location is a folder rather
-       than a file. The summary files stay as artefacts as well, because a run
-       too short for the dashboard still produces them. */
+    /* The Reports tab combines reports from the frameworks HyperExecute knows
+       how to parse, and k6 is not one of them: naming the dashboard as a
+       Playwright report fails the report step outright with "No valid
+       Playwright HTML reports found". Until there is a k6 framework, the
+       dashboard rides along as an artefact - which works - and the Reports tab
+       keeps HyperExecute's own job summary. */
     report: true,
-    partialReports: [{ location: "k6-report", type: "html" }],
     mergeArtifacts: true,
     uploadArtefacts: cfg.uploadArtefacts || [
       { name: "k6-report", path: ["k6-report/**/*", "k6-summary.json",
