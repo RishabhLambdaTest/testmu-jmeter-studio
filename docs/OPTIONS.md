@@ -303,6 +303,39 @@ endpoint in the same instant for the whole run. On, each pause becomes a range
 of half to one and a half times what was recorded, so the users spread out. The
 average pacing is unchanged.
 
+### Replay once
+
+Runs the plan a single time from this page - one user, in order - and reports
+what each request answered. It is the pre-flight that used to need JMeter: the
+page holds the permissions to send the plan's own requests, follow its own
+variables and read what comes back.
+
+The *Checks* tab then shows every request with its code, what failed, and how
+long it took. A failure is one of:
+
+| What it says | What it means |
+|---|---|
+| `HTTP 401`, `HTTP 403` | the server refused it - nearly always a value that was recorded and has since expired |
+| `assertion failed: code equals "200"` | it answered, with the wrong code |
+| `extractor found nothing: TOKEN` | the extractor matched nothing in this response, so every later request using `${TOKEN}` is wrong |
+| `no value for ${TOKEN}` | nothing defined it: its extractor is missing or ran on a failed request |
+| `the browser followed this redirect…` | not a failure. The plan does not follow this redirect and JMeter would stop at it; a browser cannot be told not to |
+
+**Values that look dynamic.** Under the results, every failing request is
+searched for values that the *recording* shows an earlier response handing out.
+Each becomes a suggestion: the variable, the value, which request it came from
+and which one needs it. Tick the ones you want and press **Apply the ticked
+correlations** - each adds the extractor to the source request and replaces the
+value everywhere it appears. Then replay again.
+
+That is the same conclusion BlazeMeter's correlation wizard reaches by replaying
+in JMeter and comparing; this runs in the browser, so there is nothing to
+install.
+
+**What it does not do.** It is not a load test and it is not JMeter: JSR223,
+JDBC and WebDriver steps are skipped and counted as skipped, never as passed.
+A plan that passes here can still fail at load - that is what the run is for.
+
 ### Hosts in this recording
 
 Under the results, once a plan exists. A recording touches every host the page
@@ -325,6 +358,7 @@ for the fourth time.
 | Button | What you get | Needs | When to use it |
 |---|---|---|---|
 | Download .jmx | the plan | nothing | always, if you want to keep it or open it in JMeter |
+| Replay once | the plan run once, here, with per-request results and correlation suggestions | the target reachable from this browser | before any run that costs money |
 | Run on HyperExecute… | project, upload, trigger, dashboard | a TestMu AI sign-in | when the plan is ready to carry load |
 | Download browser test .py | the browser steps as a Playwright script | Playwright, if you run it | when the journey's UI matters as well as its load |
 

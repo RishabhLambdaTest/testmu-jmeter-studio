@@ -198,9 +198,12 @@ async function runPy(py, code) {
   }
 }
 
+let LAST_INPUT = null;        // the source the last plan was built from
+
 async function author(payload) {
   const py = await boot();
   await prefetch(payload);
+  LAST_INPUT = null;
   py.globals.set("_payload", JSON.stringify(payload));
   const out = await runPy(py, `
 import base64, json, os, tempfile, traceback
@@ -317,6 +320,7 @@ errors, warnings = jmxgen.verify(jmx_path, quiet=True)
 
 json.dumps({
   "report": report,
+  "input_path": path,
   "steps": jmxgen._flatten(spec) if hasattr(jmxgen, "_flatten") else [],
   "verify": {"errors": errors, "warnings": warnings},
   "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
@@ -329,6 +333,44 @@ json.dumps({
                 if jmxgen.spec_has_browser_steps(spec) else "",
   "spec_json": json.dumps(spec),
 })
+`);
+  const data = JSON.parse(out);
+  // the source stays on the engine's filesystem for this session, which is how
+  // the replay can ask where a value came from
+  LAST_INPUT = data.input_path || null;
+  return data;
+}
+
+/* Where did a value come from in the recording? The replay asks, because its
+   own responses carry fresh values and cannot answer it. */
+async function traceValue(value, label) {
+  if (!LAST_INPUT) return null;
+  const py = await boot();
+  py.globals.set("_path", LAST_INPUT);
+  py.globals.set("_value", value || "");
+  py.globals.set("_label", label || "VALUE");
+  const out = await runPy(py, `
+import json, jmxgen
+try:
+    _r = jmxgen.trace_value(_path, _value, _label)
+except Exception:
+    _r = None
+json.dumps(_r)
+`);
+  return JSON.parse(out);
+}
+
+/* What would pull this value out of that response? The replay asks, because it
+   finds dynamic values by running the plan, not by reading the recording. */
+async function suggestExtractor(body, headers, value, label) {
+  const py = await boot();
+  py.globals.set("_body", body || "");
+  py.globals.set("_heads", headers || "");
+  py.globals.set("_value", value || "");
+  py.globals.set("_label", label || "VALUE");
+  const out = await runPy(py, `
+import json, jmxgen
+json.dumps(jmxgen.suggest_extractor(_body, _heads, _value, _label))
 `);
   return JSON.parse(out);
 }
@@ -428,7 +470,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
 
 // Called directly by the page that hosts it; the message listener below is for
 // anything else in the extension that wants a plan built.
-window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, lint,
+window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, lint, suggestExtractor, traceValue,
                         isReady: () => !!pyodide };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

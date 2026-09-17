@@ -1623,6 +1623,21 @@ def apply_edit(spec, edit):
             raise ValueError("that value is not in this plan")
         return "replaced in %d place(s), now ${%s}" % (n, var)
 
+    # Correlate is substitute plus the extractor that feeds it, applied
+    # together so a plan is never left with a ${VAR} nothing defines.
+    if op == "correlate":
+        steps_, i_ = _steps_holding(spec, edit.get("at") or [])
+        node_ = steps_[i_]
+        var = str(edit.get("var") or "VALUE").strip().upper().replace(" ", "_")
+        ex = dict(edit.get("extract") or {})
+        if not ex:
+            raise ValueError("no extractor for %s" % var)
+        ex["var"] = var
+        if not any(e.get("var") == var for e in node_.get("extract", [])):
+            node_.setdefault("extract", []).append(ex)
+        note = apply_edit(spec, {"op": "substitute", "value": edit.get("value"), "var": var})
+        return "%s from %s, %s" % (var, node_.get("name", "a step"), note)
+
     steps, i = _steps_holding(spec, edit.get("at") or [])
     node = steps[i]
 
@@ -2183,6 +2198,41 @@ def _extractor_from_rule(rule, var, body, value):
         if m and (m.group(1) == value or value in m.group(0)):
             return ex
     return None
+
+
+def trace_value(har_path, value, label="VALUE"):
+    """Where did this value come from in the recording?
+
+    The replay cannot answer this on its own: its own responses carry fresh
+    values, so a stale literal appears in none of them. The recording does have
+    the answer, and it is still on disk from the build."""
+    har = json.load(open(har_path, "r", encoding="utf-8-sig"))
+    entries = (har.get("log") or {}).get("entries") or []
+    for i, e in enumerate(entries):
+        resp = e.get("response") or {}
+        body = (resp.get("content") or {}).get("text") or ""
+        heads = _response_headers(e)
+        if (body and value in body) or (heads and value in heads):
+            ex = suggest_extractor(body, heads, value, label)
+            if not ex:
+                continue
+            u = urllib.parse.urlsplit((e.get("request") or {}).get("url") or "")
+            return {"extract": ex, "at_request": i,
+                    "name": "%s %s" % ((e.get("request") or {}).get("method", "GET"),
+                                       (u.path or "/")[:70])}
+    return None
+
+
+def suggest_extractor(body, headers_text, value, label="VALUE"):
+    """How would this value be pulled out of that response? Used by the replay,
+    which finds dynamic values by running the plan rather than by reading the
+    recording."""
+    ex = None
+    if body and value in body:
+        ex, _ = _extractor_from_body(value, body, label)
+    if ex is None and headers_text and value in headers_text:
+        ex, _ = _extractor_from_headers(value, headers_text, label)
+    return ex
 
 
 def _json_path_to(body, value):

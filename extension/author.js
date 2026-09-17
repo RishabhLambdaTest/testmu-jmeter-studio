@@ -626,6 +626,7 @@ function showTab(which) {
       ? `<table><thead><tr><th>Variable</th><th>Rule</th><th>Confidence</th><th>From</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="empty">Nothing dynamic was found. Only a recording carries the responses correlation needs.</div>';
   } else {
+    if (STATE.replay) return renderReplay(el);
     const v = STATE.verify || {};
     const rows = (v.errors || []).map((e) =>
       `<tr><td><span class="pill bad">error</span></td><td>${esc(e)}</td></tr>`).join("") +
@@ -638,6 +639,92 @@ function showTab(which) {
 }
 document.querySelectorAll(".tabs button").forEach((b) =>
   b.onclick = () => showTab(b.dataset.tab));
+
+/* ---- replaying the plan once -------------------------------------------
+   The pre-flight that used to need JMeter. One user, in order, from this page,
+   which holds the host permissions to send the plan's own requests. What it
+   finds - a stale value, an extractor that matches nothing - is what a paid
+   run would find ten minutes in. */
+$("replay").onclick = async () => {
+  if (!STATE || !STATE.spec_json) return;
+  $("replay").disabled = true;
+  STATE.replay = null;
+  say("replaying the plan once…", "info");
+  addLog("info", "replay: one user, in order");
+  try {
+    const spec = JSON.parse(STATE.spec_json);
+    const out = await window.Replay.run(spec, {
+      log: (m) => addLog("info", m),
+      onProgress: (n, total, name) => say(`replaying ${n}/${total} - ${name}`, "info"),
+    });
+    STATE.replay = out;
+    const bad = out.samples.filter((s) => !s.ok).length;
+    out.samples.forEach((s) => addLog(s.ok ? "ok" : "error",
+      `${s.code || "-"} ${s.name}${s.message ? " - " + s.message : ""}`));
+    render();
+    showTab("checks");     // render() ends on the Requests tab; the result is here
+    if (!out.samples.length) {
+      say("nothing ran - this plan has no HTTP requests", "err");
+    } else if (bad) {
+      say(`${bad} of ${out.samples.length} request(s) failed` +
+          (out.suggestions.length ? ` - ${out.suggestions.length} value(s) look dynamic, see Checks` : "") +
+          (out.skipped ? ` · ${out.skipped} step(s) this replay cannot run` : ""), "err");
+    } else {
+      say(`every request passed - ${out.samples.length} request(s)` +
+          (out.skipped ? ` · ${out.skipped} step(s) skipped` : ""), "ok");
+    }
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say(String(e.message || e), "err");
+  } finally {
+    $("replay").disabled = false;
+  }
+};
+
+function renderReplay(el) {
+  const r = STATE.replay;
+  const rows = r.samples.map((s) =>
+    `<tr><td class="mono">${esc(s.name)}</td>
+     <td><span class="pill ${s.ok ? "ok" : "bad"}">${esc(s.code || "-")}</span></td>
+     <td>${esc(s.message || "")}</td><td class="mono">${s.ms} ms</td></tr>`).join("");
+  const sugg = (r.suggestions || []).map((g, i) =>
+    `<tr><td><input type="checkbox" data-sugg="${i}" checked /></td>
+     <td class="mono">\${${esc(g.var)}}</td>
+     <td class="mono">${esc(String(g.value).slice(0, 40))}</td>
+     <td>${esc(g.from)} → ${esc(g.into)}</td>
+     <td>${esc(g.extract.type)}</td></tr>`).join("");
+  el.innerHTML =
+    `<table><thead><tr><th>Request</th><th>Code</th><th>What happened</th><th>Time</th></tr></thead>` +
+    `<tbody>${rows || '<tr><td colspan="4">nothing ran</td></tr>'}</tbody></table>` +
+    (r.skipped ? `<p class="hint">${r.skipped} step(s) are not HTTP, so this replay skipped them rather than counting them as passed.</p>` : "") +
+    (sugg ? `<h4>Values that look dynamic</h4>
+       <p class="hint tablehint">Each one failed here and was handed out by an earlier
+          response in this same replay. Applying adds the extractor and replaces the
+          value everywhere it appears.</p>
+       <table><thead><tr><th></th><th>Variable</th><th>Value</th><th>From → into</th><th>How</th></tr></thead>
+       <tbody>${sugg}</tbody></table>
+       <div class="acts"><button id="applySugg">Apply the ticked correlations</button></div>` : "");
+  const apply = el.querySelector("#applySugg");
+  if (apply) apply.onclick = () => applySuggestions(el);
+}
+
+async function applySuggestions(el) {
+  const want = [...el.querySelectorAll("input[data-sugg]:checked")]
+    .map((b) => STATE.replay.suggestions[Number(b.dataset.sugg)]);
+  if (!want.length) return say("tick at least one", "bad");
+  const edits = want.map((g) => ({ op: "correlate", at: g.fromAt, var: g.var,
+                                   value: g.value, extract: g.extract }));
+  say("applying…", "info");
+  try {
+    const data = await JmxgenEngine.rebuild(STATE.spec_json, null, edits);
+    STATE.replay = null;             // the plan changed; the old result is stale
+    applyRebuild(data, `${edits.length} correlation(s)`);
+    say(`${edits.length} correlation(s) applied - replay again to check`, "ok");
+  } catch (e) {
+    addLog("error", String(e.message || e));
+    say(String(e.message || e), "err");
+  }
+}
 
 /* ---- which hosts are in the plan ---------------------------------------
    The engine picks the system under test and drops the rest, which is right
