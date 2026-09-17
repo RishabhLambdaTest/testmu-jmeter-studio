@@ -2094,6 +2094,20 @@ def _k6_regex(pattern):
     return "new RegExp(%s)" % json.dumps(str(pattern))
 
 
+def _k6_needs_body(step):
+    """Does anything in this step read the response body?"""
+    for ex in step.get("extract") or []:
+        kind = (ex.get("type") or "json").lower()
+        if kind in ("json", "boundary"):
+            return True
+        if kind == "regex" and str(ex.get("scope_field", "")).lower() != "true":
+            return True
+    for a in step.get("assert") or []:
+        if (a.get("field") or "body").lower() in ("body", "json"):
+            return True
+    return False
+
+
 def _k6_request(step, spec, names, n):
     """One sampler as a k6 request, its checks and its extractors."""
     var = "r%d" % n
@@ -2125,6 +2139,16 @@ def _k6_request(step, spec, names, n):
     else:
         payload = "null"
 
+    # A URL with a variable in it is a different URL every iteration, and k6
+    # aggregates by URL, so without a name tag one request becomes thousands of
+    # one-sample rows. The step's own name is already the shape, not the value:
+    # "GET /api/orders/{order_id}".
+    # Bodies are dropped by default to keep a virtual user cheap, and asked for
+    # only where this step's own extractors or assertions read one.
+    if _k6_needs_body(step):
+        opts["responseType"] = json.dumps("text")
+    label = step.get("name") or "%s %s" % (method, path.split("?")[0])
+    opts["tags"] = "{ name: %s }" % json.dumps(str(label))
     optext = ("{\n" + "".join("    %s: %s,\n" % (k, v) for k, v in opts.items()) + "  }"
               if opts else "{}")
     url = _k6_value("${__BASE__}" + path, dict(names, __BASE__="BASE"))
@@ -2233,6 +2257,10 @@ def spec_to_k6(spec, filename="load_test.js"):
         "const DURATION = __ENV.DURATION || %s;" % json.dumps("%ds" % int(tg.get("duration") or 0)),
         "",
         "export const options = {",
+        "  // A virtual user that keeps every response body costs memory for",
+        "  // bodies nothing reads. The requests whose body this plan extracts",
+        "  // from or asserts on ask for theirs back, one at a time.",
+        "  discardResponseBodies: true,",
         "  scenarios: {",
         "    journey: {",
         '      executor: "ramping-vus",',
@@ -2243,6 +2271,13 @@ def spec_to_k6(spec, filename="load_test.js"):
         "      ],",
         '      gracefulRampDown: "30s",',
         "    },",
+        "  },",
+        "  // Checks alone are decorative in CI: k6 documents that a failed check",
+        "  // does not change the exit status, and only a threshold does. Without",
+        "  // these a job whose every request 502'd still finishes green.",
+        "  thresholds: {",
+        '    checks: ["rate>0.99"],',
+        '    http_req_failed: ["rate<0.01"],',
         "  },",
         "};",
         "",

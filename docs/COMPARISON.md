@@ -192,6 +192,48 @@ This is where BlazeMeter is genuinely ahead, and it should be said plainly.
 | Scheduled runs and API monitoring | yes | no |
 | Shared workspaces, roles, team run history | yes | HyperExecute projects |
 
+## Against the k6 generators
+
+We now emit k6 as well as JMeter, so the comparison is no longer only with
+BlazeMeter. What the other generators produce, read from their own source and
+fixtures rather than their marketing:
+
+| | har-to-k6 (Grafana's) | postman-to-k6 | openapi-generator k6 | k6 Studio | Ours |
+|---|---|---|---|---|---|
+| Load options | `export const options = {}`, empty | only if asked | none | generator option | scenario, ramp, duration, from the plan |
+| Thresholds | none | none | none | generator option | **always** |
+| Groups | only if the HAR has pages | Postman folders | one per path | yes | one per transaction |
+| Checks | only if the HAR carries them | only your own Postman tests | status only | yes | assertions from the plan |
+| Think time | recorded gaps, min 500 ms | none | a fixed constant | generator option | recorded, optionally randomised |
+| Correlation | **none** | none | none | rules you write, or AI | **automatic, and shown** |
+
+**Correlation is the problem everyone punts.** har-to-k6 only emits a variable
+when the input HAR already carries a hand-written LI-HAR `variables` block —
+nothing is inferred from responses. openapi-generator writes
+`TODO_EDIT_THE_GLOBAL_API_KEY_COOKIE` into the script and leaves it to you.
+Grafana's own documentation for the HAR converter lists three manual steps
+after conversion: *"Configure the load options"*, *"Remove third-party
+content"*, and *"Correlate dynamic data"* — noting that *"tokens expire
+quickly, and they are one of the most common things that users will correlate
+from a recorded session."* All three are things our plan arrives with already
+done.
+
+**The exception is k6 Studio**, Grafana's current recorder, and it is worth
+being precise about. Its Autocorrelation went GA in August 2026 and is real:
+*"an AI-powered feature that automatically creates correlation rules… It
+detects dynamic values, such as session tokens, CSRF tokens, and resource
+IDs."* Two differences that matter to a buyer. It **requires a Grafana Cloud
+account and sends the recording to Grafana Assistant** — the same objection as
+uploading to BlazeMeter, in a newer form. And its own docs describe partial
+results: *"Partially correlated — Some requests still fail. Add the created
+rules, then create remaining correlation rules manually"*, and
+*"Autocorrelation complements manual rule creation; it doesn't replace it."*
+
+Ours is deterministic, runs in your browser, sends nothing anywhere, and is
+measured: 8 of 8 planted cases, 15 of 15 samples against a server that rejects
+stale values. Theirs may well correlate things a rule pack never would. Both
+statements can be true, and the honest pitch says so.
+
 ## Where we are stronger
 
 **The recording never leaves the machine.** A load-test recording of a logged-in
