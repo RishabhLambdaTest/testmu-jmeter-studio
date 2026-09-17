@@ -280,10 +280,14 @@ function rpLiterals(step) {
      not a dynamic value, and replacing it plan-wide breaks every URL that
      shares the word. Only a segment that looks issued - a digit, or a mix of
      cases and separators - is a candidate. */
-  for (const seg of u.split("?")[0].split("/")) {
-    if (/^[a-z]+$/.test(seg) || /^[A-Za-z]+$/.test(seg)) continue;
-    add("path", seg);
-  }
+  const segs = u.split("?")[0].split("/");
+  segs.forEach((seg, i) => {
+    if (/^[a-z]+$/i.test(seg)) return;
+    // /api/orders/904173 -> ORDERS_ID, rather than ${PATH}: the segment before
+    // it is what the id belongs to, and the name has to read in the plan
+    const owner = [...segs.slice(0, i)].reverse().find((x) => /^[a-z][a-z_-]*$/i.test(x));
+    add(owner ? owner.replace(/s$/, "") + "_id" : "path", seg);
+  });
   for (const [k, v] of Object.entries(step.params || {})) add(k, v);
   for (const [k, v] of Object.entries(step.headers || {})) {
     if (RP_HDR_SKIP.has(k.toLowerCase())) continue;
