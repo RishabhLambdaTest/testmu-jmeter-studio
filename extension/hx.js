@@ -326,13 +326,21 @@ async function hxTriggerYaml(user, key, cfg, log = () => {}) {
     runtime: { addons: [{ name: "k6", version: cfg.k6Version || HX_K6_VERSION }] },
     testSuites: cfg.testSuites,
     jobLabel: cfg.jobLabel || [],
+    /* A stage that opened no browser session is reported as skipped whatever
+       its command did, and k6 never opens one - so without this the job's
+       status would never reflect the run. */
+    scenarioCommandStatusOnly: true,
+    /* The script writes these itself, so they arrive whether or not the
+       machine can reach a reporting service. */
+    uploadArtefacts: cfg.uploadArtefacts || [
+      { name: "k6-report", path: ["k6-summary.json", "k6-summary.txt", "k6-report.html"] },
+    ],
   };
   /* One task per machine, each with its own share of the users. HyperExecute
      hands every task the whole testSuites list, so five entries would run five
      k6 invocations on one machine; a matrix row becomes a task of its own, and
      $shard resolves per task. */
   if (machines > 1 && cfg.shardVar) config.matrix = { [cfg.shardVar]: cfg.shards };
-  if (cfg.uploadArtefacts) config.uploadArtefacts = cfg.uploadArtefacts;
 
   log("info", "triggering: " + JSON.stringify(config));
   await hxHeaderRule();
