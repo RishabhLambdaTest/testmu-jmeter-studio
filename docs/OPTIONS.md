@@ -585,10 +585,11 @@ carries, what is set here is what runs; **an empty field means "whatever the
 plan says"**, which is not the same as a default.
 
 Three fields open with the dashboard's own starting point rather than empty:
-**100 max users**, **2,000 per engine** and a **90 minute** global timeout. The
-user count gives way to the plan when the plan asks for more than one, since a
-plan authored to be replayed once carries a single user and sending that to
-HyperExecute measures nothing.
+**100 max users**, **2,000 per engine** and a **90 minute** global timeout.
+Every one of them is yours to change, and what is in them is what runs. What
+the plan was authored with does not decide the run and never overwrites a
+field; when the plan asks for a different number of users the log says so, and
+you can match it or ignore it.
 
 With *Max users* set, each region runs its share of it, rounded down, the way
 the dashboard splits it: 1,000 users at 60% and 40% is 600 and 400. The line
@@ -631,6 +632,17 @@ virtual user for exactly an hour is 2 VUH, not 1.
 number and the ceiling, because the platform's own refusal names neither. The
 upload button still works, so a plan can be put in place and run later from the
 dashboard. Nothing is checked when the limits cannot be read.
+
+Two things are said rather than enforced, in amber, because the platform
+changes them instead of refusing them:
+
+- a **global timeout longer than the plan allows** is cut to the limit silently
+  and the job stopped there
+- **several regions with Max users empty** means every region runs the plan's
+  own user count, so the real load and the VUH are multiplied by the number of
+  regions
+
+Blocking either would stop a run the server would have accepted.
 
 ### Which regions you may actually use
 

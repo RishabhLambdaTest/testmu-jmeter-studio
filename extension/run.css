@@ -73,6 +73,8 @@ header h1 { letter-spacing:-.02em }
 .uptype { display:flex; gap:16px; margin:2px 0 6px }
 .uptype .chk { margin:0 }
 .hint.bad { color:var(--bad) }
+/* a caution: the platform will change this rather than refuse it */
+.hint.warn { color:var(--warn) }
 
 /* regions: one row per region, each with its share of the users, as the
    HyperExecute dashboard lays them out */

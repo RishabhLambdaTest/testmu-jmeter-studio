@@ -149,11 +149,27 @@ const hxRegionList = (raw) =>
   (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
     .map((x) => String(x).trim()).filter(Boolean);
 
+/* The page waits for this before it is usable, so it must always come back.
+   An account service that accepts the connection and then says nothing would
+   otherwise hang the run page indefinitely. */
+const HX_PLAN_TIMEOUT_MS = 8000;
+
 async function hxAccountPlan(user, key, log = () => {}) {
   const get = async (url) => {
-    const r = await fetch(url, { headers: hxHeaders(user, key), credentials: "omit" });
-    if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).pathname}`);
-    return r.json();
+    const stop = new AbortController();
+    const t = setTimeout(() => stop.abort(), HX_PLAN_TIMEOUT_MS);
+    try {
+      const r = await fetch(url, { headers: hxHeaders(user, key),
+                                   credentials: "omit", signal: stop.signal });
+      if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).pathname}`);
+      return await r.json();
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        throw new Error(`no answer from ${new URL(url).pathname} in `
+          + `${HX_PLAN_TIMEOUT_MS / 1000}s`);
+      }
+      throw e;
+    } finally { clearTimeout(t); }
   };
   try {
     const me = await get(HX_LUMS + "/api/user");

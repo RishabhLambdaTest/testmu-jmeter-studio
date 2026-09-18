@@ -207,6 +207,24 @@ function planBreaches() {
   return out;
 }
 
+/* Things the platform will change rather than refuse. These are said, never
+   enforced: stopping a run the server would have accepted is worse than the
+   surprise they warn about. */
+function planCautions() {
+  if (!HX_PLAN || HX_PLAN.refused) return [];
+  const out = [];
+  const timeout = parseInt($("timeout").value.trim(), 10);
+  if (HX_PLAN.maxDurationMin !== null && timeout > HX_PLAN.maxDurationMin) {
+    out.push(`the ${timeout} minute global timeout will be cut to `
+      + `${HX_PLAN.maxDurationMin} without warning, and the job stopped there`);
+  }
+  if (regionRows().length > 1 && !totalUsers()) {
+    out.push("with Max users empty every region runs the plan's own user count, "
+      + "so the real load and the VUH are multiplied by the number of regions");
+  }
+  return out;
+}
+
 /* The line under the load fields: what this account may run, and what the
    numbers in the form would cost against it. */
 function planNote() {
@@ -219,19 +237,22 @@ function planNote() {
     el.className = "hint bad";
     return;
   }
-  const lim = (n, unit) => (n === null ? "no limit" : n.toLocaleString() + (unit || ""));
   const bits = [
     HX_PLAN.perf ? "performance plan" : "free limits, no performance plan on this account",
-    "up to " + lim(HX_PLAN.maxVUsers) + " users",
-    lim(HX_PLAN.maxDurationMin, " min") + " per job",
-    lim(HX_PLAN.vuhMonth) + " VUH a month",
+    HX_PLAN.maxVUsers === null ? "no user limit"
+      : "up to " + HX_PLAN.maxVUsers.toLocaleString() + " users",
+    HX_PLAN.maxDurationMin === null ? "no limit on job length"
+      : HX_PLAN.maxDurationMin.toLocaleString() + " min per job",
+    HX_PLAN.vuhMonth === null ? "no monthly VUH limit"
+      : HX_PLAN.vuhMonth.toLocaleString() + " VUH a month",
   ];
   const vuh = hxEstimateVuh(parseInt($("vusers").value.trim(), 10),
                             parseInt($("duration").value.trim(), 10),
                             parseInt($("rampup").value.trim(), 10) || 0, false);
   if (vuh !== null) bits.push("this run is about " + vuh.toLocaleString() + " VUH");
-  el.textContent = bits.join(" \u00b7 ");
-  el.className = "hint";
+  const cautions = planCautions();
+  el.textContent = bits.join(" \u00b7 ") + (cautions.length ? ". " + cautions.join(". ") + "." : "");
+  el.className = cautions.length ? "hint warn" : "hint";
 }
 
 const regionAllowed = (v) => !HX_ALLOWED || HX_ALLOWED.allowed.includes(v);
@@ -377,23 +398,28 @@ function vmCalc() {
                    " engine" + (vms === 1 ? "" : "s");
 }
 ["vusers", "maxVusers"].forEach((k) => $(k).addEventListener("input", vmCalc));
-["vusers", "duration", "rampup"].forEach((k) => $(k).addEventListener("input", planNote));
+["vusers", "duration", "rampup", "timeout"].forEach((k) => $(k).addEventListener("input", planNote));
 
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
-/* The dashboard starts a run at 100 users. A plan usually carries 1, because
-   it was authored to be replayed once, and sending that to HyperExecute
-   measures nothing. So the plan wins when it asks for more than one user, and
-   the dashboard's 100 is the floor. */
+/* The dashboard starts a run at 100 users, and so does this. What the plan
+   was authored with does not decide the run: these fields are the run, and
+   they are yours to change. A plan asking for something different is said in
+   the log rather than written into the field, because a number that changes
+   itself is worse than one you have to read. */
 const HX_DEFAULT_USERS = 100;
 
 async function prefillLoad() {
   const load = (PLAN && PLAN.load) || {};
-  if (!$("vusers").value) {
-    $("vusers").value = load.threads > 1 ? load.threads : HX_DEFAULT_USERS;
-  }
+  if (!$("vusers").value) $("vusers").value = HX_DEFAULT_USERS;
   if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
   if (load.duration && !$("duration").value) $("duration").value = load.duration;
+  const asked = Number(load.threads) || 0;
+  const set = Number($("vusers").value) || 0;
+  if (asked > 1 && asked !== set) {
+    addLog("info", `the plan was authored for ${asked} user(s); this run is set to `
+      + `${set}. What is in the field is what runs - change it if you want the plan's own`);
+  }
   vmCalc();
   planNote();
 }
@@ -480,6 +506,8 @@ async function submit(trigger) {
     planNote();
     return;
   }
+
+  if (trigger) planCautions().forEach((c) => addLog("warn", c));
 
   $("go").disabled = $("uploadOnly").disabled = true;
   show($("msg"), trigger ? "creating project, uploading and triggering…" : "uploading…", "info");
