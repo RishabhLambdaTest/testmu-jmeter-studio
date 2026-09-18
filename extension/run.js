@@ -30,7 +30,10 @@ async function load() {
   KEYS.forEach((k) => { if (saved[k] !== undefined) $(k).value = saved[k]; });
   CHECKS.forEach((k) => { if (saved[k] !== undefined) $(k).checked = saved[k]; });
   renderRegions();
+  // the dashboard's own starting point. Max users is left to prefillLoad,
+  // which runs later and prefers what the plan itself asks for.
   if (!$("maxVusers").value) $("maxVusers").value = "2000";
+  if (!$("timeout").value) $("timeout").value = "90";
   if (WANTED_NAME) $("planName").value = WANTED_NAME;
   // INCLUDE_GEN is decided in takeHandoff(), which runs after this: at this
   // point PLAN is always still null.
@@ -179,6 +182,11 @@ let HX_PLAN = null;
    unlimited on the plan, is never one of them. */
 function planBreaches() {
   if (!HX_PLAN) return [];
+  if (HX_PLAN.refused) {
+    return ["this account has no performance testing plan, so a load job is "
+      + "refused whatever it asks for. Ask for a performance plan, or run it "
+      + "from an account that has one"];
+  }
   const out = [];
   const users = parseInt($("vusers").value.trim(), 10);
   const dur = parseInt($("duration").value.trim(), 10);
@@ -213,7 +221,7 @@ function planNote() {
   }
   const lim = (n, unit) => (n === null ? "no limit" : n.toLocaleString() + (unit || ""));
   const bits = [
-    HX_PLAN.perf ? "performance plan" : "no performance plan, so the free limits apply",
+    HX_PLAN.perf ? "performance plan" : "free limits, no performance plan on this account",
     "up to " + lim(HX_PLAN.maxVUsers) + " users",
     lim(HX_PLAN.maxDurationMin, " min") + " per job",
     lim(HX_PLAN.vuhMonth) + " VUH a month",
@@ -373,15 +381,21 @@ function vmCalc() {
 
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
+/* The dashboard starts a run at 100 users. A plan usually carries 1, because
+   it was authored to be replayed once, and sending that to HyperExecute
+   measures nothing. So the plan wins when it asks for more than one user, and
+   the dashboard's 100 is the floor. */
+const HX_DEFAULT_USERS = 100;
+
 async function prefillLoad() {
-  if (!PLAN) return;
-  const load = PLAN.load || {};
-  {
-    if (load.threads && !$("vusers").value) $("vusers").value = load.threads;
-    if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
-    if (load.duration && !$("duration").value) $("duration").value = load.duration;
-    vmCalc();
+  const load = (PLAN && PLAN.load) || {};
+  if (!$("vusers").value) {
+    $("vusers").value = load.threads > 1 ? load.threads : HX_DEFAULT_USERS;
   }
+  if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
+  if (load.duration && !$("duration").value) $("duration").value = load.duration;
+  vmCalc();
+  planNote();
 }
 
 /* Pick up the plan the authoring page put in session storage. */
@@ -459,7 +473,8 @@ async function submit(trigger) {
   if (breaches.length) {
     // the platform refuses these itself, with a message that names no number.
     // Stopping here costs nothing and says exactly what is over.
-    show($("msg"), "this account's plan does not cover the run: " + breaches.join("; "), "bad");
+    show($("msg"), HX_PLAN && HX_PLAN.refused ? breaches[0]
+         : "this account's plan does not cover the run: " + breaches.join("; "), "bad");
     breaches.forEach((b) => addLog("err", b));
     addLog("info", "change the numbers above, or upload without triggering");
     planNote();

@@ -160,6 +160,13 @@ async function hxAccountPlan(user, key, log = () => {}) {
     const org = (me && me.organization) || {};
     const a = org.plan_attributes || {};
     const perf = a.IS_HYPEREXECUTE_PERF_ENABLED === true;
+    /* Without a performance plan the server only invents the free ceilings for
+       an account with metered HyperExecute minutes. Unmetered (-1) or none at
+       all is refused outright, and unlimited minutes being worse than metered
+       ones is a real quirk of that check, not a mistake here. */
+    const mins = a.MAX_HYPEREXECUTE_MINUTES;
+    const freemium = typeof mins === "number" && mins !== -1;
+    const refused = !perf && !freemium;
 
     const plan = perf ? {
       maxVUsers: hxLimit(a.HYPEREXECUTE_PERF_MAX_VUSERS),
@@ -182,8 +189,14 @@ async function hxAccountPlan(user, key, log = () => {}) {
     }
     if (!regions.length) { regions = HX_DEFAULT_REGIONS.slice(); source = "default"; }
 
-    const out = Object.assign({ perf, planName: org.current_plan_name || org.plan || "",
+    const out = Object.assign({ perf, freemium, refused,
+                                planName: org.current_plan_name || org.plan || "",
                                 regions: { allowed: regions, source } }, plan);
+    if (refused) {
+      log("err", "this account has no performance testing plan, so HyperExecute "
+        + "will refuse a JMeter load job whatever it asks for");
+      return out;
+    }
     log("info", (perf ? "performance plan: " : "no performance plan, so the free limits apply: ")
       + `${out.maxVUsers === null ? "unlimited" : out.maxVUsers.toLocaleString()} users, `
       + `${out.maxDurationMin === null ? "unlimited" : out.maxDurationMin + " min"} per job, `

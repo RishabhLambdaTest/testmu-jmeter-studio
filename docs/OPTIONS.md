@@ -584,6 +584,12 @@ These override the plan. Whatever users, ramp-up and duration the `.jmx`
 carries, what is set here is what runs; **an empty field means "whatever the
 plan says"**, which is not the same as a default.
 
+Three fields open with the dashboard's own starting point rather than empty:
+**100 max users**, **2,000 per engine** and a **90 minute** global timeout. The
+user count gives way to the plan when the plan asks for more than one, since a
+plan authored to be replayed once carries a single user and sending that to
+HyperExecute measures nothing.
+
 With *Max users* set, each region runs its share of it, rounded down, the way
 the dashboard splits it: 1,000 users at 60% and 40% is 600 and 400. The line
 under the regions says when the shares do not add up to 100%, and a region at 0%
@@ -599,9 +605,17 @@ what the numbers currently in the form would cost against that.
 It comes from the account's own plan attributes, the same values the platform
 checks with: `HYPEREXECUTE_PERF_MAX_VUSERS`,
 `HYPEREXECUTE_PERF_MAX_JOB_DURATION_MINUTES` and `HYPEREXECUTE_PERF_MAX_VUH_MONTH`.
-`-1` means no limit and is never enforced. An account with no performance plan
-gets the free ceilings instead, which are much lower: **100 users, a 40 minute
-job, 20 VUH a month**.
+`-1` means no limit and is never enforced.
+
+An account **with no performance plan** falls into one of two cases, and the
+page distinguishes them because the platform does:
+
+- metered HyperExecute minutes: the server invents a free plan, so the free
+  ceilings apply, **100 users, a 40 minute job, 20 VUH a month**
+- unmetered minutes, or none at all: the job is **refused outright**, whatever
+  it asks for, and the page says so and will not trigger. Unlimited minutes
+  landing here rather than on the free plan is a quirk of that check on the
+  platform side, not of this page
 
 The VUH estimate is the platform's own sum rather than an approximation of it:
 
