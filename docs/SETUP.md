@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.8.11-share.zip          ←  the one you want
+testmu-jmeter-studio-1.8.12-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.8.11.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.8.12.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.8.11-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.8.12-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -420,6 +420,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "… a .jmx can be at most 50 MB" | HyperExecute refuses a plan that large. Filter the traffic or split the journey |
 | "the upload was refused as too large (413)" | A request went over 200 MB. The page splits uploads to stay under it, so this points at a limit in front of HyperExecute; upload fewer files at once |
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
+| "this account's plan does not cover the run" | Not from the platform: the page read the account's plan and the run is over its user ceiling, its job length, or its monthly VUH. The message names which. Lower the numbers, or upload without triggering |
 | "Your plan does not support the specified region config(s)" | The job asked for a region your organisation is not entitled to. The server does not say which one; the run page marks them **(not in your plan)** before you trigger. Most accounts have East US only. If the region genuinely should be allowed, the account service may simply have been unreachable when the job was submitted, which degrades to East US silently, so check for `Failed to fetch orgPreferences for orgID=` in the reception logs before treating it as a plan problem |
 | The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
 | The job runs but the report is empty, and JMeter logged `Error generating the report: NullPointerException` | Zero samplers ran, so there is no data to report and HyperExecute still marks the job passed. Before 1.3.5 a recording with browser steps put a Chrome driver config at plan level, which runs for every thread in every group: with no chromedriver on the runner it killed the protocol samplers too. From 1.3.5 the `.jmx` is protocol-only and the journey ships as the Playwright script instead. Re-author the recording on 1.3.5 |

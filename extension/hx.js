@@ -121,18 +121,35 @@ async function hxError(action, response) {
    someone to paste an id. Filtered to jmeter server-side: uploading a plan
    into a Playwright project fails later, at trigger time, for a reason nobody
    would connect back to this choice. */
-/* ---- what regions this account may actually use -------------------------
-   The dashboard offers every region to everyone and only rejects the job on
-   submit, with a message that does not say which region was the problem. The
-   same two calls the server makes are cheap, so the answer is known here
-   before anything is spent.
+/* ---- what this account is allowed to run --------------------------------
+   Every limit lives in one place: organization.plan_attributes on the account
+   service's own /api/user. The dashboard offers everyone everything and lets
+   the job be refused on submit, with messages that do not say which limit was
+   hit, so the same read happens here and the answer is known before anything
+   is spent.
 
-   Returns {allowed, source}, or null when it could not be established - never
-   an empty list, because "we could not ask" must not look like "you may not".
-   A failure here is logged and ignored: reception degrades to eastus on a LUMS
-   blip, and a page that blocked the run would turn a transient fault into a
-   wall. */
-async function hxAllowedRegions(user, key, log = () => {}) {
+   Returns null when it cannot be established - never zeroes, because "we could
+   not ask" must not read as "you may not". A failure is logged and ignored. */
+
+/* What the server falls back to for an account with no performance plan.
+   Kept identical to setDefaultPerformanceTestingPlanValues. */
+const HX_FREE_PLAN = {
+  maxVUsers: 100, vuhMonth: 20, vuhYear: 20,
+  jobsMonth: 20, jobsYear: 20, maxDurationMin: 40,
+};
+/* The same list also appears as a plan attribute. Reception reads the org
+   preference; the attribute is read too, as a fallback, so an account that has
+   one but not the other is not told it may only use eastus. */
+const HX_PERF_REGIONS_ATTR = "HYPEREXECUTE_PERF_REGIONS";
+
+const hxNum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/* -1 is the platform's "no limit", and must never be compared against. */
+const hxLimit = (v) => { const n = hxNum(v); return n === null || n < 0 ? null : n; };
+const hxRegionList = (raw) =>
+  (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
+    .map((x) => String(x).trim()).filter(Boolean);
+
+async function hxAccountPlan(user, key, log = () => {}) {
   const get = async (url) => {
     const r = await fetch(url, { headers: hxHeaders(user, key), credentials: "omit" });
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).pathname}`);
@@ -140,24 +157,55 @@ async function hxAllowedRegions(user, key, log = () => {}) {
   };
   try {
     const me = await get(HX_LUMS + "/api/user");
-    const orgId = me && me.organization && me.organization.id;
-    if (!orgId) throw new Error("the account service did not name an organisation");
-    const prefs = await get(HX_LUMS + "/api/org_preferences/" + encodeURIComponent(orgId));
-    const raw = prefs && prefs[HX_PERF_REGIONS_PREF];
-    const list = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
-      .map((x) => String(x).trim()).filter(Boolean);
-    if (!list.length) {
-      log("info", `no region preference is set for this organisation, so only `
-        + `${HX_DEFAULT_REGIONS.join(", ")} is available - the same default the job would get`);
-      return { allowed: HX_DEFAULT_REGIONS.slice(), source: "default" };
+    const org = (me && me.organization) || {};
+    const a = org.plan_attributes || {};
+    const perf = a.IS_HYPEREXECUTE_PERF_ENABLED === true;
+
+    const plan = perf ? {
+      maxVUsers: hxLimit(a.HYPEREXECUTE_PERF_MAX_VUSERS),
+      vuhMonth: hxLimit(a.HYPEREXECUTE_PERF_MAX_VUH_MONTH),
+      vuhYear: hxLimit(a.HYPEREXECUTE_PERF_MAX_VUH_YEAR),
+      jobsMonth: hxLimit(a.HYPEREXECUTE_PERF_MAX_JOBS_MONTH),
+      jobsYear: hxLimit(a.HYPEREXECUTE_PERF_MAX_JOBS_YEAR),
+      maxDurationMin: hxLimit(a.HYPEREXECUTE_PERF_MAX_JOB_DURATION_MINUTES),
+    } : Object.assign({}, HX_FREE_PLAN);
+
+    // the regions: the org preference first, the plan attribute second
+    let regions = hxRegionList(a[HX_PERF_REGIONS_ATTR]);
+    let source = regions.length ? "plan" : "default";
+    try {
+      const prefs = await get(HX_LUMS + "/api/org_preferences/" + encodeURIComponent(org.id));
+      const pref = hxRegionList(prefs && prefs[HX_PERF_REGIONS_PREF]);
+      if (pref.length) { regions = pref; source = "preference"; }
+    } catch (e) {
+      log("warn", "could not read this organisation's region preference (" + (e.message || e) + ")");
     }
-    log("info", "regions allowed for this organisation: " + list.join(", "));
-    return { allowed: list, source: "preference" };
+    if (!regions.length) { regions = HX_DEFAULT_REGIONS.slice(); source = "default"; }
+
+    const out = Object.assign({ perf, planName: org.current_plan_name || org.plan || "",
+                                regions: { allowed: regions, source } }, plan);
+    log("info", (perf ? "performance plan: " : "no performance plan, so the free limits apply: ")
+      + `${out.maxVUsers === null ? "unlimited" : out.maxVUsers.toLocaleString()} users, `
+      + `${out.maxDurationMin === null ? "unlimited" : out.maxDurationMin + " min"} per job, `
+      + `${out.vuhMonth === null ? "unlimited" : out.vuhMonth.toLocaleString()} VUH a month, `
+      + `regions: ${regions.join(", ")}`);
+    return out;
   } catch (e) {
-    log("warn", "could not check which regions this account may use ("
-      + (e.message || e) + "), so every region is offered");
+    log("warn", "could not read what this account is allowed to run ("
+      + (e.message || e) + "), so nothing is checked here");
     return null;
   }
+}
+
+/* The platform's own sum, so an estimate shown here matches the one the job is
+   billed for: half the ramp-up is taken off before the hours are counted, and
+   a part hour is a whole one. */
+function hxEstimateVuh(users, durationSec, rampSec, ui) {
+  const u = Number(users) || 0;
+  const d = Number(durationSec) || 0;
+  const r = Number(rampSec) || 0;
+  if (!u || d <= 0) return null;
+  return u * (Math.floor(Math.max(0, d - r / 2) / 3600) + 1) * (ui ? 10 : 1);
 }
 
 async function hxListProjects(user, key, log = () => {}, type = "jmeter") {

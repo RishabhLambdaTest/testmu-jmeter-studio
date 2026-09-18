@@ -590,6 +590,34 @@ under the regions says when the shares do not add up to 100%, and a region at 0%
 has to be given some traffic or removed. With *Max users* empty, every region
 runs what the `.jmx` says.
 
+### What this account may run
+
+Under the load fields is a line naming what the signed-in account has bought:
+its user ceiling, the longest a single job may be, the VUH it gets a month, and
+what the numbers currently in the form would cost against that.
+
+It comes from the account's own plan attributes, the same values the platform
+checks with: `HYPEREXECUTE_PERF_MAX_VUSERS`,
+`HYPEREXECUTE_PERF_MAX_JOB_DURATION_MINUTES` and `HYPEREXECUTE_PERF_MAX_VUH_MONTH`.
+`-1` means no limit and is never enforced. An account with no performance plan
+gets the free ceilings instead, which are much lower: **100 users, a 40 minute
+job, 20 VUH a month**.
+
+The VUH estimate is the platform's own sum rather than an approximation of it:
+
+```
+users x (floor((duration - rampup / 2) / 3600) + 1)
+```
+
+Half the ramp-up comes off before the hours are counted, any part of an hour
+counts as a whole one, and a browser test multiplies the result by ten. So one
+virtual user for exactly an hour is 2 VUH, not 1.
+
+**A run the plan does not cover is not triggered.** The message names the
+number and the ceiling, because the platform's own refusal names neither. The
+upload button still works, so a plan can be put in place and run later from the
+dashboard. Nothing is checked when the limits cannot be read.
+
 ### Which regions you may actually use
 
 Six regions are offered, the same six the dashboard lists. **Which of them your

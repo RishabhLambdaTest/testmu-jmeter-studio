@@ -170,6 +170,61 @@ const HX_REGIONS = [
    is unknown, which is not the same as "none allowed": every region stays
    offered in that case. */
 let HX_ALLOWED = null;
+/* The account's performance limits, from its plan attributes. null means they
+   could not be read, and nothing is checked in that case. */
+let HX_PLAN = null;
+
+/* Everything the chosen configuration breaks, as sentences. Empty means the
+   job is within what this account has bought. A limit that is unknown, or
+   unlimited on the plan, is never one of them. */
+function planBreaches() {
+  if (!HX_PLAN) return [];
+  const out = [];
+  const users = parseInt($("vusers").value.trim(), 10);
+  const dur = parseInt($("duration").value.trim(), 10);
+  const ramp = parseInt($("rampup").value.trim(), 10) || 0;
+  if (HX_PLAN.maxVUsers !== null && users > HX_PLAN.maxVUsers) {
+    out.push(`${users.toLocaleString()} users is over the ${HX_PLAN.maxVUsers.toLocaleString()} `
+      + `this account may run`);
+  }
+  if (HX_PLAN.maxDurationMin !== null && dur > HX_PLAN.maxDurationMin * 60) {
+    out.push(`${Math.round(dur / 60)} minutes is longer than the `
+      + `${HX_PLAN.maxDurationMin} minute limit on a single job`);
+  }
+  const vuh = hxEstimateVuh(users, dur, ramp, false);
+  if (vuh !== null && HX_PLAN.vuhMonth !== null && vuh > HX_PLAN.vuhMonth) {
+    out.push(`this one run is about ${vuh.toLocaleString()} VUH, more than the whole `
+      + `${HX_PLAN.vuhMonth.toLocaleString()} VUH month`);
+  }
+  return out;
+}
+
+/* The line under the load fields: what this account may run, and what the
+   numbers in the form would cost against it. */
+function planNote() {
+  const el = $("planNote");
+  if (!el) return;
+  if (!HX_PLAN) { el.textContent = ""; el.className = "hint"; return; }
+  const breaches = planBreaches();
+  if (breaches.length) {
+    el.textContent = breaches.join(". ") + ".";
+    el.className = "hint bad";
+    return;
+  }
+  const lim = (n, unit) => (n === null ? "no limit" : n.toLocaleString() + (unit || ""));
+  const bits = [
+    HX_PLAN.perf ? "performance plan" : "no performance plan, so the free limits apply",
+    "up to " + lim(HX_PLAN.maxVUsers) + " users",
+    lim(HX_PLAN.maxDurationMin, " min") + " per job",
+    lim(HX_PLAN.vuhMonth) + " VUH a month",
+  ];
+  const vuh = hxEstimateVuh(parseInt($("vusers").value.trim(), 10),
+                            parseInt($("duration").value.trim(), 10),
+                            parseInt($("rampup").value.trim(), 10) || 0, false);
+  if (vuh !== null) bits.push("this run is about " + vuh.toLocaleString() + " VUH");
+  el.textContent = bits.join(" \u00b7 ");
+  el.className = "hint";
+}
 
 const regionAllowed = (v) => !HX_ALLOWED || HX_ALLOWED.allowed.includes(v);
 
@@ -314,6 +369,7 @@ function vmCalc() {
                    " engine" + (vms === 1 ? "" : "s");
 }
 ["vusers", "maxVusers"].forEach((k) => $(k).addEventListener("input", vmCalc));
+["vusers", "duration", "rampup"].forEach((k) => $(k).addEventListener("input", planNote));
 
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
@@ -398,6 +454,17 @@ async function submit(trigger) {
     if (!Number.isFinite(n)) throw new Error(`${id} must be a whole number, got "${v}"`);
     return Math.round(n);
   };
+
+  const breaches = trigger ? planBreaches() : [];
+  if (breaches.length) {
+    // the platform refuses these itself, with a message that names no number.
+    // Stopping here costs nothing and says exactly what is over.
+    show($("msg"), "this account's plan does not cover the run: " + breaches.join("; "), "bad");
+    breaches.forEach((b) => addLog("err", b));
+    addLog("info", "change the numbers above, or upload without triggering");
+    planNote();
+    return;
+  }
 
   $("go").disabled = $("uploadOnly").disabled = true;
   show($("msg"), trigger ? "creating project, uploading and triggering…" : "uploading…", "info");
@@ -561,8 +628,10 @@ $("uploadOnly").onclick = () => submit(false);
   await AUTH.ready();        // the gate covers the page until someone is signed in
   {
     const { user, key } = AUTH.creds();
-    HX_ALLOWED = await hxAllowedRegions(user, key, addLog);
+    HX_PLAN = await hxAccountPlan(user, key, addLog);
+    HX_ALLOWED = HX_PLAN && HX_PLAN.regions;
     renderRegions();           // relabel now that the plan's regions are known
+    planNote();
   }
   await loadProjects();
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
