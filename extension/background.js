@@ -204,6 +204,9 @@ async function restore() {
     }
   }
   if (state && !state.tabIds) state.tabIds = [state.tabId];   // older sessions
+  // an MV3 worker is killed and restarted constantly; the badge has to be put
+  // back each time, or a live recording loses its only always-visible sign
+  badge();
   return state;
 }
 
@@ -450,7 +453,28 @@ function finishEntry(e, body) {
   broadcast();
 }
 
+/* The toolbar icon is the one place that is on screen whatever else is open,
+   so it carries the count. Without it a recording with the popup shut and the
+   on-page card collapsed is running with nothing to show for it.
+
+   The colours are the dashboard's: its red for recording, its amber for
+   paused, its green once a recording is stopped but not yet used. */
+function badge() {
+  const st = statusPayload();
+  const text = st.recording ? String(st.count || 0)
+             : st.unsaved ? String(st.count || 0) : "";
+  const colour = st.paused ? "#9a6700" : st.recording ? "#cf222e" : "#1f883d";
+  const title = st.recording
+    ? `${st.paused ? "paused" : "recording"} - ${st.count || 0} request(s) captured`
+    : st.unsaved ? `${st.count || 0} request(s) waiting to be built into a plan`
+    : "TestMu AI \u2014 JMeter Studio (Beta)";
+  chrome.action.setBadgeText({ text }).catch(() => {});
+  chrome.action.setBadgeBackgroundColor({ color: colour }).catch(() => {});
+  chrome.action.setTitle({ title }).catch(() => {});
+}
+
 function broadcast() {
+  badge();
   chrome.runtime
     .sendMessage({ type: "status", status: statusPayload() })
     .catch(() => {});
@@ -477,6 +501,7 @@ function statusPayload() {
         bytes: state.bytes || 0,
         startedAt: state.startedAt,
         recovered: !!state.recovered,
+        small: !!state.small,
       }
     : { recording: false, count: 0, actions: 0, transaction: "", transactions: [],
         bytes: 0 };
@@ -920,6 +945,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           });
         case "authState":
           return sendResponse({ ok: true, data: { signedIn: await signedIn() } });
+        /* Collapsed or open is a property of the recording, not of the page:
+           the content script is rebuilt on every navigation, and a card that
+           sprang open again at each one would be worse than one that hid. */
+        case "setSmall": {
+          if (!state) return sendResponse({ ok: false, error: "not recording" });
+          state.small = !!msg.small;
+          await persist();
+          broadcast();
+          return sendResponse({ ok: true });
+        }
         case "setPaused": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
           state.paused = !!msg.paused;

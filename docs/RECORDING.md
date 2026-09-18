@@ -7,6 +7,17 @@ signed-out popup says so and offers the login page; the panel and the shortcut
 answer *sign in to TestMu AI to record*. Signing in once covers recording,
 authoring and running, since all three read the same session.
 
+**The panel does not go away while a recording is running.** Minimise shrinks
+it to the dot and the count in the corner, and clicking that opens it again.
+Collapsed or open is remembered by the recording rather than the page, so it
+stays collapsed as you navigate instead of springing back at every page load.
+Only the close button takes it off the page, and that stops the recording.
+
+**The toolbar icon carries the count too**, so a recording is visible even with
+the panel collapsed and the popup shut: red while recording, amber while
+paused, and green afterwards for a recording that has not been built into a
+plan yet.
+
 This is the path BlazeMeter's Chrome recorder covers, and the one people ask for
 first: don't make me write a test, let me click through the app and get one.
 

@@ -107,3 +107,25 @@
 #jmxgen-overlay .jg-chk { display:flex; align-items:center; gap:7px; margin:8px 0 6px;
   color:#6e7781; font-size:11.5px; cursor:pointer; }
 #jmxgen-overlay .jg-chk input { width:auto; margin:0; }
+
+/* ---- minimised ----------------------------------------------------------
+   Minimise used to set display:none, which left a recording running with
+   nothing on the page to say so. It now shrinks to the dot and the count:
+   the same card, the same palette, just small enough to ignore. It cannot be
+   hidden while a recording is running - that is what the close button is for.
+
+   These literals are the dashboard's own, repeated rather than referenced,
+   because this sheet is injected into pages that never load brand.css. */
+#jmxgen-overlay.jg-small { width: auto; cursor: pointer; }
+#jmxgen-overlay.jg-small .jg-body,
+#jmxgen-overlay.jg-small .jg-confirm,
+#jmxgen-overlay.jg-small .jg-title,
+#jmxgen-overlay.jg-small .jg-min,
+#jmxgen-overlay.jg-small .jg-max { display: none; }
+#jmxgen-overlay.jg-small .jg-head {
+  border-bottom: 0; border-radius: 8px; padding: 6px 8px 6px 10px; gap: 8px;
+}
+#jmxgen-overlay.jg-small .jg-count {
+  font-weight: 700; color: #121212; font-variant-numeric: tabular-nums;
+}
+#jmxgen-overlay.jg-small:hover { border-color: #1f883d; }

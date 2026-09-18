@@ -7,6 +7,7 @@
 
   let root = null;
   let visible = false;
+  let small = false;   // collapsed to the dot and the count
 
   const send = (msg) =>
     new Promise((resolve) => {
@@ -92,7 +93,17 @@
   function wire() {
     const q = (id) => root.querySelector(id);
 
-    q("#jg-hide").onclick = () => setVisible(false);
+    q("#jg-hide").onclick = () => {
+      setSmall(true);
+      chrome.runtime.sendMessage({ type: "setSmall", small: true }).catch(() => {});
+    };
+    // the collapsed card is one big button back to the panel
+    q(".jg-head").addEventListener("click", (e) => {
+      if (!small) return;
+      if (e.target.closest(".jg-x")) return;   // the close button still closes
+      setSmall(false);
+      chrome.runtime.sendMessage({ type: "setSmall", small: false }).catch(() => {});
+    });
 
     // expand gives the panel room when a recording gets long, without ever
     // covering the page entirely - you still have to click the app
@@ -354,10 +365,24 @@
     visible = false;
   }
 
+  /* Minimising collapses the panel to the dot and the count rather than
+     hiding it: a recording that is still running has to be visible somewhere
+     on the page, or it is a recording nobody knows about. Only stopping takes
+     it off the page. Clicking the collapsed card opens it again. */
+  function setSmall(on) {
+    small = on;
+    if (!root) return;
+    root.classList.toggle("jg-small", on);
+    root.title = on ? "recording - click to open the panel" : "";
+  }
+
   function setVisible(on) {
     visible = on;
     if (on && !root) build();
-    if (root) root.style.display = on ? "block" : "none";
+    if (root) {
+      root.style.display = on ? "block" : "none";
+      if (!on) setSmall(false);   // next time it opens, open it properly
+    }
   }
 
   function render(status) {
@@ -367,6 +392,7 @@
       return;
     }
     setVisible(true);
+    if (!!status.small !== small) setSmall(!!status.small);
     // the red dot stops pulsing while paused, and the panel says so
     const dot = root.querySelector(".jg-dot");
     if (dot) dot.classList.toggle("paused", !!status.paused);
