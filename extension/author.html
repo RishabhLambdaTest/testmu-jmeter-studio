@@ -26,7 +26,7 @@
       </span>
       <span class="tm-sub">Author</span>
     </span>
-    <span class="tm-account" id="account" hidden></span>
+    <button type="button" class="tm-account" id="account" hidden></button>
     <span class="tm-controls">
       <button class="tm-ctl min" id="pgMin" title="Back to the previous tab"
               aria-label="Back to the previous tab">&minus;</button>
@@ -57,10 +57,10 @@
       <textarea id="text" spellcheck="false"></textarea>
     </div>
 
-    <!-- Authoring from a session reads it with the signed-in TestMu AI account -->
+    <!-- Authoring from a session reads it with the account signed in to this page -->
     <div id="ltBlock" hidden>
-      <p class="hint">Sessions are read with the TestMu AI account you are signed
-        in to, from api.lambdatest.com.</p>
+      <p class="hint">Sessions are read from api.lambdatest.com with the TestMu AI
+        account this page is signed in to.</p>
       <div class="grid2">
         <div>
           <label for="ltPick">…or pick a recent session</label>

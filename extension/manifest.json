@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
   "name": "TestMu AI — JMeter Studio (Beta)",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
     "debugger",
-    "cookies",
     "tabs",
     "storage",
     "declarativeNetRequestWithHostAccess",

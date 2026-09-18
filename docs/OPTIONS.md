@@ -505,9 +505,26 @@ performs in order; this is what each control is for.
 
 ## Account
 
-There are no credential fields. The page uses the TestMu AI account the browser
-is signed in to, named at the top right, and stays locked behind **Sign in to
-TestMu AI** until there is one.
+The page stays covered by **Sign in to use JMeter Studio** until you give a
+TestMu AI **username** and **access key**. Both are on
+`accounts.lambdatest.com` under *Profile › Password & Security*, and the link on
+the card opens it. The pair is checked against HyperExecute before the page
+unlocks, so a key that cannot list projects is refused at the card.
+
+You are asked once per browser session, not once per page. The pair is held in
+memory (`chrome.storage.session`), shared by the authoring and run pages, and
+forgotten when Chrome closes; nothing is written to disk.
+
+**The account button, top right.** It names the account in use. Click it to
+reopen the card with the username prefilled:
+
+![The card reopened to switch account, with Cancel and Sign out](screenshots/auth-switch.png)
+
+| Button | What it does |
+|---|---|
+| **Sign in** | Signs in as whatever is in the two fields. A different username reloads the page, so nothing from the old account carries over |
+| **Cancel** | Closes the card and leaves the current account alone |
+| **Sign out** | Forgets the account for every page and reloads this one, back to the card |
 
 ## Project
 
