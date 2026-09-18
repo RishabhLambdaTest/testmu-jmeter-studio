@@ -419,11 +419,33 @@ Both thresholds matter more than they look: a k6 check that fails does not
 change the exit status, only a threshold does. Without them a job whose every
 request failed still finishes green.
 
-Three tabs sit above them. *Requests* is every sampler with its group, method,
-path and checks: read it to confirm the plan contains what you meant to test.
-*Correlations* is every dynamic value that was wired between requests, with the
-rule, a confidence and the hop, so you can disagree with one. *Checks* holds
-validation results once you have run one.
+### The five numbers
+
+A generated plan leads with five counters, and they are the fastest read of
+whether it is worth running.
+
+| Counter | What it is | What a surprising value means |
+|---|---|---|
+| requests | samplers in the plan | far more than the journey had means the traffic filter kept noise; far fewer means it dropped something you wanted |
+| correlated | dynamic values wired from one response into a later request | **zero on a plan with a login is the one to worry about**: nothing was carried, so every request after the login is replaying an expired value |
+| size | the `.jmx` on disk | a plan over a few MB is usually recorded assets, and HyperExecute refuses one over 50 MB |
+| errors | things that make the plan wrong | never ship one. The log says what and where |
+| warnings | things that build and run but will bite | a variable used and never defined is the common one |
+
+### The three tabs
+
+| Tab | What it holds |
+|---|---|
+| **Requests** | every sampler with its group, method, path and checks. Read it to confirm the plan contains what you meant to test, and click any row to edit it |
+| **Correlations** | every dynamic value that was wired between requests, each with the rule that found it, a confidence, and the hop: which response handed it out and which request needed it. This is where you disagree with one. If a login recorded fine but the plan will 401 under load, this tab is empty when it should not be |
+| **Checks** | validation results, and after **Replay once**, every request with its code, what failed and how long it took |
+
+**Undo, Redo and find a request** sit above the table. Undo steps back through
+the last ten edits and restores the whole plan, not just the field you changed,
+because every edit rewrites the spec and rebuilds from it. A replay result is
+dropped on undo: it described a plan that no longer exists. *find a request*
+filters the table as you type, matching the method, group, name and path. The
+detail is in [EDITING.md](EDITING.md).
 
 ![The host checklist, with one host in the plan](screenshots/author-hosts.png)
 

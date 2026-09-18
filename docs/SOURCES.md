@@ -31,8 +31,10 @@ because anything here requires them.
   Download .jmx   or   Run on HyperExecute…
 ```
 
-Every result leads with three numbers: requests, correlated, errors. A plan with
-errors is never shipped quietly.
+Every result leads with five numbers: requests, correlated, size, errors and
+warnings. A plan with errors is never shipped quietly, and `correlated: 0` on a
+journey that logs in is the number to distrust. [OPTIONS.md](OPTIONS.md) reads
+each one.
 
 ---
 
