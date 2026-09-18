@@ -166,6 +166,13 @@ const HX_REGIONS = [
   ["mexicocentral", "Mexico Central (Querétaro State, Mexico)"],
 ];
 
+/* Filled once per page load from the org's preferences. null means the answer
+   is unknown, which is not the same as "none allowed": every region stays
+   offered in that case. */
+let HX_ALLOWED = null;
+
+const regionAllowed = (v) => !HX_ALLOWED || HX_ALLOWED.allowed.includes(v);
+
 function regionRows() {
   const raw = $("regions").value.trim();
   let rows = null;
@@ -210,7 +217,10 @@ function renderRegions() {
     for (const [value, label] of options) {
       const o = document.createElement("option");
       o.value = value;
-      o.textContent = label;
+      // a region the plan does not cover is still selectable: region checks
+      // only run when the org has them switched on, so refusing here would
+      // stop jobs that would have been accepted
+      o.textContent = regionAllowed(value) ? label : label + "  (not in your plan)";
       // one row per region: a region already used elsewhere is not offered
       o.disabled = value !== r.region && rows.some((x) => x.region === value);
       sel.appendChild(o);
@@ -261,7 +271,17 @@ function regionSummary(rows) {
   });
   const sum = rows.reduce((n, r) => n + (Number(r.traffic) || 0), 0);
   const hint = $("regionHint");
-  if (total && sum !== 100) {
+  const barred = rows.map((r) => r.region).filter((v) => !regionAllowed(v));
+  if (barred.length) {
+    // the server refuses these with a message that never names the region,
+    // so name them here, before the trigger is spent
+    hint.textContent = `${barred.join(", ")} ${barred.length > 1 ? "are" : "is"} not in `
+      + `this account's plan, so the job will be refused. Allowed: `
+      + `${HX_ALLOWED.allowed.join(", ")}`
+      + (HX_ALLOWED.source === "default"
+         ? " (the default, because no region preference is set for this organisation)" : "");
+    hint.className = "hint bad";
+  } else if (total && sum !== 100) {
     hint.textContent = `the shares add up to ${sum}%, so ` +
       (sum < 100 ? `${100 - sum}% of the users will not start` : `more users start than the total`);
     hint.className = "hint bad";
@@ -274,7 +294,8 @@ function regionSummary(rows) {
 
 $("addRegion").onclick = () => {
   const rows = regionRows();
-  const free = HX_REGIONS.find(([v]) => !rows.some((r) => r.region === v));
+  const unused = HX_REGIONS.filter(([v]) => !rows.some((r) => r.region === v));
+  const free = unused.find(([v]) => regionAllowed(v)) || unused[0];
   if (!free) return;
   rows.push({ region: free[0], traffic: 0 });   // the dashboard adds a row at 0%
   setRegionRows(rows);
@@ -538,6 +559,11 @@ $("uploadOnly").onclick = () => submit(false);
   vmCalc();
   await prefillLoad();
   await AUTH.ready();        // the gate covers the page until someone is signed in
+  {
+    const { user, key } = AUTH.creds();
+    HX_ALLOWED = await hxAllowedRegions(user, key, addLog);
+    renderRegions();           // relabel now that the plan's regions are known
+  }
   await loadProjects();
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
   showRoute();

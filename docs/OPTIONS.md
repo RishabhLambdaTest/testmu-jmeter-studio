@@ -590,6 +590,28 @@ under the regions says when the shares do not add up to 100%, and a region at 0%
 has to be given some traffic or removed. With *Max users* empty, every region
 runs what the `.jmx` says.
 
+### Which regions you may actually use
+
+Six regions are offered, the same six the dashboard lists. **Which of them your
+jobs may run in is set per organisation**, and for most accounts that is East US
+alone.
+
+The allowance lives in an organisation preference,
+`HYPEREXECUTE_PERF_ALLOWED_REGIONS`. When it is absent, empty, or cannot be
+read, the server falls back to `eastus` and refuses a job asking for anything
+else. The page reads the same preference when it opens and marks the regions
+your plan does not cover with **(not in your plan)**, naming them again in the
+line under the field if one is chosen.
+
+They stay selectable on purpose. Region checks only run when the organisation
+has that validation switched on and the job carries a JMeter block, neither of
+which is readable from here, so refusing the choice outright would block jobs
+that would in fact be accepted. k6 jobs skip region validation altogether.
+
+If the preference cannot be read at all, every region is offered as before and
+the log says why. A failure to ask is not the same as a refusal, and a blip in
+the account service must not stop a run.
+
 | Control | What it does | When to use it |
 |---|---|---|
 | Regions and traffic | one row per region, from the regions the HyperExecute dashboard offers, each with its share of the users. **+ Add region** adds a row at 0% | one region normally; several to test from where your users are |

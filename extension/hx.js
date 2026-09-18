@@ -14,6 +14,14 @@
  */
 
 const HX_BASE = "https://api-hyperexecute.lambdatest.com";
+/* LUMS, which is where an organisation's preferences live. The regions a job
+   may run in are one of them. */
+const HX_LUMS = "https://auth.hyperexecute.cloud";
+const HX_PERF_REGIONS_PREF = "HYPEREXECUTE_PERF_ALLOWED_REGIONS";
+/* What reception falls back to when the preference is missing, empty, or
+   unreadable. Kept identical to resolveAllowedRegions on the server: getting
+   this wrong would show someone a region their job will be refused for. */
+const HX_DEFAULT_REGIONS = ["eastus"];
 const HX_UI = "https://hyperexecute.lambdatest.com/hyperexecute";
 /* The job page, in the form the HyperExecute CLI prints. /jobs/<id> is not a
    job page; task?jobId= is the one that shows the run live. */
@@ -113,6 +121,45 @@ async function hxError(action, response) {
    someone to paste an id. Filtered to jmeter server-side: uploading a plan
    into a Playwright project fails later, at trigger time, for a reason nobody
    would connect back to this choice. */
+/* ---- what regions this account may actually use -------------------------
+   The dashboard offers every region to everyone and only rejects the job on
+   submit, with a message that does not say which region was the problem. The
+   same two calls the server makes are cheap, so the answer is known here
+   before anything is spent.
+
+   Returns {allowed, source}, or null when it could not be established - never
+   an empty list, because "we could not ask" must not look like "you may not".
+   A failure here is logged and ignored: reception degrades to eastus on a LUMS
+   blip, and a page that blocked the run would turn a transient fault into a
+   wall. */
+async function hxAllowedRegions(user, key, log = () => {}) {
+  const get = async (url) => {
+    const r = await fetch(url, { headers: hxHeaders(user, key), credentials: "omit" });
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).pathname}`);
+    return r.json();
+  };
+  try {
+    const me = await get(HX_LUMS + "/api/user");
+    const orgId = me && me.organization && me.organization.id;
+    if (!orgId) throw new Error("the account service did not name an organisation");
+    const prefs = await get(HX_LUMS + "/api/org_preferences/" + encodeURIComponent(orgId));
+    const raw = prefs && prefs[HX_PERF_REGIONS_PREF];
+    const list = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
+      .map((x) => String(x).trim()).filter(Boolean);
+    if (!list.length) {
+      log("info", `no region preference is set for this organisation, so only `
+        + `${HX_DEFAULT_REGIONS.join(", ")} is available - the same default the job would get`);
+      return { allowed: HX_DEFAULT_REGIONS.slice(), source: "default" };
+    }
+    log("info", "regions allowed for this organisation: " + list.join(", "));
+    return { allowed: list, source: "preference" };
+  } catch (e) {
+    log("warn", "could not check which regions this account may use ("
+      + (e.message || e) + "), so every region is offered");
+    return null;
+  }
+}
+
 async function hxListProjects(user, key, log = () => {}, type = "jmeter") {
   await hxHeaderRule();
   const r = await fetch(
