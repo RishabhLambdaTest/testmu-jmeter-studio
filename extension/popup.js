@@ -126,6 +126,7 @@ function checkService() {
 }
 
 function refreshButtons() {
+  if (LOCKED) { $("send").disabled = $("export").disabled = true; return; }
   const hasCapture = Number($("count").textContent) > 0;
   $("send").disabled = !hasCapture;
   $("export").disabled = !hasCapture;
@@ -239,6 +240,7 @@ chrome.runtime.onMessage.addListener((m) => {
 async function checkTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const ok = /^https?:\/\//i.test((tab && tab.url) || "");
+  if (LOCKED) { $("start").disabled = true; return ok; }
   if (!ok) {
     $("start").disabled = true;
     $("start").textContent = "This tab can't be recorded";
@@ -302,9 +304,16 @@ $("hx").onclick = async () => {
    The worker refuses to record when nobody is signed in, so the popup says so
    up front rather than letting the button fail. The login itself cannot happen
    here: opening a tab closes the popup. */
+/* checkTab and refreshButtons both run after this, from asynchronous status
+   messages, and both used to re-enable what the gate had just disabled. The
+   gate has to outlive them, so it is a flag they check rather than a one-off
+   pass over the buttons. */
+let LOCKED = false;
+
 async function applyAuthGate() {
   const r = await send({ type: "authState" });
   const ok = !(r && r.ok) || (r.data && r.data.signedIn);
+  LOCKED = !ok;
   const gate = $("gate");
   if (gate) gate.hidden = !!ok;
   document.body.classList.toggle("signed-out", !ok);

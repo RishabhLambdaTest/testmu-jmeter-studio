@@ -966,11 +966,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return sendResponse({ ok: true, data: await stop() });
         case "status":
           return sendResponse({ ok: true, data: statusPayload() });
+        // a capture made before signing out is still a capture: it cannot be
+        // taken out of the extension without an account either
         case "export":
+          if (!(await signedIn())) return sendResponse({ ok: false, error: SIGN_IN_FIRST });
           return sendResponse({ ok: true, data: await exportHar() });
         case "openHyperExecute":
           return sendResponse({ ok: true, data: await openHyperExecute() });
         case "harHandoff":
+          if (!(await signedIn())) return sendResponse({ ok: false, error: SIGN_IN_FIRST });
           return sendResponse({ ok: true, data: await harHandoff(msg.options) });
         case "guiAction": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });

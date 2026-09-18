@@ -1,6 +1,8 @@
 # Recording a journey
 
-**Recording needs a TestMu AI login.** The check is in the extension's
+**Recording needs a TestMu AI login**, and so does taking a capture out of the
+extension: Export HAR and Generate test plan are refused as well, so a capture
+made before signing out cannot be exported afterwards. The check is in the extension's
 background worker rather than the popup, because the popup is not the only way
 to start one: the on-page panel and `Ctrl+Shift+8` go through the same place. A
 signed-out popup says so and offers the login page; the panel and the shortcut
