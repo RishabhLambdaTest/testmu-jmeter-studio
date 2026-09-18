@@ -8,16 +8,15 @@ load on anything. HyperExecute runs it when you are ready.
 
 There is nothing to install. The authoring engine ships inside the extension and
 runs in WebAssembly, and runs are triggered directly against the HyperExecute
-API as the TestMu AI account you sign in with. The username and access key are
-asked for once per browser session and held in memory; nothing is written to
-disk.
+API as the TestMu AI account you are signed in to. No access key is typed or
+stored.
 
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.8.8-share.zip
+1. unzip dist/testmu-jmeter-studio-1.8.9-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
-3. sign in with your TestMu AI username and access key when the page asks
+3. sign in to TestMu AI in the same browser
    toolbar icon  →  cURL  →  paste a request  →  Generate plan
 4. Run on HyperExecute…  →  pick a project  →  Create & trigger
 ```
@@ -93,8 +92,8 @@ covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.8.8-share.zip     6.0 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.8.8.zip           6.0 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.8.9-share.zip     6.0 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.8.9.zip           6.0 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`

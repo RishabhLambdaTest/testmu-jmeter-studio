@@ -156,7 +156,7 @@
 /* ---- signing in ---------------------------------------------------------
    auth.js covers a signed-out page with this card, and names the signed-in
    account in the page bar. The account chip is a button: it reopens the card
-   to switch account or sign out. */
+   to log out, which is also how you come back as a different account. */
 .authgate { position:fixed; inset:0; z-index:1000; display:grid; place-items:center;
             padding:16px; background:rgba(246, 248, 250, .92) }
 .authgate[hidden] { display:none }
@@ -173,24 +173,12 @@
 .authcard button.go:focus-visible { outline:none; box-shadow:var(--ring) }
 .authcard button.go:disabled { background:var(--line); color:var(--text-mute); cursor:default }
 .authcard button[hidden] { display:none }
-.authcard label.authfield { display:block; margin:0 0 4px; font:600 11.5px var(--sans);
-                            color:var(--text-dim) }
-.authcard input { display:block; width:100%; box-sizing:border-box; margin:0 0 12px;
-                  background:var(--field); color:var(--text);
-                  border:1px solid var(--line); border-radius:var(--r);
-                  padding:7px 9px; font:13px var(--sans) }
-.authcard input:focus-visible { outline:none; border-color:var(--brand); box-shadow:var(--ring) }
-.authcard input:disabled { background:var(--sunk); color:var(--text-mute) }
-.authcard .authwhere { margin:0 0 14px }
-.authcard .authwhere a { color:var(--link); text-decoration:none }
-.authcard .authwhere a:hover { text-decoration:underline }
-.authcard .authrow { display:flex; gap:8px; align-items:center }
 .authcard button.alt { background:var(--surface); color:var(--text);
                        border:1px solid var(--line); border-radius:var(--r);
                        padding:7px 12px; font:600 13px var(--sans); cursor:pointer }
 .authcard button.alt:hover { background:var(--sunk) }
 .authcard button.alt:focus-visible { outline:none; box-shadow:var(--ring) }
-.authcard button.alt.danger { margin-left:auto; color:var(--bad); border-color:var(--line) }
+.authcard button + button { margin-left:8px }
 .tm-account { margin-left:auto; margin-right:10px; font:11.5px var(--sans); color:var(--text-dim);
               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;
               background:var(--surface); border:1px solid var(--line); border-radius:var(--r);

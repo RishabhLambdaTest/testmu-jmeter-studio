@@ -35,7 +35,7 @@ Open the authoring page and choose **TestMu AI session (session id)**.
 
 ![The session source](screenshots/session-source.png)
 
-Sessions are read with the TestMu AI account you signed in with, from
+Sessions are read with the TestMu AI account you are signed in to, from
 `api.lambdatest.com`. There is no account to fill in.
 
 You can paste a session id, or press **Load my sessions** and choose one.

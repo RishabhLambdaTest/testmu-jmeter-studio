@@ -505,26 +505,18 @@ performs in order; this is what each control is for.
 
 ## Account
 
-The page stays covered by **Sign in to use JMeter Studio** until you give a
-TestMu AI **username** and **access key**. Both are on
-`accounts.lambdatest.com` under *Profile › Password & Security*, and the link on
-the card opens it. The pair is checked against HyperExecute before the page
-unlocks, so a key that cannot list projects is refused at the card.
+There are no credential fields, and no access key to find. The page uses the
+TestMu AI account the browser is logged in to and stays locked behind **Log in
+to TestMu AI** until there is one. That button opens TestMu AI's own login
+page, so Google, GitHub, SSO and email-and-password all work exactly as they do
+on the dashboard.
 
-You are asked once per browser session, not once per page. The pair is held in
-memory (`chrome.storage.session`), shared by the authoring and run pages, and
-forgotten when Chrome closes; nothing is written to disk.
-
-**The account button, top right.** It names the account in use. Click it to
-reopen the card with the username prefilled:
-
-![The card reopened to switch account, with Cancel and Sign out](screenshots/auth-switch.png)
+The account in use is named in the button at the top right. Clicking it offers:
 
 | Button | What it does |
 |---|---|
-| **Sign in** | Signs in as whatever is in the two fields. A different username reloads the page, so nothing from the old account carries over |
-| **Cancel** | Closes the card and leaves the current account alone |
-| **Sign out** | Forgets the account for every page and reloads this one, back to the card |
+| **Log out of TestMu AI** | Opens TestMu AI's logout, which lands on the login page. This is both how you sign out and how you come back as a different account - the studio follows whichever account logs in next |
+| **Cancel** | Closes the card and changes nothing |
 
 ## Project
 
