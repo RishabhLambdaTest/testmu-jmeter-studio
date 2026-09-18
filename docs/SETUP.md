@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.8.14-share.zip          ←  the one you want
+testmu-jmeter-studio-1.8.15-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.8.14.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.8.15.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.8.14-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.8.15-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -133,8 +133,8 @@ and `⌘⇧8` (`Ctrl+Shift+8`) starts and stops recording.
 The quickest way to see it work needs nothing but the browser and your TestMu AI
 sign-in. No recording, no access key.
 
-**Log in first.** The authoring and run pages open only for someone logged in
-to TestMu AI in this browser. If you are not, the page shows **Log in to
+**Log in first.** Everything opens only for someone logged in to TestMu AI in
+this browser, recording included. If you are not, the page shows **Log in to
 TestMu AI**. Press it and TestMu AI's own login page opens in a tab - the same
 one the dashboard uses, so **Google**, **GitHub**, **SSO** and email-and-password
 all work, along with whatever 2FA your account has. Log in there and the tab

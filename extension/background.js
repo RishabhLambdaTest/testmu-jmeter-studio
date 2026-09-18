@@ -8,6 +8,36 @@
 
 importScripts("db.js");
 
+/* ---- signing in ---------------------------------------------------------
+   Recording is gated as well as authoring. The check lives here rather than
+   in the popup because the popup is not the only way in: the on-page panel
+   and the keyboard shortcut both start a recording through this worker, and
+   a gate that only covers one of the three is not a gate.
+
+   Only the sign-in is checked, not the API token: nothing here calls an API.
+   It is the same accessToken cookie the authoring page reads, so signing in
+   once covers all of it. */
+const AUTH_ACCOUNTS = "https://accounts.lambdatest.com";
+
+async function signedIn() {
+  try {
+    const c = await chrome.cookies.get({ url: AUTH_ACCOUNTS + "/", name: "accessToken" });
+    if (!c || !c.value) return false;
+    const r = await fetch(AUTH_ACCOUNTS + "/api/user", {
+      headers: { authorization: "Bearer " + decodeURIComponent(c.value), accept: "application/json" },
+      credentials: "omit",
+    });
+    if (r.status === 401 || r.status === 403) return false;
+    if (!r.ok) return true;   // the service is unwell, not the person: let them work
+    const j = await r.json();
+    return !!(j && j.username);
+  } catch (e) {
+    return true;              // unreachable is not signed out
+  }
+}
+
+const SIGN_IN_FIRST = "sign in to TestMu AI to record";
+
 /* Older versions saved the access key in local storage, and the address of a
    local console that no longer exists. An update removes both at once, rather
    than waiting for a page to be opened. */
@@ -806,6 +836,7 @@ chrome.commands.onCommand.addListener(async (command) => {
       await stop();
       notify(`stopped - ${n} requests captured, open the popup to export`);
     } else {
+      if (!(await signedIn())) return notify(SIGN_IN_FIRST);
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       await start(tab.id);
       notify("recording this tab - reload the page if the panel is missing");
@@ -875,16 +906,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       switch (msg.type) {
         case "start": {
+          if (!(await signedIn())) return sendResponse({ ok: false, error: SIGN_IN_FIRST });
           const tabId =
             msg.tabId ||
             (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id;
           return sendResponse({ ok: true, data: await start(tabId) });
         }
         case "startUrl":
+          if (!(await signedIn())) return sendResponse({ ok: false, error: SIGN_IN_FIRST });
           return sendResponse({
             ok: true,
             data: await startAtUrl(msg.url, msg.transaction),
           });
+        case "authState":
+          return sendResponse({ ok: true, data: { signedIn: await signedIn() } });
         case "setPaused": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
           state.paused = !!msg.paused;

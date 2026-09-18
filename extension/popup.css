@@ -110,3 +110,13 @@ code { display:block; background:var(--sunk); padding:6px 7px;
 .rtext { font-size:11.5px; color:var(--text); line-height:1.45; margin-bottom:8px }
 .rrow { display:flex; gap:6px }
 .rrow .b { flex:1; font-size:11px; padding:6px 8px }
+
+/* ---- signing in ---------------------------------------------------------
+   The popup cannot host the login itself: it closes the moment a tab opens.
+   So it states the position, sends you to the login page, and is unlocked
+   the next time it is opened. */
+.gate { padding:2px 0 10px }
+.gate[hidden] { display:none }
+.gatetext { margin:0 0 10px; font-size:12px; line-height:1.45; color:var(--text) }
+.gatenote { margin:8px 0 0; font-size:10.5px; color:var(--text-mute) }
+body.signed-out .hidewhenout { display:none }

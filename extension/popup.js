@@ -279,6 +279,7 @@ send({ type: "status" }).then((r) => {
   if (!r.ok || !r.data || !r.data.recording) checkTab();
   checkService();
   loadRecordingOptions();
+  applyAuthGate();          // last, so it has the final say on every button
 });
 
 /* Run on HyperExecute opens a real tab, never the popup: the popup closes as soon
@@ -296,3 +297,30 @@ $("hx").onclick = async () => {
   }
   window.close();
 };
+
+/* ---- signing in ---------------------------------------------------------
+   The worker refuses to record when nobody is signed in, so the popup says so
+   up front rather than letting the button fail. The login itself cannot happen
+   here: opening a tab closes the popup. */
+async function applyAuthGate() {
+  const r = await send({ type: "authState" });
+  const ok = !(r && r.ok) || (r.data && r.data.signedIn);
+  const gate = $("gate");
+  if (gate) gate.hidden = !!ok;
+  document.body.classList.toggle("signed-out", !ok);
+  if (!ok) {
+    ["start", "pause", "stop", "send", "export", "hx", "open", "reset", "tx", "txset", "url"]
+      .forEach((id) => { if ($(id)) $(id).disabled = true; });
+    document.querySelectorAll(".chip").forEach((c) => { c.disabled = true; });
+    // the tab check writes its own advice, which contradicts the gate
+    const m = $("msg"); if (m) { m.textContent = ""; m.className = "msg"; }
+  }
+  return ok;
+}
+
+if ($("gateIn")) {
+  $("gateIn").onclick = () => {
+    chrome.tabs.create({ url: "https://accounts.lambdatest.com/login" });
+    window.close();
+  };
+}

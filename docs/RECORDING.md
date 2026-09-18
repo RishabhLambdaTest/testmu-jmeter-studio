@@ -1,5 +1,12 @@
 # Recording a journey
 
+**Recording needs a TestMu AI login.** The check is in the extension's
+background worker rather than the popup, because the popup is not the only way
+to start one: the on-page panel and `Ctrl+Shift+8` go through the same place. A
+signed-out popup says so and offers the login page; the panel and the shortcut
+answer *sign in to TestMu AI to record*. Signing in once covers recording,
+authoring and running, since all three read the same session.
+
 This is the path BlazeMeter's Chrome recorder covers, and the one people ask for
 first: don't make me write a test, let me click through the app and get one.
 

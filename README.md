@@ -14,7 +14,7 @@ stored.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.8.14-share.zip
+1. unzip dist/testmu-jmeter-studio-1.8.15-share.zip
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. sign in to TestMu AI in the same browser
    toolbar icon  →  cURL  →  paste a request  →  Generate plan
@@ -92,8 +92,8 @@ covering the browser steps, and the HAR itself.
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.8.14-share.zip     6.0 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.8.14.zip           6.0 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-1.8.15-share.zip     6.0 MB   →  people (Load unpacked)
+dist/testmu-jmeter-studio-1.8.15.zip           6.0 MB   →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`
