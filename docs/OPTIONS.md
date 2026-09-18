@@ -509,7 +509,9 @@ There are no credential fields, and no access key to find. The page uses the
 TestMu AI account the browser is logged in to and stays locked behind **Log in
 to TestMu AI** until there is one. That button opens TestMu AI's own login
 page, so Google, GitHub, SSO and email-and-password all work exactly as they do
-on the dashboard.
+on the dashboard. The tab closes itself once you are in and brings this page
+back to the front, so you are not left on the dashboard wondering whether it
+worked.
 
 The account in use is named in the button at the top right. Clicking it offers:
 

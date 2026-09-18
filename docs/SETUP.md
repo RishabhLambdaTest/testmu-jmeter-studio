@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.8.9-share.zip          ←  the one you want
+testmu-jmeter-studio-1.8.10-share.zip          ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.8.9.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-1.8.10.zip                ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -65,7 +65,7 @@ open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
 Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.8.9-share.zip`, then **Download raw file** at the top right.
+`testmu-jmeter-studio-1.8.10-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
@@ -137,8 +137,13 @@ sign-in. No recording, no access key.
 to TestMu AI in this browser. If you are not, the page shows **Log in to
 TestMu AI**. Press it and TestMu AI's own login page opens in a tab - the same
 one the dashboard uses, so **Google**, **GitHub**, **SSO** and email-and-password
-all work, along with whatever 2FA your account has. Log in there and this page
-unlocks by itself; there is nothing to copy back.
+all work, along with whatever 2FA your account has. Log in there and the tab
+closes itself and puts you back on this page, signed in; there is nothing to
+copy back.
+
+The tab closing matters more than it sounds. TestMu AI's login redirects to the
+dashboard when it is done, so without it you are left looking at the dashboard
+while the studio quietly unlocks in a tab behind you.
 
 The account in use is named in the button at the top right. Click it to **log
 out of TestMu AI**, which is also how you come back as a different account:

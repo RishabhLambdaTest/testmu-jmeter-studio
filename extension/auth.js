@@ -23,6 +23,11 @@ const AUTH_COOKIE = "accessToken";
 const AUTH_LOGOUT = AUTH_ACCOUNTS + "/logout";
 
 let AUTH_ACCOUNT = null;        // {user, key} once signed in
+/* The tab this page opened to log in. TestMu AI's login redirects to the
+   dashboard when it is done, which leaves that tab in front and the studio
+   unlocking out of sight behind it. So the tab is ours to clean up: once the
+   account resolves we close it and bring this page back to the front. */
+let AUTH_LOGIN_TAB = null;
 let AUTH_TOKEN = null;          // the cookie value AUTH_ACCOUNT was looked up with
 
 async function authToken() {
@@ -70,18 +75,23 @@ function authGateEl() {
     <div class="authcard">
       <h2 id="authGateTitle">Sign in to use JMeter Studio</h2>
       <p id="authGateText">JMeter Studio uses your TestMu AI account. Log in the
-        way you always do - Google, GitHub, SSO or a password - and this page
-        unlocks by itself. There is no access key to copy.</p>
+        way you always do - Google, GitHub, SSO or a password. The login tab
+        closes itself and you land back here, signed in. There is no access key
+        to copy.</p>
       <button type="button" class="go" id="authSignIn">Log in to TestMu AI</button>
       <button type="button" class="alt" id="authSwitch" hidden>Log out of TestMu AI</button>
       <button type="button" class="alt" id="authCancel" hidden>Cancel</button>
       <p class="authnote" id="authGateNote"></p>
     </div>`;
   document.body.appendChild(g);
-  g.querySelector("#authSignIn").onclick = () =>
-    chrome.tabs.create({ url: AUTH_ACCOUNTS + "/login" });
-  g.querySelector("#authSwitch").onclick = () =>
-    chrome.tabs.create({ url: AUTH_LOGOUT });
+  g.querySelector("#authSignIn").onclick = async () => {
+    const t = await chrome.tabs.create({ url: AUTH_ACCOUNTS + "/login" });
+    AUTH_LOGIN_TAB = t.id;
+  };
+  g.querySelector("#authSwitch").onclick = async () => {
+    const t = await chrome.tabs.create({ url: AUTH_LOGOUT });
+    AUTH_LOGIN_TAB = t.id;   // logging out lands on login, so the same applies
+  };
   return g;
 }
 
@@ -111,8 +121,9 @@ function authRender(state, detail) {
   } else {
     title.textContent = "Sign in to use JMeter Studio";
     text.textContent = "JMeter Studio uses your TestMu AI account. Log in the "
-      + "way you always do - Google, GitHub, SSO or a password - and this page "
-      + "unlocks by itself. There is no access key to copy.";
+      + "way you always do - Google, GitHub, SSO or a password. The login tab "
+      + "closes itself and you land back here, signed in. There is no access "
+      + "key to copy.";
   }
 
   g.querySelector("#authSignIn").hidden = state === "checking" || state === "manage";
@@ -127,6 +138,35 @@ function authRender(state, detail) {
         + " - click to log out or switch account";
     }
   }
+}
+
+/* Closes the tab we sent someone to log in on and brings this page forward.
+   TestMu AI's login redirects when it is done - to the dashboard, or to the
+   marketing site, on either of the two domains the rebrand left in play - so
+   the tab is matched by domain rather than by the URL it was opened with.
+   Anything going wrong here is swallowed: a tab that will not close is not a
+   reason to hold up a page that is now signed in. */
+const AUTH_OURS = /(^|\.)(lambdatest\.com|testmuai\.com|testmu\.ai)$/;
+
+async function authFinishLogin() {
+  const id = AUTH_LOGIN_TAB;
+  AUTH_LOGIN_TAB = null;
+  if (id == null) return;
+  try {
+    const tab = await chrome.tabs.get(id);
+    let host = "";
+    try { host = new URL(tab.url || "").hostname; } catch (e) { host = ""; }
+    // only ever close what is still one of theirs: a tab navigated somewhere
+    // else in the meantime is no longer ours to close
+    if (AUTH_OURS.test(host)) await chrome.tabs.remove(id);
+  } catch (e) { /* already closed, or no url to read */ }
+  try {
+    const self = await chrome.tabs.getCurrent();
+    if (self) {
+      await chrome.tabs.update(self.id, { active: true });
+      await chrome.windows.update(self.windowId, { focused: true });
+    }
+  } catch (e) { /* not fatal: the page is unlocked either way */ }
 }
 
 /* Resolves once someone is signed in, and keeps the page in step with the
@@ -164,6 +204,7 @@ function authReady() {
       AUTH_ACCOUNT = account;
       AUTH_TOKEN = token;
       authRender("in");
+      authFinishLogin().catch(() => {});   // never block the resolve below
       if (!resolved) { resolved = true; unlockedFor = account.user; resolve(account); }
     }
 
