@@ -13,7 +13,7 @@ const CHECKS = [["realThink2", "realThink"], ["noCorrelate", "noCorrelate"],
                 ["embedded", "embedded"]];
 const KEYS = ["mode", "traffic", "methods", "include", "exclude", "loginPath",
               "loginBody", "loginToken", "csvFile", "csvCols", "threads", "ramp",
-              "dur", "planName", "parallel", "rulesText"];
+              "dur", "planName", "parallel", "rulesText", "testType", "chromePath"];
 
 let MODES = {};
 const JMX_UPLOAD_LIMIT = 50 * 1048576;   // HyperExecute's per-.jmx upload limit
@@ -150,6 +150,9 @@ function syncInputs() {
   // a load test and a spin loop, so the control sits with the load profile
   // rather than folded away under filters
   $("thinkRow").hidden = !["har", "ltsession"].includes($("mode").value);
+  // only a recording carries the clicks a browser test replays
+  $("testTypeRow").hidden = !["har", "ltsession"].includes($("mode").value);
+  $("chromeRow").hidden = $("testType").value !== "browser";
   $("parallelRow").hidden = !$("embedded").checked;
   // validating builds nothing, so nothing about building applies
   const checking = $("mode").value === "jmx";
@@ -159,6 +162,7 @@ function syncInputs() {
   if (checking) $("results").hidden = true;
 }
 $("mode").onchange = () => { syncInputs(); save(); };
+$("testType").onchange = () => { syncInputs(); save(); };
 // the parallel count only means anything when the resources are fetched
 $("embedded").onchange = () => {
   $("parallelRow").hidden = !$("embedded").checked;
@@ -292,6 +296,8 @@ $("go").onclick = async () => {
     threads: $("threads").value.trim(),
     ramp_up: $("ramp").value.trim(),
     duration: $("dur").value.trim(),
+    test_type: $("testTypeRow").hidden ? "api" : $("testType").value,
+    chrome_path: $("chromePath").value.trim(),
   };
   const body = { mode: mode, options: opts, text: $("text").value.trim() };
 
@@ -331,7 +337,7 @@ $("go").onclick = async () => {
     const data = await window.JmxgenEngine.author(body);
     STATE = data;
     STATE.session = null;          // there is no server session to refer to
-    const nreq = (data.steps || []).filter((s) => s.method !== "webdriver").length;
+    const nreq = planSteps().length;
     await reportScale(data, nreq);
     addLog("ok", `plan built - ${nreq} request(s), ${data.size_kb} KB, ` +
                  `${(data.correlations || []).length} correlated`);
@@ -449,11 +455,11 @@ function openInspector(tr) {
     ${requestDetail(step)}
     <div class="insp">
       <button data-op="rename">Rename…</button>
-      <button data-op="assert">Assert 200</button>
+      ${isBrowserTest() ? "" : `<button data-op="assert">Assert 200</button>
       <button data-op="assertText">Assert text…</button>
-      <button data-op="extract">Extract…</button>
+      <button data-op="extract">Extract…</button>`}
       <button data-op="pause">Pause 1s</button>
-      <button data-op="substitute">Replace value…</button>
+      ${isBrowserTest() ? "" : `<button data-op="substitute">Replace value…</button>`}
       <button data-op="up">Move up</button>
       <button data-op="down">Move down</button>
       <button data-op="delete" class="warn">Delete</button>
@@ -566,18 +572,25 @@ $("specApply").onclick = async () => {
 
 /* ---- results ----------------------------------------------------------- */
 
-/* What the .jmx actually carries. A recorded browser step is a click, not a
-   request: it ships in the Playwright script, so it is neither a sampler nor
-   something to count as one. */
+/* What the .jmx actually carries. In an API test a recorded browser step is a
+   click, not a request: it ships in the Playwright script, so it is neither a
+   sampler nor something to count as one. A browser test is the reverse - its
+   groups are the whole plan. */
+const isBrowserTest = () => !!(STATE && (STATE.browser_groups || []).length);
 function planSteps() {
-  return (STATE.steps || []).filter((s) => s.method !== "webdriver");
+  const steps = STATE.steps || [];
+  if (isBrowserTest()) {
+    const groups = new Set(STATE.browser_groups);
+    return steps.filter((s) => groups.has((s.at || [])[0]));
+  }
+  return steps.filter((s) => s.method !== "webdriver");
 }
 
 function render() {
   $("results").hidden = false;
   const v = STATE.verify || {};
   const cards = [
-    ["requests", planSteps().length],
+    [isBrowserTest() ? "browser steps" : "requests", planSteps().length],
     ["correlated", (STATE.correlations || []).length],
     ["size", STATE.size_kb + " KB"],
     ["errors", (v.errors || []).length],
@@ -596,11 +609,16 @@ function render() {
   const browser = !!STATE.has_browser_steps;
   $("playwright").hidden = !browser;
   $("dualNote").hidden = !browser;
-  if (browser) {
+  if (isBrowserTest()) {
+    $("dualNote").textContent =
+      "A browser test: each user is a real Chrome running the recorded clicks, " +
+      "so HyperExecute runs at most 4 users per engine. For thousands of users, " +
+      "build the API test from the same recording.";
+  } else if (browser) {
     $("dualNote").textContent =
       "This recording carries browser steps too. The .jmx is what scales to " +
-      "thousands of users; the browser test drives one real Chromium and " +
-      "proves the journey still works.";
+      "thousands of users; to run the clicks in real Chrome, choose Test type: " +
+      "Browser and generate again.";
   }
   showTab("steps");
 }
@@ -610,8 +628,8 @@ function showTab(which) {
     b.classList.toggle("on", b.dataset.tab === which));
   const el = $("tabbody");
   if (which === "steps") {
-    // Browser steps are not in the .jmx - they leave as the Playwright script -
-    // so listing them here as if they were samplers overstates the plan.
+    // The table lists what the .jmx carries: requests in an API test, the
+    // recorded clicks in a browser test (planSteps).
     const rows = planSteps().map((s, i) =>
       `<tr class="steprow" data-i="${i}" data-at="${esc(JSON.stringify(s.at || []))}"
            data-find="${esc([s.group, s.method, s.name, s.path].filter(Boolean).join(" ").toLowerCase())}">
@@ -621,9 +639,12 @@ function showTab(which) {
        <td>${esc(s.think_time == null ? "" : s.think_time + " ms")}</td>
        <td class="edit">edit</td></tr>`).join("");
     el.innerHTML = rows
-      ? `<p class="hint tablehint">Click any request to see what it sends, and to
+      ? (isBrowserTest()
+        ? `<p class="hint tablehint">Each row is one recorded click, run in Chrome.
+             Click a row to rename it, add a pause after it, reorder it or remove it.</p>`
+        : `<p class="hint tablehint">Click any request to see what it sends, and to
            rename it, assert on it, extract a value, replace a value with a
-           variable, reorder it or remove it.</p>` +
+           variable, reorder it or remove it.</p>`) +
         `<table><thead><tr><th>Group</th><th>Method</th><th>Request</th><th>Checks</th>` +
         `<th>Think</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="empty">No requests in this plan.</div>';
@@ -799,7 +820,24 @@ function renderHosts() {
     `<label><input type="checkbox" data-host="${esc(h.host)}"${h.kept ? " checked" : ""} />` +
     `<span>${esc(h.host)}</span>` +
     `<span class="n">${h.seen} request(s)${h.kept ? `, <span class="kept">${h.kept} in the plan</span>` : ""}</span></label>`).join("");
+  // a long list is scrolled through to find one host; a short one is not
+  $("hostFindRow").hidden = hosts.length <= 8;
+  filterHosts();
 }
+
+/* Hides rows only: a ticked host that is filtered out of view stays ticked. */
+function filterHosts() {
+  const q = $("hostFind").value.trim().toLowerCase();
+  const rows = [...$("hostList").querySelectorAll("label")];
+  let shown = 0;
+  rows.forEach((l) => {
+    const hit = !q || l.querySelector("input").dataset.host.toLowerCase().includes(q);
+    l.hidden = !hit;
+    if (hit) shown++;
+  });
+  $("hostFindNote").textContent = q ? `${shown} of ${rows.length} hosts` : `${rows.length} hosts`;
+}
+$("hostFind").addEventListener("input", filterHosts);
 
 $("hostsApply").onclick = async () => {
   const want = [...$("hostList").querySelectorAll("input:checked")]
@@ -1077,6 +1115,89 @@ function selectedSegments() {
 async function takeRecording() {
   const q = new URLSearchParams(location.search);
   if (q.get("from") !== "recording") return false;
+  return useRecordingOnDisk();
+}
+
+/* ---- the recording card -------------------------------------------------
+   The popup and this card drive the same recorder in the background, so the
+   state shown here is the session's, never this page's idea of it. */
+const recSend = (msg) =>
+  new Promise((resolve) =>
+    chrome.runtime.sendMessage(msg, (r) => resolve(r || { ok: false, error: "no response" })));
+
+function renderRec(st) {
+  const live = !!(st && st.recording);
+  const paused = !!(st && st.paused);
+  const captured = (st && st.count) || 0;
+  const waiting = !live && captured > 0 && st && st.unsaved;
+  $("recDot").dataset.state = live ? (paused ? "paused" : "live") : waiting ? "done" : "idle";
+  $("recState").textContent = live
+    ? (paused ? "Paused" : "Recording")
+    : waiting ? "Recording stopped" : "Not recording";
+  $("recCount").hidden = !(live || waiting);
+  $("recCount").textContent = `${captured} request(s) captured`;
+  $("recStart").hidden = live || waiting;
+  $("recLive").hidden = !live;
+  $("recDone").hidden = !waiting;
+  $("recPause").textContent = paused ? "Resume" : "Pause";
+}
+
+async function recStatus() {
+  const r = await recSend({ type: "status" });
+  renderRec(r && r.ok ? r.data : null);
+  return r && r.ok ? r.data : null;
+}
+
+function wireRecCard() {
+  $("recGo").onclick = async () => {
+    const url = $("recUrl").value.trim();
+    if (!url) return say("give a URL to record from", "bad");
+    $("recGo").disabled = true;
+    const r = await recSend({ type: "startUrl", url });
+    $("recGo").disabled = false;
+    if (!r.ok) return say(r.error, "bad");
+    addLog("ok", "recording " + url + " - browse the journey, then come back and stop");
+    say("recording - the panel on that page names transactions", "ok");
+    recStatus();
+  };
+  $("recPause").onclick = async () => {
+    const st = await recStatus();
+    const r = await recSend({ type: "setPaused", paused: !(st && st.paused) });
+    if (!r.ok) return say(r.error, "bad");
+    renderRec(r.data);
+  };
+  $("recStop").onclick = async () => {
+    const r = await recSend({ type: "stop" });
+    if (!r.ok) return say(r.error, "bad");
+    await recStatus();
+    buildFromRecording();
+  };
+  $("recBuild").onclick = () => buildFromRecording();
+  $("recDrop").onclick = async () => {
+    if (!confirm("Throw this recording away?")) return;
+    let r = await recSend({ type: "reset" });
+    if (!r.ok) r = await recSend({ type: "reset", force: true });
+    await recStatus();
+    say(r.ok ? "recording discarded" : r.error, r.ok ? "ok" : "bad");
+  };
+  // the background tells every open page when the session changes
+  chrome.runtime.onMessage.addListener((m) => {
+    if (m && m.type === "status") renderRec(m.status);
+  });
+  recStatus();
+}
+
+/* Stop leads straight into authoring: that is what the recording was for. */
+async function buildFromRecording() {
+  const got = await useRecordingOnDisk();
+  if (!got) return say("nothing was captured - record again", "bad");
+  say("recording loaded - choose your options, then Generate plan", "ok");
+  $("go").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+/* Adopt whatever the recorder left behind, whether this page was opened by the
+   popup with ?from=recording or the recording was started from the card above. */
+async function useRecordingOnDisk() {
   const n = await CaptureRead.count();
   if (!n) {
     addLog("warn", "no recording on disk - record again, or pick a HAR file");
@@ -1118,6 +1239,7 @@ async function takeRecording() {
 
   // only now can anything be generated: the engine is up
   const q = new URLSearchParams(location.search);
+  wireRecCard();
   const handed = await takeRecording();
   if (handed && q.get("go") === "1") {
     await $("go").onclick();
@@ -1126,13 +1248,38 @@ async function takeRecording() {
   }
 })();
 
-/* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */
+/* Page chrome. The studio can live in its own window (opened from the popup's
+   maximise) or in an ordinary tab. In a window these are the real thing:
+   minimise and maximise the OS window. In a tab there is nothing to minimise,
+   so the closest honest equivalents are used and the titles say so. */
 const pg = (id) => document.getElementById(id);
 if (pg("pgMin")) {
-  pg("pgMin").onclick = () => history.length > 1 ? history.back() : window.close();
-  pg("pgMax").onclick = (e) => {
-    const wide = document.querySelector(".page").classList.toggle("wide");
-    e.currentTarget.title = wide ? "Normal width" : "Full width";
-  };
-  pg("pgClose").onclick = () => window.close();
+  window.PageChrome = (function () {
+    let own = null;          // the window this page is in, when it is its own
+    chrome.windows.getCurrent().then((w) => {
+      own = w && w.type === "popup" ? w : null;
+      if (!own) {
+        pg("pgMin").title = "Back to the previous page";
+        pg("pgMax").title = "Full width";
+      }
+    }).catch(() => {});
+    return {
+      min: () => own
+        ? chrome.windows.update(own.id, { state: "minimized" })
+        : (history.length > 1 ? history.back() : window.close()),
+      max: (e) => {
+        if (own) {
+          const to = own.state === "maximized" ? "normal" : "maximized";
+          own.state = to;
+          return chrome.windows.update(own.id, { state: to });
+        }
+        const wide = document.querySelector(".page").classList.toggle("wide");
+        if (e && e.currentTarget) e.currentTarget.title = wide ? "Normal width" : "Full width";
+      },
+      close: () => window.close(),
+    };
+  })();
+  pg("pgMin").onclick = () => window.PageChrome.min();
+  pg("pgMax").onclick = (e) => window.PageChrome.max(e);
+  pg("pgClose").onclick = () => window.PageChrome.close();
 }

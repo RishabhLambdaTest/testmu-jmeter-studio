@@ -25,13 +25,14 @@
       <span class="tm-sub">Run</span>
     </span>
     <button type="button" class="tm-account" id="account" hidden></button>
+    <!-- close, minimise, maximise: the order macOS uses, left to right -->
     <span class="tm-controls">
-      <button class="tm-ctl min" id="pgMin" title="Back to the previous tab"
-              aria-label="Back to the previous tab">&minus;</button>
-      <button class="tm-ctl max" id="pgMax" title="Full width"
-              aria-label="Full width">&plus;</button>
-      <button class="tm-ctl close" id="pgClose" title="Close this tab"
-              aria-label="Close this tab">&times;</button>
+      <button class="tm-ctl close" id="pgClose" title="Close"
+              aria-label="Close">&times;</button>
+      <button class="tm-ctl min" id="pgMin" title="Minimise"
+              aria-label="Minimise">&minus;</button>
+      <button class="tm-ctl max" id="pgMax" title="Maximise"
+              aria-label="Maximise">&plus;</button>
     </span>
   </div>
 
@@ -81,6 +82,8 @@
     <p class="hint" id="uploadSummary"></p>
     <label>Which .jmx should the job run?</label>
     <select id="primary"></select>
+    <!-- what the page decided the plan is, and so how it will be scaled -->
+    <p class="hint" id="planType"></p>
   </fieldset>
 
   <fieldset>

@@ -311,6 +311,10 @@ for key in ("threads", "ramp_up", "duration"):
             tg[key] = int(opts[key])
             if key == "duration":
                 tg.pop("loops", None)
+# A browser test runs the recorded clicks in Chrome instead of the requests.
+# A blank Chrome path means the runner's own Chrome and its chromedriver.
+if opts.get("test_type") == "browser":
+    spec["webdriver"] = {"binary_path": opts["chrome_path"]} if opts.get("chrome_path") else {}
 
 xml = jmxgen.build_plan(spec)
 out = tempfile.mkdtemp()
@@ -329,6 +333,7 @@ json.dumps({
   "load": jmxgen._plan_load(spec) if hasattr(jmxgen, "_plan_load") else {},
   "jmx": xml,
   "has_browser_steps": jmxgen.spec_has_browser_steps(spec),
+  "browser_groups": jmxgen.browser_groups(spec),
   "playwright": jmxgen.spec_to_playwright(spec, "browser_test.py")
                 if jmxgen.spec_has_browser_steps(spec) else "",
   # the same plan for the other engine: rendered every time, because it costs
@@ -430,6 +435,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
             "steps": jmxgen._flatten(spec),
             "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
+            "browser_groups": jmxgen.browser_groups(spec),
             "spec_json": json.dumps(spec)})
 `);
   return JSON.parse(out);
@@ -491,6 +497,7 @@ json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
             "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
             "steps": jmxgen._flatten(spec), "notes": _notes,
             "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
+            "browser_groups": jmxgen.browser_groups(spec),
             "spec_json": json.dumps(spec)})
 `);
   return JSON.parse(out);

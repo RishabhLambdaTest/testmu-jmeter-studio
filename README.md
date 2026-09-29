@@ -37,7 +37,8 @@ and [**Sessions**](docs/SESSIONS.md) covers authoring from an automation run.
 Each one has a sample in [`sample/`](sample/) you can run today.
 
 [**Recording**](docs/RECORDING.md) is the guided version of recording a journey
-and annotating it as you browse.
+and annotating it as you browse, from either the popup or the studio's own
+window.
 
 [**Editing**](docs/EDITING.md) covers changing a plan after it is generated,
 scenario by scenario: a badly named sampler, a request that should not be in
@@ -86,8 +87,16 @@ where load has to keep arriving as the system slows down.
 *Client certificates.* mTLS keystores with the JVM properties generated and
 checked while the plan is built, not discovered at run time.
 
+*One place to work.* The popup is the short way in; **+** opens the studio as
+its own window, with the same recorder at the top of the authoring page, so a
+journey can be recorded, built, filtered and triggered without changing
+surfaces. Close, minimise and maximise are where Chrome puts them and act on
+the real window.
+
 One authoring pass produces three artifacts: the `.jmx`, a Playwright test
-covering the browser steps, and the HAR itself.
+covering the browser steps, and the HAR itself. The `.jmx` is an API test by
+default, or a browser test that runs the recorded clicks in real Chrome
+(4 users per engine) - see [Recording](docs/RECORDING.md#api-test-or-browser-test).
 
 ## Sharing it
 
@@ -129,6 +138,8 @@ nobody has to guess what is proven and what is merely written.
 | A live HyperExecute run | create, upload and trigger from the extension against the real API; the job completed and the plan's requests reached the target |
 | A recorded web journey, end to end | protocol-only `.jmx` plus a Playwright script; the plan ran 674 samples on HyperExecute where the previous build ran 0 |
 | The run-time overrides | a job sent as 1 user starts JMeter with `threads=1`, and 4 users at 2 per engine starts 2 engines |
+| Recording from the full page | start, pause, resume, stop and build, driven in a real Chrome: 2 requests, 0 errors, the popup and the page showing the same session |
+| The window controls | order `close, minimise, maximise` on all three surfaces; in its own window maximise reaches `maximized` and back to `normal`, minimise reaches `minimized`; in a tab they fall back and say so |
 | Regression suite | 56 of 56, in the [jmxgen CLI](https://github.com/RishabhLambdaTest/jmxgen) repository, which shares this engine |
 
 The HyperExecute path was the last untested one, and testing it found a real

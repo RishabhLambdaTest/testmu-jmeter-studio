@@ -120,3 +120,12 @@ code { display:block; background:var(--sunk); padding:6px 7px;
 .gatetext { margin:0 0 10px; font-size:12px; line-height:1.45; color:var(--text) }
 .gatenote { margin:8px 0 0; font-size:10.5px; color:var(--text-mute) }
 body.signed-out .hidewhenout { display:none }
+
+/* One way through to the full page, styled as a quiet secondary action: the
+   popup's job is recording, and this is the door to everything else. */
+.sources .link { margin-top:0 }
+.sources .note.dim { color:var(--text-mute); font-size:11px; margin-top:5px; text-align:center }
+
+/* display:flex on .row outranks the default [hidden] rule, so hiding a row
+   needs saying outright - the same trap .grid2 has on the other pages. */
+.row[hidden], .l[hidden] { display:none }

@@ -21,13 +21,14 @@
         <span class="tm-product">JMeter Studio <span class="tm-beta">Beta</span></span>
       </span>
     </span>
+    <!-- close, minimise, maximise: the order macOS uses, left to right -->
     <span class="tm-controls">
-      <button class="tm-ctl min" id="winMin" title="Minimise the on-page panel"
-              aria-label="Minimise the on-page panel">&minus;</button>
-      <button class="tm-ctl max" id="winMax" title="Open the full authoring page"
-              aria-label="Open the full authoring page">&plus;</button>
       <button class="tm-ctl close" id="winClose" title="Close"
               aria-label="Close">&times;</button>
+      <button class="tm-ctl min" id="winMin" title="Minimise the on-page panel"
+              aria-label="Minimise the on-page panel">&minus;</button>
+      <button class="tm-ctl max" id="winMax" title="Open the studio in its own window"
+              aria-label="Open the studio in its own window">&plus;</button>
     </span>
   </div>
   <div class="body">
@@ -54,8 +55,8 @@
     <button id="gateIn" class="b wide go">Log in to TestMu AI</button>
     <p class="gatenote">Opens the login page. Come back here once you are in.</p>
   </div>
-  <label class="l hidewhenout">Transaction <span class="dim">(step name, optional)</span></label>
-  <div class="row hidewhenout">
+  <label class="l hidewhenout txrow" hidden>Transaction <span class="dim">(step name, optional)</span></label>
+  <div class="row hidewhenout txrow" hidden>
     <input id="tx" class="in" placeholder="name this step" />
     <button id="txset" class="b">Set</button>
   </div>
@@ -77,16 +78,11 @@
   <button id="export" class="b wide" disabled>Export HAR instead</button>
   <button id="reset" class="b wide warn" hidden>Discard session</button>
 
+  <!-- One way out to the full page, which lists every source in its own
+       dropdown. Six chips here were a second menu for the same thing. -->
   <div class="sources hidewhenout">
-    <label class="l">Author from something else</label>
-    <div class="chips">
-      <button class="chip" data-mode="openapi">OpenAPI</button>
-      <button class="chip" data-mode="postman">Postman</button>
-      <button class="chip" data-mode="curl">cURL</button>
-      <button class="chip" data-mode="excel">Excel / CSV</button>
-      <button class="chip" data-mode="urls">URL list</button>
-      <button class="chip" data-mode="jmx">Validate .jmx</button>
-    </div>
+    <button class="b wide link" id="more">Author from a file or spec…</button>
+    <div class="note dim">OpenAPI, Postman, cURL, Excel, URL list, .jmx</div>
   </div>
 
   <details class="adv" id="recopts">

@@ -9,8 +9,9 @@ Every sample named below sits in [`sample/`](../sample/) and points at
 user can try the first seven on the day they install the extension. The eighth
 needs an automation session of your own.
 
-In the extension, open the popup and choose a source under *Author from something
-else*, or use the **Source** dropdown on the authoring page. That is all you need.
+In the extension, open the popup and press *Author from a file or spec…* (or
+**+**, which opens the studio in its own window), then pick the source in the
+**Source** dropdown. That is all you need.
 
 ![The Source picker](screenshots/author-source.png)
 

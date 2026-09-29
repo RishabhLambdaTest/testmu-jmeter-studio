@@ -27,13 +27,14 @@
       <span class="tm-sub">Author</span>
     </span>
     <button type="button" class="tm-account" id="account" hidden></button>
+    <!-- close, minimise, maximise: the order macOS uses, left to right -->
     <span class="tm-controls">
-      <button class="tm-ctl min" id="pgMin" title="Back to the previous tab"
-              aria-label="Back to the previous tab">&minus;</button>
-      <button class="tm-ctl max" id="pgMax" title="Full width"
-              aria-label="Full width">&plus;</button>
-      <button class="tm-ctl close" id="pgClose" title="Close this tab"
-              aria-label="Close this tab">&times;</button>
+      <button class="tm-ctl close" id="pgClose" title="Close"
+              aria-label="Close">&times;</button>
+      <button class="tm-ctl min" id="pgMin" title="Minimise"
+              aria-label="Minimise">&minus;</button>
+      <button class="tm-ctl max" id="pgMax" title="Maximise"
+              aria-label="Maximise">&plus;</button>
     </span>
   </div>
 
@@ -42,6 +43,34 @@
     <p class="sub">Every source, without leaving the browser. Nothing to install.</p>
     <p class="svc" id="svc">starting the engine…</p>
   </header>
+
+  <!-- Recording lives here as well as in the popup: both are front ends onto
+       the one recorder in the background, so a journey can be started, paused,
+       stopped and built without going back to a 360px window. -->
+  <fieldset id="recCard">
+    <legend>Record a journey</legend>
+    <div class="recrow">
+      <span class="recdot" id="recDot" data-state="idle"></span>
+      <span class="recstate" id="recState">Not recording</span>
+      <span class="recnum" id="recCount" hidden></span>
+    </div>
+    <div class="grid2" id="recStart">
+      <div><label for="recUrl">Record from a URL</label>
+           <input type="text" id="recUrl" placeholder="the page to open and record from" /></div>
+      <div><label for="recGo">&nbsp;</label>
+           <button type="button" id="recGo" class="go">Start recording</button></div>
+    </div>
+    <div class="acts" id="recLive" hidden>
+      <button type="button" id="recPause">Pause</button>
+      <button type="button" id="recStop" class="go">Stop and build</button>
+    </div>
+    <div class="acts" id="recDone" hidden>
+      <button type="button" id="recBuild" class="go">Build the plan</button>
+      <button type="button" id="recDrop" class="warn">Discard</button>
+    </div>
+    <p class="hint">The panel on the recorded page names transactions and keeps
+       browser steps. Everything stays in this browser.</p>
+  </fieldset>
 
   <fieldset>
     <legend>Source</legend>
@@ -156,6 +185,23 @@
          server answers. That is a stress test rather than a load test, and a
          couple of users are enough to pin a CPU.</p>
     </div>
+    <!-- A recording is both the requests and the clicks, so it can be built
+         as either kind of test. They scale differently, so a plan is one or
+         the other: never both under one user count. -->
+    <div id="testTypeRow" hidden>
+      <label for="testType">Test type</label>
+      <select id="testType">
+        <option value="api">API — the recorded requests, thousands of users per engine</option>
+        <option value="browser">Browser — the recorded clicks in real Chrome, 4 users per engine</option>
+      </select>
+      <div id="chromeRow" hidden>
+        <label for="chromePath">Chrome path</label>
+        <input type="text" id="chromePath" placeholder="blank = the runner's Chrome 141" />
+        <p class="hint">Each user is a Chrome, so HyperExecute runs at most 4 per engine.
+           A Chrome other than 141 also needs its own chromedriver:
+           set <code>webdriver.driver_path</code> in the spec.</p>
+      </div>
+    </div>
   </fieldset>
 
   <div class="acts">
@@ -186,7 +232,13 @@
     <details id="hostsWrap" hidden>
       <summary>Hosts in this recording</summary>
       <p class="hint">Ticked hosts are in the plan. The pick is automatic - the
-         busiest host that is not a tracker - and this is where to change it.</p>
+         busiest site that is not a tracker, with all its subdomains - and this
+         is where to change it. Tick another host when your system also runs on
+         a different domain, such as a login or payment service.</p>
+      <div id="hostFindRow" class="grid2" hidden>
+        <div><input type="text" id="hostFind" placeholder="filter by host name" /></div>
+        <div><span class="hint" id="hostFindNote"></span></div>
+      </div>
       <div id="hostList" class="hosts"></div>
       <div class="acts"><button id="hostsApply">Rebuild with these hosts</button></div>
     </details>

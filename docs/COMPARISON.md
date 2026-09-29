@@ -326,9 +326,11 @@ travels, so a reviewer can disagree with it.
 before five hundred users find it. A failed load run costs a VU-hour bill and an
 afternoon.
 
-**One recording, two artifacts.** The protocol plan scales; the Playwright test
-proves the journey still works. Most teams maintain those separately, from two
-recordings that drift apart.
+**One recording, either test.** The same recording builds an API test that
+scales to thousands of users, or a browser test that runs the clicks in real
+Chrome, and a Playwright script either way. Most teams maintain those
+separately, from recordings that drift apart. BlazeMeter is level here on the
+limit: its browser tests also run at most 4 users per engine.
 
 **Nothing to install.** No account, no agent, no Python, no JMeter on the laptop.
 Unzip, load, author, run. The engine ships inside the extension and runs in

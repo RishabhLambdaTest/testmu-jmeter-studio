@@ -64,6 +64,12 @@ function render(s) {
   $("export").textContent = unsaved ? "Export HAR *" : "Export HAR";
   $("start").hidden = on;
   $("urlblock").hidden = on;
+  /* A transaction names the step being recorded. It belongs to a running
+     recording, and to the moment before one starts, where it is what puts
+     request number one inside a named step. Once a recording has stopped it
+     is a box that does nothing, so it goes away. */
+  const showTx = on || !(s && s.count);
+  document.querySelectorAll(".txrow").forEach((el) => (el.hidden = !showTx));
   $("stop").hidden = !on;
   $("pause").hidden = !on;
   $("pause").textContent = (s && s.paused) ? "Resume recording" : "Pause recording";
@@ -130,6 +136,11 @@ function refreshButtons() {
   const hasCapture = Number($("count").textContent) > 0;
   $("send").disabled = !hasCapture;
   $("export").disabled = !hasCapture;
+  /* Hidden rather than greyed until there is something to act on: four dead
+     buttons read as a broken window, and the popup's job before a recording
+     exists is to start one. */
+  $("send").hidden = !hasCapture;
+  $("export").hidden = !hasCapture;
 }
 
 $("send").onclick = async () => {
@@ -145,18 +156,10 @@ $("send").onclick = async () => {
   refreshButtons();
 };
 
-/* The recorder only captures a browser journey. Every other source opens the
-   extension's own authoring page with that source preselected, so the whole
-   flow stays inside the extension. */
-document.querySelectorAll(".chip").forEach((chip) => {
-  chip.onclick = async () => {
-    await chrome.tabs.create({
-      url: chrome.runtime.getURL("author.html") + "?mode=" + chip.dataset.mode,
-      active: true,
-    });
-    window.close();
-  };
-});
+/* The recorder captures a browser journey; every other source lives on the
+   authoring page, which lists them all in one dropdown. One way out, and it
+   reuses the page if it is already open rather than stacking up tabs. */
+if ($("more")) $("more").onclick = () => openAuthor();
 
 /* ---- recording options -------------------------------------------------
    Applied live: changing one mid-recording pushes it to every attached tab, so
@@ -200,6 +203,28 @@ async function saveRecordingOptions() {
                       ? "change" : "input", saveRecordingOptions);
 });
 
+/* The authoring page, opened once. Pressing this three times used to leave
+   three identical tabs; now the existing one is focused and, when a source was
+   asked for, switched to it.
+
+   `asWindow` opens the studio in a window of its own, which is what maximise
+   means to most people: a thing that can be minimised, maximised and closed
+   from its own title bar, and that survives switching browser tabs. */
+async function openAuthor(search, asWindow) {
+  const base = chrome.runtime.getURL("author.html");
+  const url = base + (search || "");
+  const open = await chrome.tabs.query({ url: base + "*" });
+  if (open.length) {
+    await chrome.tabs.update(open[0].id, { active: true, ...(search ? { url } : {}) });
+    await chrome.windows.update(open[0].windowId, { focused: true }).catch(() => {});
+  } else if (asWindow) {
+    await chrome.windows.create({ url, type: "popup", width: 1180, height: 900 });
+  } else {
+    await chrome.tabs.create({ url, active: true });
+  }
+  window.close();
+}
+
 /* Window controls. A Chrome popup has no real chrome of its own, so these act
    on the things the user actually thinks of as the window: the on-page panel,
    the full authoring page, and the popup itself. */
@@ -207,10 +232,7 @@ $("winMin").onclick = async () => {
   await send({ type: "toggleOverlay", visible: false });
   window.close();
 };
-$("winMax").onclick = async () => {
-  await chrome.tabs.create({ url: chrome.runtime.getURL("author.html"), active: true });
-  window.close();
-};
+$("winMax").onclick = () => openAuthor("", true);
 $("winClose").onclick = () => window.close();
 
 $("export").onclick = async () => {

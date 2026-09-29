@@ -87,6 +87,11 @@ function freshState(tabId, transaction) {
     startedAt: Date.now(),
     transaction: tx,
     paused: false,
+    /* Browser steps are off until asked for, and the answer belongs to the
+       session rather than to the page: the panel is rebuilt on every
+       navigation and on every transaction, and a flag living in the content
+       script came back on each time it was. */
+    gui: false,
     transactions: [tx],
     pending: {},         // requestId -> partial entry, in memory only
     actions: [],         // recorded browser steps, in order
@@ -490,6 +495,7 @@ function statusPayload() {
     ? {
         recording: !state.stopped,
         paused: !!state.paused && !state.stopped,
+        gui: !!state.gui,
         count: state.count || 0,
         actions: (state.actions || []).length,
         unsaved: (state.count || 0) > 0 && !state.exported,
@@ -708,10 +714,17 @@ async function harHandoff(options) {
 
   const q = new URLSearchParams({ mode: "har", from: "recording", go: "1" });
   if (options && options.open === "hyperexecute") q.set("then", "hx");
-  await chrome.tabs.create({
-    url: chrome.runtime.getURL("author.html") + "?" + q.toString(),
-    active: true,
-  });
+  const base = chrome.runtime.getURL("author.html");
+  const url = base + "?" + q.toString();
+  // one authoring tab, reused: building three plans should not leave three
+  // identical tabs behind, and the newest is the one being looked at
+  const open = await chrome.tabs.query({ url: base + "*" });
+  if (open.length) {
+    await chrome.tabs.update(open[0].id, { url, active: true });
+    await chrome.windows.update(open[0].windowId, { focused: true }).catch(() => {});
+  } else {
+    await chrome.tabs.create({ url, active: true });
+  }
   return { count: state.count };
 }
 
@@ -721,6 +734,27 @@ async function openHyperExecute() {
   await chrome.tabs.create({url: chrome.runtime.getURL("run.html"), active: true});
   return {opened: true};
 }
+
+/* A service worker has no DOM, so URL.createObjectURL - the only way to hand
+   chrome.downloads a file of this size - lives in the offscreen document.
+   A data: URL is the fallback, which chrome.downloads accepts for smaller
+   files and needs no document at all. */
+async function blobUrlFor(text) {
+  try {
+    await chrome.offscreen.createDocument({
+      url: chrome.runtime.getURL("offscreen.html"),
+      reasons: ["BLOBS"],
+      justification: "build a blob URL for the recorded HAR download",
+    });
+  } catch (e) {
+    // already open, which is fine - anything else is not
+    if (!/single offscreen|already/i.test(String((e && e.message) || e))) throw e;
+  }
+  const r = await chrome.runtime.sendMessage({ type: "make-blob-url", text });
+  if (!r || !r.ok) throw new Error((r && r.error) || "could not prepare the download");
+  return { url: r.url, blob: true };
+}
+
 
 async function exportHar() {
   if (!state || !(state.count || 0)) throw new Error("nothing recorded yet");
@@ -962,6 +996,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           broadcast();
           return sendResponse({ ok: true, data: statusPayload() });
         }
+        /* Browser steps on or off, held by the session so it survives the
+           panel being rebuilt - which happens on every navigation and every
+           transaction. */
+        case "setGui": {
+          if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
+          state.gui = !!msg.gui;
+          await persist();
+          broadcast();
+          return sendResponse({ ok: true, data: statusPayload() });
+        }
         case "stop":
           return sendResponse({ ok: true, data: await stop() });
         case "status":
@@ -978,7 +1022,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return sendResponse({ ok: true, data: await harHandoff(msg.options) });
         case "guiAction": {
           if (!state || state.stopped) return sendResponse({ ok: false, error: "not recording" });
-          if (state.paused) return sendResponse({ ok: true, data: { actions: state.actions.length } });
+          if (state.paused || !state.gui) {
+            return sendResponse({ ok: true, data: { actions: state.actions.length } });
+          }
           const a = msg.action || {};
           // which tab it happened in: a journey that opens a second tab has to
           // replay in a second tab too

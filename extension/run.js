@@ -111,7 +111,88 @@ function renderFiles() {
     $("primary").appendChild(o);
   });
   if (jmx.includes(keep)) $("primary").value = keep;
+  detectBrowser();
 }
+
+/* ---- browser tests -------------------------------------------------------
+   A browser test runs a real Chrome per user, and an engine holds 4 of them
+   (benchmarked, and the same limit BlazeMeter sets). HyperExecute knows
+   nothing about what is inside the .jmx, so the cap is this page's to hold. */
+const BROWSER_CAP = 4;
+let BROWSER_PLAN = false;
+let CAP_SET_HERE = false;     // so an API plan picked next gets its own default back
+
+async function primaryText() {
+  const want = $("primary").value;
+  const f = outgoing().find((x) => x.name === want) ||
+            outgoing().find((x) => /\.jmx$/i.test(x.name));
+  if (!f) return "";
+  return typeof f.content === "string" ? f.content : await f.content.text();
+}
+
+/* Enabled elements only, matched on their testclass: the words turn up in
+   comments too ("no ChromeDriverConfig" in a plan's own description), and a
+   disabled element starts no browser. */
+function browserElements(text) {
+  const tags = (text || "").match(
+    /<[^>]*testclass="[^"]*\.(WebDriverSampler|(Chrome|Firefox|Edge|InternetExplorer)DriverConfig)"[^>]*>/g) || [];
+  const on = tags.filter((t) => !/enabled="false"/.test(t));
+  return {
+    samplers: on.filter((t) => /WebDriverSampler"/.test(t)).length,
+    configs: on.filter((t) => /DriverConfig"/.test(t)).length,
+  };
+}
+const isBrowserJmx = (text) => {
+  const b = browserElements(text);
+  return b.samplers + b.configs > 0;
+};
+
+/* The decision is shown, not only logged: a plan this check reads wrongly -
+   browser steps hidden in a script, say - is noticed before the job runs. */
+function showPlanType(text, on) {
+  const el = $("planType");
+  if (!text) { el.textContent = ""; el.className = "hint"; return; }
+  if (on) {
+    const b = browserElements(text);
+    const n = b.samplers;
+    const found = [n ? `${n} WebDriver sampler${n === 1 ? "" : "s"}` : "",
+                   b.configs ? "a browser driver config" : ""]
+      .filter(Boolean).join(" and ");
+    /* A driver config opens a Chrome for every thread as it starts, whether
+       or not any sampler uses it - so a leftover one in an API plan is still
+       a Chrome per user, and the cap still applies. */
+    el.textContent = n
+      ? `Browser test: ${found} found, so at most ${BROWSER_CAP} users per engine.`
+      : `Browser test: a browser driver config found but no WebDriver samplers. It still ` +
+        `opens a browser for every user, so at most ${BROWSER_CAP} users per engine. ` +
+        `If this is an API test, remove the driver config from the plan.`;
+    el.className = "hint warn";
+  } else {
+    el.textContent = "API test: no browser steps found, so the usual users per engine apply.";
+    el.className = "hint";
+  }
+}
+
+async function detectBrowser() {
+  const text = await primaryText();
+  const on = isBrowserJmx(text);
+  showPlanType(text, on);
+  if (on === BROWSER_PLAN) return;
+  BROWSER_PLAN = on;
+  const cap = $("maxVusers");
+  if (on) {
+    const was = parseInt(cap.value.trim(), 10);
+    if (!was || was > BROWSER_CAP) { cap.value = String(BROWSER_CAP); CAP_SET_HERE = true; }
+    addLog("info", `${$("primary").value || "this plan"} is a browser test - each user is a ` +
+                   `Chrome, so an engine runs at most ${BROWSER_CAP}`);
+  } else if (CAP_SET_HERE) {
+    cap.value = "2000";
+    CAP_SET_HERE = false;
+  }
+  vmCalc();
+  planNote();
+}
+$("primary").addEventListener("change", detectBrowser);
 
 const mb = (n) => (n / 1048576).toFixed(n < 1048576 ? 2 : 1) + " MB";
 
@@ -180,7 +261,17 @@ let HX_PLAN = null;
 /* Everything the chosen configuration breaks, as sentences. Empty means the
    job is within what this account has bought. A limit that is unknown, or
    unlimited on the plan, is never one of them. */
+/* The browser cap is not the account's, so it is said on its own terms. */
+function browserCapBreach() {
+  const per = parseInt($("maxVusers").value.trim(), 10);
+  return BROWSER_PLAN && per > BROWSER_CAP
+    ? `a browser test runs at most ${BROWSER_CAP} users per engine, one Chrome each, `
+      + `and this asks for ${per}` : null;
+}
+
 function planBreaches() {
+  const cap = browserCapBreach();
+  if (cap) return [cap];
   if (!HX_PLAN) return [];
   if (HX_PLAN.refused) {
     return ["this account has no performance testing plan, so a load job is "
@@ -230,8 +321,8 @@ function planCautions() {
 function planNote() {
   const el = $("planNote");
   if (!el) return;
-  if (!HX_PLAN) { el.textContent = ""; el.className = "hint"; return; }
   const breaches = planBreaches();
+  if (!HX_PLAN && !breaches.length) { el.textContent = ""; el.className = "hint"; return; }
   if (breaches.length) {
     el.textContent = breaches.join(". ") + ".";
     el.className = "hint bad";
@@ -390,15 +481,16 @@ function vmCalc() {
   // HyperExecute takes no machine count - it divides total VU by the per-engine
   // cap, so show what that works out to rather than leaving it implicit
   const vu = parseInt($("vusers").value.trim(), 10);
-  const per = parseInt($("maxVusers").value.trim(), 10) || 2000;
+  const per = parseInt($("maxVusers").value.trim(), 10) || (BROWSER_PLAN ? BROWSER_CAP : 2000);
   const el = $("vmCalc");
   if (!vu || vu < 1) { el.textContent = ""; return; }
   const vms = Math.ceil(vu / per);
   el.textContent = vu + " users / " + per + " per engine = " + vms +
-                   " engine" + (vms === 1 ? "" : "s");
+                   " engine" + (vms === 1 ? "" : "s") +
+                   (BROWSER_PLAN ? ` · browser test: at most ${BROWSER_CAP} Chromes per engine` : "");
 }
 ["vusers", "maxVusers"].forEach((k) => $(k).addEventListener("input", vmCalc));
-["vusers", "duration", "rampup", "timeout"].forEach((k) => $(k).addEventListener("input", planNote));
+["vusers", "maxVusers", "duration", "rampup", "timeout"].forEach((k) => $(k).addEventListener("input", planNote));
 
 // prefill the load from the plan that was handed over, so what is being
 // overridden is visible rather than implied
@@ -411,7 +503,8 @@ const HX_DEFAULT_USERS = 100;
 
 async function prefillLoad() {
   const load = (PLAN && PLAN.load) || {};
-  if (!$("vusers").value) $("vusers").value = HX_DEFAULT_USERS;
+  // a browser test starts at one engine's worth of Chromes, not 100 of them
+  if (!$("vusers").value) $("vusers").value = BROWSER_PLAN ? BROWSER_CAP : HX_DEFAULT_USERS;
   if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
   if (load.duration && !$("duration").value) $("duration").value = load.duration;
   const asked = Number(load.threads) || 0;
@@ -499,7 +592,7 @@ async function submit(trigger) {
   if (breaches.length) {
     // the platform refuses these itself, with a message that names no number.
     // Stopping here costs nothing and says exactly what is over.
-    show($("msg"), HX_PLAN && HX_PLAN.refused ? breaches[0]
+    show($("msg"), (HX_PLAN && HX_PLAN.refused) || browserCapBreach() ? breaches[0]
          : "this account's plan does not cover the run: " + breaches.join("; "), "bad");
     breaches.forEach((b) => addLog("err", b));
     addLog("info", "change the numbers above, or upload without triggering");
@@ -540,6 +633,20 @@ async function submit(trigger) {
     const primary = $("primary").value ||
       (files.find((f) => f.name.toLowerCase().endsWith(".jmx")) || {}).name;
     if (!primary) throw new Error("choose which .jmx the job should run");
+
+    /* Checked again here, on what is actually being sent: a blank per-engine
+       cap means HyperExecute's own default, which is thousands of Chromes. */
+    await detectBrowser();
+    if (BROWSER_PLAN && trigger) {
+      const per = parseInt($("maxVusers").value.trim(), 10);
+      if (!per) {
+        $("maxVusers").value = String(BROWSER_CAP);
+        addLog("info", `max users per engine set to ${BROWSER_CAP} for a browser test`);
+      } else if (per > BROWSER_CAP) {
+        throw new Error(`a browser test runs at most ${BROWSER_CAP} users per engine - ` +
+                        `set Max users per engine to ${BROWSER_CAP} or less`);
+      }
+    }
 
     const total = num("vusers");
     const regions = regionRows().map((r) => {
@@ -666,6 +773,7 @@ $("uploadOnly").onclick = () => submit(false);
   $("planName").addEventListener("input", renderFiles);   // the list shows the name
   CHECKS.forEach((k) => $(k).addEventListener("change", save));
   renderFiles();
+  await detectBrowser();     // the default users depend on it
   vmCalc();
   await prefillLoad();
   await AUTH.ready();        // the gate covers the page until someone is signed in
@@ -681,11 +789,28 @@ $("uploadOnly").onclick = () => submit(false);
   showRoute();
 })();
 
-/* Page chrome. These are ordinary tabs, so the controls do what a tab can do. */
+/* Page chrome. In the studio's own window these minimise and maximise that
+   window; in an ordinary tab there is nothing to minimise, so they do the
+   closest honest thing and say so in their titles. */
 const pg = (id) => document.getElementById(id);
 if (pg("pgMin")) {
-  pg("pgMin").onclick = () => history.length > 1 ? history.back() : window.close();
+  let own = null;
+  chrome.windows.getCurrent().then((w) => {
+    own = w && w.type === "popup" ? w : null;
+    if (!own) {
+      pg("pgMin").title = "Back to the previous page";
+      pg("pgMax").title = "Full width";
+    }
+  }).catch(() => {});
+  pg("pgMin").onclick = () => own
+    ? chrome.windows.update(own.id, { state: "minimized" })
+    : (history.length > 1 ? history.back() : window.close());
   pg("pgMax").onclick = (e) => {
+    if (own) {
+      const to = own.state === "maximized" ? "normal" : "maximized";
+      own.state = to;
+      return chrome.windows.update(own.id, { state: to });
+    }
     const wide = document.querySelector(".page").classList.toggle("wide");
     e.currentTarget.title = wide ? "Normal width" : "Full width";
   };

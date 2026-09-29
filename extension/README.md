@@ -4,6 +4,8 @@ The whole product. Record a journey in your **own** Chrome — your profile, you
 logins, your VPN — or bring a cURL command, an OpenAPI spec, a Postman
 collection, a spreadsheet, a URL list or an existing `.jmx`, and get a
 ready-to-run JMeter plan. Then trigger it on HyperExecute from the same window.
+The popup is the short way in; the studio opens as its own window and carries
+the same recorder, so nothing forces you back into a 360-pixel panel.
 
 No console, no CLI, no Python, no server. `jmxgen.py` runs here in WebAssembly
 (Pyodide), and HyperExecute is called directly — an MV3 extension with host
@@ -57,10 +59,10 @@ anything not on it, so a release can never be missing a page.
 | `locator.js` | ranked, capture-time-verified locators for browser steps |
 | `overlay.js` / `overlay.css` | the in-page panel: transactions, assertions, extractors, manual requests |
 | `engine.js` | Pyodide host — loads `jmxgen.py` verbatim and exposes `author()` |
-| `author.html/.css/.js` | the authoring page: every source, the results, the log |
+| `author.html/.css/.js` | the authoring page: the recorder, every source, the results, the log |
 | `hx.js` | HyperExecute: create project, upload, trigger |
 | `run.html/.css/.js` | the run form |
-| `popup.html/.css/.js` | recording controls and the way into everything else |
+| `popup.html/.css/.js` | recording controls, and **+** to open the studio in its own window |
 | `brand.css` | the TestMu design tokens every surface pulls from |
 | `jmxgen.py` | the engine itself, byte-identical to the CLI's |
 

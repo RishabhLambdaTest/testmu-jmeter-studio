@@ -4,12 +4,15 @@ One page for every control in the extension, each with a worked example. The
 defaults are chosen to be right most of the time, so treat this as reference
 rather than a checklist: you can author a good plan without touching any of it.
 
+- [Window controls](#window-controls)
 - [The authoring page](#the-authoring-page)
+  [Record a journey](#record-a-journey) ·
   [Source](#source) · [From the recording](#from-the-recording) ·
   [Traffic filters](#traffic-filters) ·
   [Authentication](#authentication) · [Test data](#test-data) ·
   [Load profile](#load-profile) · [What comes out](#what-comes-out)
 - [The popup](#the-popup)
+  [What is on it](#what-is-on-it) ·
   [Starting a recording](#starting-a-recording) · [Transaction](#transaction) ·
   [Recording options](#recording-options) · [While it is recording](#while-it-is-recording) ·
   [Finishing](#finishing)
@@ -32,7 +35,7 @@ Where blank means something specific:
 | Methods | every method |
 | Include, Exclude | no filtering |
 | Max users, Ramp-up, Duration (run page) | whatever the `.jmx` carries, often 1 user |
-| Max users per engine | prefilled with 2000; clear it and HyperExecute's own default applies |
+| Max users per engine | prefilled with 2000, or 4 for a browser test; clear it and HyperExecute's own default applies (a browser test is set back to 4) |
 | Global timeout, Job label | not sent |
 | Existing project id | a project is created from the name |
 
@@ -41,7 +44,55 @@ these boxes are in the sections below instead, where they can be explained.
 
 ---
 
+# Window controls
+
+Three buttons sit in the title bar of every surface, in the order Chrome and
+macOS use left to right: **close, minimise, maximise**. What they do depends on
+whether the page is in its own window or in a tab, and the page relabels them so
+they never claim otherwise.
+
+| Button | In its own window | In a tab |
+|---|---|---|
+| × Close | closes the window | closes the tab |
+| − Minimise | minimises it to the dock or taskbar | goes back to the previous page |
+| + Maximise | maximises, and restores on a second press | full width, and back |
+
+In the popup, **+** means something slightly different: it opens the studio in
+its own window, 1180×900, which is the size the authoring page is laid out for.
+An already-open studio tab is focused instead of a second one being made.
+
+**Example.** You are recording a checkout and want the plan beside the shop
+rather than in front of it. Press **+**, drag the studio window to the second
+monitor, and record, build and trigger from there while the shop keeps the tab
+it was in.
+
+---
+
 # The authoring page
+
+## Record a journey
+
+The first card on the page, and the same recorder the popup drives - the
+session lives in the extension's background worker, not in either window, so
+you can start in one and stop in the other.
+
+| Control | What it does | When to use it |
+|---|---|---|
+| Record from a URL | opens the URL in a new tab and attaches before the first byte | always, if you can: request number one is the navigation and the redirect chain correlation needs |
+| Start recording | begins the session | — |
+| Pause | stops capturing, keeps the session | signing in by hand, dismissing a cookie banner, anything that should not be in the test |
+| Stop and build | ends the session and generates the plan on this page | the normal finish |
+| Build the plan | authors from a recording that is already waiting | after **Stop**, or when Chrome closed mid-session and the recording was found on disk |
+| Discard | deletes the recording | — |
+
+The dot beside the legend is grey when idle, red while recording, amber while
+paused and green when a recording is waiting to be built. The count next to it
+is the number of requests captured so far.
+
+**Example.** An hour-long journey through a store. Recording from the popup
+meant stopping, waiting for a new tab, then setting the host filter and the load
+profile. Recording from this page, the plan appears underneath the card you
+started from, with the filters and the load profile already in front of you.
 
 ## Source
 
@@ -294,6 +345,42 @@ fifty behaving like people, and it will pin a CPU on a small engine.
 Slack message, and that pause is now in the plan, so 500 users each sit idle
 for 47 seconds and throughput collapses. Either re-record cleanly, or turn this
 off and pace the test with the load profile instead.
+
+### Test type
+
+**API by default.** It appears under Load profile whenever the source is a
+recording, because only a recording carries the clicks a browser test replays.
+
+| Choice | The `.jmx` carries | Scales to |
+|---|---|---|
+| API | the recorded requests, as HTTP samplers | thousands of users per engine |
+| Browser | the recorded clicks, as WebDriver samplers in headless Chrome | 4 users per engine, one Chrome each |
+
+Browser adds a **Chrome path** field. Blank means the runner's Chrome 141 and
+its matching chromedriver. Any other Chrome also needs its own chromedriver,
+set as `webdriver.driver_path` in the spec editor; the two must be the same
+version. In the spec, a browser test is simply a `webdriver:` key:
+
+```yaml
+webdriver:
+  binary_path: ""     # blank = the runner's Chrome 141
+  driver_path: ""     # blank = the chromedriver that matches it
+  headless: true
+```
+
+**Uploaded plans are checked too.** The run page reads the `.jmx` it is about
+to send, from the Studio or uploaded, and treats it as a browser test when it has
+an enabled WebDriver sampler or browser driver config (Chrome, Firefox, Edge,
+IE). A driver config on its own counts: it opens a browser for every user as
+the user starts, even with no WebDriver samplers, so an API plan carrying a
+leftover one says so and asks for it to be removed. A Remote Driver Config runs
+its browsers on a grid rather than the engine, so it is not capped. Browser
+steps hidden in a script sampler are not detected; the decision is shown
+under the file list so a wrong one is seen before the run.
+
+In a browser test the step table lists the clicks, and each can be renamed,
+paused after, reordered or removed. Assertions and extractors are for requests,
+so they are not offered.
 
 ### Randomise the think times
 
@@ -670,7 +757,7 @@ the account service must not stop a run.
 |---|---|---|
 | Regions and traffic | one row per region, from the regions the HyperExecute dashboard offers, each with its share of the users. **+ Add region** adds a row at 0% | one region normally; several to test from where your users are |
 | Max users (total VU) | total virtual users across the job | whenever you want a number other than the plan's |
-| Max users per engine | how many each machine carries | to control engine count: total ÷ this = machines. The line underneath does the arithmetic as you type |
+| Max users per engine | how many each machine carries | to control engine count: total ÷ this = machines. The line underneath does the arithmetic as you type. A browser test is set to 4 and refused above it: each user is a Chrome. The line under *Which .jmx should the job run?* says which the page decided the plan is, and why |
 | Ramp-up (s) | seconds to reach full load | a ramp long enough that autoscaling behaves as it would in life |
 | Duration (s) | how long to hold | a soak needs minutes; a smoke test needs one |
 | Global timeout (min) | hard stop for the whole job | when a hung run would otherwise burn the budget |
@@ -688,6 +775,24 @@ The counts reach JMeter itself, not just the infrastructure: a job sent as
 ---
 
 # The popup
+
+## What is on it
+
+The popup shows what you can act on now and hides the rest, so it is a short
+list rather than a wall of buttons.
+
+| Always | Only when it applies |
+|---|---|
+| the counter and what the session weighs | **Transaction**, before and during a recording - it names the step, so it goes away once one has stopped |
+| **Start recording this tab**, or a URL and **Go** | **Pause**, **Stop**, **Discard session**, the same way |
+| **Run on HyperExecute…** | **Generate test plan** and **Export HAR instead**, once there is something to generate |
+| *Author from a file or spec…* | the offer to build a recording found on disk |
+| **Recording options** | the sign-in gate, when you are signed out |
+
+*Author from a file or spec…* replaces the row of source chips that used to sit
+here. The sources - OpenAPI, Postman, cURL, Excel, URL list, `.jmx` - are all in
+the **Source** dropdown on the authoring page, and listing them twice made the
+popup look like a menu of six unrelated things rather than one way through.
 
 ## Starting a recording
 
@@ -806,8 +911,9 @@ you can keep, share or re-author later.
 **Discard session** throws the recording away. It asks first if you have not
 saved or built anything.
 
-*Author from something else* takes you straight to the authoring page with a
-source preselected, for when there is nothing to record.
+*Author from a file or spec…* opens the authoring page, where the **Source**
+dropdown lists every other input: OpenAPI, Postman, cURL, Excel, a URL list, an
+existing `.jmx` or a TestMu AI session.
 
 ---
 
@@ -826,7 +932,7 @@ at it. Each control applies to the request that was just captured.
 | Rename… | the sampler label | `POST /api/v2/x7` becomes `Add to cart` |
 | Skip last | drops that request | the analytics beacon that slipped through |
 | + Manual request… | a request you type in | the webhook the browser never sends, but the test needs |
-| record browser steps | keeps clicks and typing alongside the traffic | on by default; produces the Playwright test as well as the `.jmx` |
+| record browser steps | keeps clicks and typing alongside the traffic | off by default; tick it for the Playwright test and for a browser test to replay. It stays as you set it for the rest of the recording |
 
 **Finish → build the plan** ends the session and opens the authoring page with
 the recording loaded. **Export HAR instead** saves the raw file.

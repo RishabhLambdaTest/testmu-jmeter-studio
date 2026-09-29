@@ -71,7 +71,7 @@
           <button class="jg-b" id="jg-name">Rename…</button>
           <button class="jg-b jg-warn" id="jg-skip">Skip last</button>
         </div>
-        <label class="jg-chk"><input type="checkbox" id="jg-gui" checked />
+        <label class="jg-chk"><input type="checkbox" id="jg-gui" />
           record browser steps <span class="jg-count" id="jg-gui-count">0</span></label>
         <button class="jg-b jg-wide" id="jg-manual">+ Manual request…</button>
         <button class="jg-b jg-wide jg-go" id="jg-build">Finish → build the plan</button>
@@ -141,7 +141,10 @@
 
     q("#jg-gui").onchange = (e) => {
       guiOn = e.target.checked;
-      toast(guiOn ? "recording browser steps" : "browser steps paused - HTTP still recording");
+      // kept by the session, not by this panel: the panel is rebuilt on every
+      // navigation and every transaction, and the answer must outlive it
+      chrome.runtime.sendMessage({ type: "setGui", gui: guiOn }).catch(() => {});
+      toast(guiOn ? "recording browser steps" : "browser steps off - HTTP still recording");
     };
 
     q("#jg-tx-set").onclick = async () => {
@@ -235,7 +238,9 @@
      every mousemove produces a script nobody can read, so only the actions
      that change application state are kept. */
 
-  let guiOn = true;
+  /* Off until the session says otherwise: a recording is an API test unless
+     someone asks for the clicks, and render() adopts the session's answer. */
+  let guiOn = false;
   const LOC = () => window.__jmxgenLocator;
 
   const fromOverlay = (event) => {
@@ -398,6 +403,13 @@
     if (dot) dot.classList.toggle("paused", !!status.paused);
     const c = root.querySelector("#jg-count");
     if (c) c.textContent = String(status.count);
+    /* Browser steps are the session's setting, so the rebuilt panel adopts it
+       rather than imposing its own default on a recording already under way. */
+    guiOn = !!status.gui;
+    const gui = root.querySelector("#jg-gui");
+    if (gui && gui.checked !== guiOn) gui.checked = guiOn;
+    const gc = root.querySelector("#jg-gui-count");
+    if (gc && typeof status.actions === "number") gc.textContent = String(status.actions);
     const tx = root.querySelector("#jg-tx");
     if (tx && document.activeElement !== tx) tx.value = status.transaction || "";
     /* Assert, Extract, Rename and Skip all act on the last captured request, so

@@ -52,7 +52,19 @@
   };
 
   /* Visible text, trimmed and collapsed - long text makes a bad locator and a
-     worse label, so it is capped. */
+     worse label, so it is capped.
+
+     `innerText` is the RENDERED text: `text-transform: uppercase` turns
+     "Add to Cart" into "ADD TO CART" while the document still says the former.
+     A locator built from that matches nothing in a runner, whose XPath reads
+     the source text - and it passed verification here, because both sides were
+     reading the rendered text. So locators take `textContent`, and the label
+     keeps the rendered text, which is what the person actually saw. */
+  const sourceTextOf = (node) => {
+    const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+    return t && t.length <= 80 ? t : null;
+  };
+
   const textOf = (node) => {
     const t = (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim();
     return t && t.length <= 80 ? t : null;
@@ -90,7 +102,7 @@
 
     // 5. link text - the natural handle for anchors and buttons
     if (tag === "a" || tag === "button" || attr(node, "role") === "button") {
-      const t = textOf(node);
+      const t = sourceTextOf(node);
       if (t) out.push({ type: "text", value: t, tag: tag });
     }
 
@@ -197,8 +209,10 @@
         return found.length === 1 && found[0] === node;
       }
       if (cand.type === "text") {
+        // the same text a runner will compare against, or this check passes on
+        // a locator that cannot work anywhere else
         const all = Array.from(root.querySelectorAll(cand.tag || "*"))
-          .filter((n) => textOf(n) === cand.value);
+          .filter((n) => sourceTextOf(n) === cand.value);
         return all.length === 1 && all[0] === node;
       }
       if (cand.type === "xpath") {

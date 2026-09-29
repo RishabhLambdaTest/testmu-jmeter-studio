@@ -165,7 +165,8 @@ to work around. *Enter Username* sends no HTTP request. A recording captures
 traffic, so a step that only types into a field cannot become a sampler, and a
 protocol plan that claimed otherwise would be lying about what it measures.
 Those actions are not lost: they are in the Playwright script from the same
-session, which is where a keystroke belongs.
+session, and a browser test built from the recording (Test type: Browser) runs
+each one as its own step, with a row per step, the way a hand-built WebDriver plan does.
 
 The rule of thumb: name transactions after what the user is doing, not after
 what the interface is doing. *Submit timesheet* is a step. *Click the third

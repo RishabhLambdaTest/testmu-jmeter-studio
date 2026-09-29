@@ -29,6 +29,11 @@ built in the browser.
 
 ## Recording
 
+Two surfaces start a recording, and both drive the same session: the popup, and
+the **Record a journey** card at the top of the authoring page. Whichever you
+use, the other one shows the same state - the same count, the same pause, the
+same recording offered back. Nothing is tied to the window you started in.
+
 Open the popup with the toolbar icon, or `⌘⇧9` / `Ctrl+Shift+9`.
 
 ![The popup, idle](screenshots/popup-idle.png)
@@ -52,6 +57,50 @@ When you are done, press **Finish → build the plan**. The plan opens in a new
 tab, already generated.
 
 ![The popup while recording](screenshots/popup-recording.png)
+
+## Recording from the full page
+
+The popup is small on purpose, and a recording is not the only thing you do with
+one. The authoring page carries the same controls, so a long session can be
+recorded, built, filtered and run without ever going back to a 360-pixel panel.
+
+Open it with **+** in the popup's title bar, which opens the studio in its own
+window, or with *Author from a file or spec…*. At the top:
+
+| Control | What it does |
+|---|---|
+| Record from a URL | opens that URL in a new tab and attaches before the first byte, the same as **Go** in the popup |
+| Pause | stops capturing without ending the session |
+| Stop and build | ends the session and generates the plan on the page you are already on |
+| Build the plan | offered when a recording is waiting - one you stopped, or one left on disk when Chrome closed |
+| Discard | throws the recording away |
+
+The dot and the counter next to the legend say what the session is doing:
+grey idle, red recording, amber paused, green stopped with requests waiting.
+They follow the background worker, so starting from the popup and stopping from
+the page - or the reverse - works and is the normal way to use it.
+
+Everything else on that page still applies to the recording you just took: the
+host list, transactions, the load profile, **Test type**, and *Run on
+HyperExecute…*.
+
+## The window controls
+
+Every surface - popup, authoring page, run page - carries the same three
+buttons in the title bar, in the order Chrome and macOS use left to right:
+**close, minimise, maximise**.
+
+| Button | In its own window | In a tab |
+|---|---|---|
+| × | closes the window | closes the tab |
+| − | minimises the window | goes back to the previous page |
+| + | maximise, and back to the previous size on a second press | full width, and back |
+
+The page checks which of the two it is in and relabels the buttons, so they
+never offer something they cannot do. From the popup, **+** opens the studio in
+its own window at 1180×900 - a real window you can move, resize and leave open
+beside the app you are testing. If a studio *tab* is already open it is focused
+instead, because two authoring surfaces would fight over the same session.
 
 ## Annotating as you browse
 
@@ -99,8 +148,11 @@ tools still read.
 
 ## Two artifacts from one session
 
-The *record browser steps* checkbox in the panel is on by default, and its
-counter climbs as you click. So one session gives you two things.
+The *record browser steps* checkbox in the panel is **off by default**: a
+recording is an API test unless you ask for the clicks. Tick it and its counter
+climbs as you click, and the setting belongs to the recording, so it survives
+navigations and transactions until you change it again. With it on, one session
+gives you two things.
 
 The protocol plan, a `.jmx` of HTTP samplers with no browser involved, is what
 scales to thousands of users on a handful of machines. The browser test is the
@@ -122,15 +174,30 @@ that resolves uniquely is the one written down. A recorder that emits
 release. This is the difference between a recording you keep and one you redo
 every sprint.
 
-The browser steps stay out of the `.jmx` deliberately. A WebDriver sampler
-drives a real Chrome, one per thread, so it cannot carry load, and it needs a
-chromedriver on the runner that a stock JMeter or CI machine does not have. A
-run-time user count applies to every thread group, so a plan asking for one
-browser user becomes two hundred browsers the moment someone runs it at scale.
-JMeter's own recorder and BlazeMeter's both draw the line in the same place.
+## API test or browser test
 
-So the split is the point: the `.jmx` carries the load, the Playwright script
-proves the journey. Both come out of the one recording.
+The same recording builds either kind of `.jmx`. Choose under **Test type** on
+the authoring page, in Load profile:
+
+| Test type | What the `.jmx` runs | Users per engine |
+|---|---|---|
+| **API** (default) | the recorded HTTP requests | thousands |
+| **Browser** | the recorded clicks and typing, in real headless Chrome, as WebDriver samplers | **4** |
+
+A plan is one or the other, never both. A run-time user count applies to every
+thread group, so a plan carrying both would run as many browsers as protocol
+users. BlazeMeter, OctoPerf and k6 keep the two apart for the same reason, and
+BlazeMeter caps browser users at the same 4 per engine.
+
+A browser test needs the clicks, so tick *record browser steps* before you
+start clicking; it is off unless you ask for it. Built from a recording without them, it stops and says so.
+
+**Chrome path.** Blank means the runner's own Chrome 141 and its chromedriver,
+which is what HyperExecute's Linux runners carry. A chromedriver only drives the
+Chrome version it was built for, so a different Chrome also needs its own
+driver: set `webdriver.driver_path` in the spec editor.
+
+The Playwright script is still available with either test type.
 
 ## Recording options
 
@@ -201,6 +268,17 @@ you nothing about your API, and it drags the average response time down until th
 report is flattering and useless. Third-party requests follow: analytics, tag
 managers, chat. Load-testing someone else's service is noise at best. Anything
 you excluded yourself is counted as filtered.
+
+**Which hosts stay.** The Studio keeps one site: the busiest domain that is not
+a tracker, with every subdomain of it, so `app.example.com`, `api.example.com`
+and `auth.example.com` all stay without any ticking. Country and hosting
+endings are read as part of the name: the site for `shop.example.co.uk` is
+`example.co.uk`, not `co.uk`, and `myapp.herokuapp.com` is its own site. The
+**Hosts in this recording** panel on the result page lists every host with its
+request count; tick one there when your system also runs on another domain, such
+as a login or payment service, and rebuild. A long list gets a filter box. k6
+Studio (*Allowed hosts*) and NeoLoad (*Exclude servers*) offer the same choice;
+BlazeMeter's converter keeps every host.
 
 *Keep: web* keeps the assets, for when the page load is the thing you are
 measuring. It is the same recording either way, because the decision is made at

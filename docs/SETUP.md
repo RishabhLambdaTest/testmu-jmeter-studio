@@ -126,6 +126,11 @@ appears in the toolbar, and that is how you open it.
 There are shortcuts if you prefer them. `⌘⇧9` (`Ctrl+Shift+9`) opens the popup,
 and `⌘⇧8` (`Ctrl+Shift+8`) starts and stops recording.
 
+The popup is the short way in. **+** in its title bar opens the studio in its
+own window - a real window with close, minimise and maximise, which you can move
+to a second screen and leave open beside the app you are testing. It carries
+everything the popup does, recording included.
+
 ---
 
 ## 3. Your first plan
@@ -158,7 +163,8 @@ Click the toolbar icon:
 
 ![The extension popup, idle](screenshots/popup-idle.png)
 
-Under *Author from something else*, click **cURL**. The authoring page opens:
+Click *Author from a file or spec…*, or **+** in the title bar to open the
+studio in its own window. Then pick **cURL** in the **Source** dropdown:
 
 ![The authoring page with the source picker](screenshots/author-source.png)
 
@@ -199,13 +205,16 @@ an example for each.
 
 [RECORDING.md](RECORDING.md) covers this properly. The short path:
 
-1. Open the popup.
+1. Open the popup, or the studio's own window and its **Record a journey** card.
+   Both drive the same recorder, so you can start in one and stop in the other.
 2. To capture the very first request, meaning the initial navigation, the
-   redirect chain and any SSO bounce, type the URL in the box and press **Go**.
-   To record the page already in front of you, press **Start recording this tab**.
+   redirect chain and any SSO bounce, type the URL in the box and press **Go**
+   (**Start recording** on the full page). To record the page already in front
+   of you, press **Start recording this tab** in the popup.
 3. Browse the app. A panel appears on the page, where you name transactions and
    attach assertions, extractors and pauses as you go.
-4. Press **Finish → build the plan**. The plan opens in a new tab, generated.
+4. Press **Finish → build the plan**, or **Stop and build** on the full page.
+   The plan is generated: in a new tab from the popup, in place from the studio.
 
 Chrome shows a banner saying the extension started debugging this browser. That
 is expected rather than a warning. Attaching the DevTools protocol is the only
@@ -398,7 +407,9 @@ Every error the extension can produce, what it actually means, and what to do.
 | "the recording was already used" | The handover from recorder to authoring page is deliberately one-shot, so reloading the page cannot silently re-author a capture you have moved on from. Record again, or pick a HAR file |
 | 0 correlated, on a source that is not a recording | Expected. Correlation needs real responses, and only a recording carries them. The Correlations tab says as much |
 | "needs jmeter-plugins-casutg on the runner" | The plan uses arrival-rate thread groups. Upload that jar with the plan, or install it into JMeter's `lib/ext` |
-| "needs jmeter-plugins-webdriver on the runner" | Only a hand-written spec that asks for WebDriver samplers can produce this; the extension never puts browser steps in the `.jmx`. Upload that jar with the plan, and note the runner also needs a chromedriver |
+| "needs jmeter-plugins-webdriver on the runner" | Expected on a browser test. The runner needs the WebDriver plugin (4.13.0.2) and a chromedriver that matches its Chrome. If the job fails to start a browser, upload the jar with the plan |
+| "a browser test needs browser steps, and this plan has none" | The recording was made with *record browser steps* off. Record again with it on, or build an API test |
+| "a browser test runs at most 4 users per engine" | Each browser user is a Chrome, and an engine holds 4. Set Max users per engine to 4 or less; add users to get more engines |
 | The errors count is above zero | Open the Checks tab. A plan with errors is never shipped silently |
 | Validate .jmx says "a reference to a character XML 1.0 does not allow" | The plan carries control characters, usually a recorded binary or gzip request body. JMeter may still open it, but HyperExecute's parser will not. Remove or re-record that request body |
 

@@ -437,7 +437,7 @@ def build_chrome_config(cfg, proxy=None):
     ]
     return node(
         CHROME_CFG,
-        gui(CHROME_CFG + ".gui.ChromeDriverConfigGui", CHROME_CFG, "jp@gc - Chrome Driver Config"),
+        gui(CHROME_CFG.rsplit(".", 1)[0] + ".gui.ChromeDriverConfigGui", CHROME_CFG, "jp@gc - Chrome Driver Config"),
         body,
     )
 
@@ -696,77 +696,183 @@ def build_webdriver_sampler(s):
                 inner)
 
 
-def _by_expr(action):
-    """A Selenium `By` for an action, from either action shape.
+def _gq(value):
+    """A Groovy single-quoted string literal, which does not interpolate.
 
-    Hand-written specs carry a single `xpath`. The recorder emits a ranked
-    `locators` list instead, so the best surviving locator is chosen here -
-    Selenium has no fallback chain of its own, which is one more reason the
-    Playwright emitter is the better target for recorded journeys.
+    Locators are full of quotes (`//input[@name='q']`), and one left bare ends
+    the literal early: the script then fails to compile and the step reports a
+    MissingPropertyException naming a fragment of the XPath.
     """
+    return "'%s'" % str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _xq(value):
+    """An XPath string literal for any text, quotes included."""
+    value = str(value)
+    if "'" not in value:
+        return "'%s'" % value
+    if '"' not in value:
+        return '"%s"' % value
+    return "concat(%s)" % ", \"'\", ".join("'%s'" % p for p in value.split("'"))
+
+
+_XP_LOWER = ("translate(normalize-space(.),"
+             "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')")
+
+
+def _text_xpaths(value):
+    """XPaths for an element whose own text is `value`.
+
+    Case-folded and whitespace-collapsed, because the text a locator was built
+    from is not always the text the document holds: `text-transform: uppercase`
+    renders "Add to Cart" as "ADD TO CART", and an XPath comparing against the
+    source text then matches nothing at all. `not(.//*[...])` keeps the
+    innermost element, so a wrapper div is never clicked instead of its button.
+    """
+    want = _xq(str(value).strip().lower())
+    return [
+        "//*[%s=%s][not(.//*[%s=%s])]" % (_XP_LOWER, want, _XP_LOWER, want),
+        "//*[contains(%s,%s)][not(.//*[contains(%s,%s)])]"
+        % (_XP_LOWER, want, _XP_LOWER, want),
+    ]
+
+
+def _by_list(action):
+    """Every locator recorded for an action, as Selenium `By`s, best first.
+
+    Selenium has no fallback chain of its own, so the chain is written into the
+    script instead: the recorder verified several locators against the live DOM,
+    and throwing all but the first away is how a plan ends up failing on a page
+    that moved one class name.
+    """
+    out = []
     if action.get("xpath"):
-        return "By.xpath('%s')" % action["xpath"]
+        out.append("By.xpath(%s)" % _gq(action["xpath"]))
     for loc in action.get("locators") or []:
-        kind, value = loc.get("type"), (loc.get("value") or "").replace("'", "\\'")
+        kind, value = loc.get("type"), loc.get("value") or ""
+        if not value:
+            continue
         if kind == "testid":
-            return "By.cssSelector('[%s=\"%s\"]')" % (loc.get("attr", "data-testid"), value)
-        if kind == "id":
-            return "By.id('%s')" % value
-        if kind == "name":
-            return "By.name('%s')" % value
-        if kind == "css":
-            return "By.cssSelector('%s')" % value
-        if kind == "text":
-            return "By.xpath(\"//*[normalize-space(text())='%s']\")" % value
-        if kind == "xpath":
-            return "By.xpath('%s')" % value
-    return None
+            out.append("By.cssSelector(%s)" % _gq('[%s="%s"]' % (loc.get("attr", "data-testid"),
+                                                                 value.replace('"', '\\"'))))
+        elif kind == "id":
+            out.append("By.id(%s)" % _gq(value))
+        elif kind == "name":
+            out.append("By.name(%s)" % _gq(value))
+        elif kind == "css":
+            out.append("By.cssSelector(%s)" % _gq(value))
+        elif kind == "text":
+            out += ["By.xpath(%s)" % _gq(xp) for xp in _text_xpaths(value)]
+        elif kind == "xpath":
+            out.append("By.xpath(%s)" % _gq(value))
+    seen, uniq = set(), []
+    for b in out:                      # the same handle often arrives twice
+        if b not in seen:
+            seen.add(b)
+            uniq.append(b)
+    return uniq
+
+
+def _by_expr(action):
+    """The single best `By` for an action - the head of the ranked list."""
+    bys = _by_list(action)
+    return bys[0] if bys else None
+
+
+# The helpers every generated step shares.
+#
+# `find` is the fallback chain Selenium does not have: the recorder verified
+# several locators against the live DOM, so the script tries them in order until
+# one resolves to a visible element, and gives up only when the whole list has
+# failed for the whole timeout. `click` scrolls first and falls back to a JS
+# click, because the common failure on a real page is an element under a sticky
+# header rather than a wrong locator.
+GROOVY_HELPERS = """\
+import org.openqa.selenium.By
+import org.openqa.selenium.JavascriptExecutor
+import org.openqa.selenium.TimeoutException
+
+def timeoutMs = ((WDS.vars.get('TIMEOUT') ?: '30') as int) * 1000
+def js = { String code, Object... args ->
+  ((JavascriptExecutor) WDS.browser).executeScript(code, args)
+}
+
+def find = { List bys, boolean needClickable ->
+  def deadline = System.currentTimeMillis() + timeoutMs
+  def tried = bys.collect { it.toString() }.join(' | ')
+  while (true) {
+    for (by in bys) {
+      try {
+        for (el in WDS.browser.findElements(by)) {
+          if (!el.isDisplayed()) continue
+          if (needClickable && !el.isEnabled()) continue
+          return el
+        }
+      } catch (Throwable ignored) { /* next locator */ }
+    }
+    if (System.currentTimeMillis() >= deadline) {
+      throw new TimeoutException('no locator matched in ' + (timeoutMs / 1000) +
+                                 's: ' + tried)
+    }
+    Thread.sleep(250)
+  }
+}
+
+def click = { List bys ->
+  def el = find(bys, true)
+  try { js('arguments[0].scrollIntoView({block:"center"})', el) } catch (Throwable ignored) { }
+  try {
+    el.click()
+  } catch (Throwable t) {
+    // covered by something, or moved between the look and the click
+    js('arguments[0].click()', el)
+  }
+}
+"""
 
 
 def groovy_from_actions(actions):
     """Turn a short action list into a WebDriver Sampler groovy script."""
-    head = [
-        "import org.openqa.selenium.By",
-        "import org.openqa.selenium.support.ui.WebDriverWait",
-        "import org.openqa.selenium.support.ui.ExpectedConditions",
-        "import java.time.Duration",
+    head = GROOVY_HELPERS.splitlines() + [
         "",
-        "def wait = new WebDriverWait(WDS.browser, Duration.ofSeconds("
-        "(vars.get('TIMEOUT') ?: '30') as int))",
-        "WDS.sampleResult.sampleStart()",
+        # no sampleStart/sampleEnd here: the sampler already brackets the
+        # script with them, and calling them again logs "sampleStart called
+        # twice" and times the step from the wrong moment
         "try {",
     ]
     body = []
+    n_el = 0
     for a in actions:
         kind = (a.get("do") or "").lower()
-        by = _by_expr(a)
+        bys = _by_list(a)
+        chain = "[%s]" % ", ".join(bys)
         if kind in ("open", "navigate"):
-            body.append("  WDS.browser.get('%s')" % a["url"])
+            body.append("  WDS.browser.get(%s)" % _gq(a["url"]))
         elif kind in ("click", "check", "uncheck"):
-            if not by:
+            if not bys:
                 continue
-            body.append("  wait.until(ExpectedConditions.elementToBeClickable("
-                        "%s)).click()" % by)
+            body.append("  click(%s)" % chain)
         elif kind == "type":
-            if not by:
+            if not bys:
                 continue
-            body.append("  def el = wait.until(ExpectedConditions.presenceOfElementLocated("
-                        "%s))" % by)
-            body.append("  el.clear(); el.sendKeys('%s' as String)" % a.get("text", ""))
+            # numbered, because a step that fills two fields would otherwise
+            # declare the same variable twice and not compile
+            n_el += 1
+            body.append("  def el%d = find(%s, false)" % (n_el, chain))
+            body.append("  el%d.clear(); el%d.sendKeys(%s as String)"
+                        % (n_el, n_el, _gq(a.get("text", ""))))
         elif kind == "select":
-            if not by:
+            if not bys:
                 continue
-            body.append("  new org.openqa.selenium.support.ui.Select("
-                        "wait.until(ExpectedConditions.presenceOfElementLocated(%s)))"
-                        ".selectByVisibleText('%s')" % (by, a.get("text", "")))
+            body.append("  new org.openqa.selenium.support.ui.Select(find(%s, false))"
+                        ".selectByVisibleText(%s)" % (chain, _gq(a.get("text", ""))))
         elif kind == "wait_for":
-            if not by:
+            if not bys:
                 continue
-            body.append("  wait.until(ExpectedConditions.presenceOfElementLocated("
-                        "%s))" % by)
+            body.append("  find(%s, false)" % chain)
         elif kind == "assert_text":
-            body.append("  assert WDS.browser.getPageSource().contains('%s') : "
-                        "'missing: %s'" % (a["text"], a["text"]))
+            body.append("  assert WDS.browser.getPageSource().contains(%s) : %s"
+                        % (_gq(a["text"]), _gq("missing: " + a["text"])))
         elif kind == "sleep":
             body.append("  Thread.sleep(%d)" % int(a["ms"]))
         elif kind == "script":
@@ -775,10 +881,13 @@ def groovy_from_actions(actions):
         "  WDS.sampleResult.setSuccessful(true)",
         "} catch (Throwable t) {",
         "  WDS.sampleResult.setSuccessful(false)",
-        "  WDS.sampleResult.setResponseMessage(t.toString())",
+        "  WDS.sampleResult.setResponseCode('500')",
+        # one line, capped: a Selenium exception carries the whole capability
+        # dump, and the dashboard's listener rejects a metric whose message
+        # spans lines - which is why a failed browser run showed no errors
+        "  def msg = t.toString().readLines()[0]",
+        "  WDS.sampleResult.setResponseMessage(msg.size() > 300 ? msg[0..299] : msg)",
         "  WDS.log.error(t.toString())",
-        "} finally {",
-        "  WDS.sampleResult.sampleEnd()",
         "}",
     ]
     return "\n".join(head + body + tail)
@@ -1390,25 +1499,43 @@ def build_plan(spec):
     for csv in spec.get("csv", []):
         children += build_csv(csv)
 
+    # `webdriver:` makes this a browser test: the recorded journey runs as
+    # WebDriver samplers, one Chrome per thread, and nothing else is in the
+    # plan. A browser test and an API test scale differently (a handful of
+    # browsers per engine against thousands of protocol users), and one plan
+    # carrying both would take one user count for the two.
     wd = spec.get("webdriver")
-    if wd:
-        wd = dict(wd)
-        wd.setdefault("driver_path", plat["driver_path"])
+    if wd is not None:
+        wd = dict(wd or {})
+        if not wd.get("driver_path"):
+            # an empty driver path is not "find one": the plugin passes it
+            # straight to Selenium, which fails with "The driver executable
+            # must exist". So a blank one means the runner's own pair - a
+            # chromedriver only drives the Chrome version it was built for.
+            runner = PLATFORMS["hyperexecute"]
+            wd["driver_path"] = plat["driver_path"] or runner["driver_path"]
+            if not wd.get("binary_path"):
+                wd["binary_path"] = plat["binary_path"] or runner["binary_path"]
         wd.setdefault("binary_path", plat["binary_path"])
-        wd.setdefault("headless", plat["headless"])
+        # a load runner has no display; a window is asked for, never assumed
+        wd.setdefault("headless", True)
         wd.setdefault("proxy", proxy)
+        groups = [tg for tg in spec.get("thread_groups", []) if _group_uses_webdriver(tg)]
+        if not groups:
+            raise ValueError("a browser test needs browser steps, and this plan has none - "
+                             "record with 'record browser steps' on, or build an API test")
+    else:
+        # An API test. A recorded browser group still leaves as the Playwright
+        # script, which needs nothing installed on the runner.
+        groups = [tg for tg in spec.get("thread_groups", []) if not tg.get("browser")]
 
-    if auth:
+    # the browser logs in through the page; a token fetched over HTTP is for
+    # the protocol samplers a browser test does not have
+    if auth and wd is None:
         children += build_auth_setup(auth)
 
-    for tg in spec.get("thread_groups", []):
-        # A recorded browser group is emitted only when the spec asks for
-        # WebDriver samplers. Without that it still leaves as a Playwright
-        # script, which is the better artifact for a journey and needs nothing
-        # installed on the runner.
-        if tg.get("browser") and not wd:
-            continue
-        if wd and _group_uses_webdriver(tg):
+    for tg in groups:
+        if wd is not None:
             tg = dict(tg, webdriver=wd, proxy=wd.get("proxy"))
         children += build_thread_group(tg, spec.get("defaults"))
 
@@ -1681,27 +1808,62 @@ def _plan_load(spec):
 # --------------------------------------------------------------------------
 
 
-def actions_to_steps(actions):
+def _dedupe_actions(actions):
+    """Drop the click a ticked checkbox records twice.
+
+    A checkbox produces a click (from the click handler) and a check (from the
+    change handler, which is the one that knows the new state). Replayed as two
+    steps the second undoes the first, so the box ends up as it started.
+    """
+    out = []
+    for act in actions or []:
+        if (out and (act.get("do") in ("check", "uncheck"))
+                and out[-1].get("do") == "click"
+                and out[-1].get("locators") == act.get("locators")
+                and act.get("locators")):
+            out[-1] = act                      # keep the one that knows the state
+            continue
+        out.append(act)
+    return out
+
+
+def actions_to_steps(actions, real_think_time=False, max_think_ms=30000):
     """Recorded GUI actions -> webdriver steps, grouped by transaction.
 
     The recorder emits a flat list because that is what actually happened; the
     spec wants them grouped the way the rest of a plan is grouped, so a browser
     test reads with the same shape as the protocol one.
+
+    The gaps between actions become think times when asked for, from the same
+    recording the protocol plan takes its own from: without them every browser
+    user clicks as fast as Chrome can render, which is not what a user does.
     """
+    actions = _dedupe_actions(actions)
+    gaps = []
+    for i, act in enumerate(actions):
+        nxt = actions[i + 1] if i + 1 < len(actions) else None
+        gap = 0
+        if real_think_time and nxt and act.get("at") and nxt.get("at"):
+            gap = max(0, min(int(nxt["at"]) - int(act["at"]), int(max_think_ms)))
+        gaps.append(gap if gap >= 100 else 0)   # a gap too short to be a pause
+
     groups = []
-    for act in actions or []:
+    for act in actions:
         tx = act.get("transaction") or "Flow"
         if not groups or groups[-1]["transaction"] != tx:
             groups.append({"transaction": tx, "steps": []})
         groups[-1]["steps"].append(act)
 
+    at_gap = {id(a): g for a, g in zip(actions, gaps)}
     out = []
     for grp in groups:
         inner = []
         for act in grp["steps"]:
-            inner.append({"type": "webdriver",
-                          "name": _action_name(act),
-                          "actions": [_action_spec(act)]})
+            step = {"type": "webdriver", "name": _action_name(act),
+                    "actions": [_action_spec(act)]}
+            if at_gap.get(id(act)):
+                step["think_time"] = at_gap[id(act)]
+            inner.append(step)
         out.append({"transaction": grp["transaction"], "steps": inner})
     return out
 
@@ -2440,6 +2602,18 @@ def spec_to_hyperexecute_yaml(spec, script="load_test.js", users=None, machines=
         "",
     ]
     return "\n".join(rows)
+
+
+def browser_groups(spec):
+    """Indices of the thread groups a browser test runs; empty for an API test.
+
+    The page lists what the .jmx will carry, and in a browser test that is the
+    browser groups and nothing else.
+    """
+    if spec.get("webdriver") is None:
+        return []
+    return [i for i, tg in enumerate(spec.get("thread_groups") or [])
+            if _group_uses_webdriver(tg)]
 
 
 def spec_has_browser_steps(spec):
@@ -3426,7 +3600,8 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         spec["thread_groups"].append({
             "name": "Browser journey", "browser": True,
             "threads": 1, "ramp_up": 1, "loops": 1,
-            "steps": actions_to_steps(recorded),
+            "steps": actions_to_steps(recorded, real_think_time=real_think_time,
+                                      max_think_ms=max_think_ms),
         })
 
     # A HAR without bodies (a plain network.har, or a proxy that dropped them)
@@ -4549,13 +4724,20 @@ NOISE_PATHS = re.compile(
     r"/cdn-cgi/(rum|speculation|challenge-platform|trace)|/__cf|/beacon(\.|/|$)|"
     r"/collect(\?|$)|/gtm\.js|/gtag/|/analytics/(event|collect)|/rum(\?|$)", re.I)
 
+# Trackers by the site they belong to. A bare name is a brand, matched against
+# the name of the host's site (hotjar for static.hotjar.com); a dotted one is a
+# whole domain. Matched as parts of the name, never as substrings: as
+# substrings "t.co" was inside auth.lambdatest.com and chat.company.com, and
+# "segment" inside segment.mycompany.com, so a customer's own login or chat
+# host was dropped as a tracker.
 TRACKER_HINTS = (
     "google-analytics", "googletagmanager", "doubleclick", "gstatic", "googleapis",
-    "facebook", "fbcdn", "snapchat", "tiktok", "bing.com", "bat.bing", "clarity.ms",
-    "hotjar", "crazyegg", "onetrust", "cookielaw", "segment", "mixpanel", "amplitude",
-    "newrelic", "nr-data", "sentry", "optimizely", "adsrvr", "adnxs", "criteo",
-    "linkedin", "licdn", "twitter", "t.co", "pinterest", "cloudflareinsights",
-    "hubspot", "intercom", "zendesk", "cdn.jsdelivr", "unpkg", "recaptcha",
+    "facebook", "fbcdn", "snapchat", "tiktok", "bing.com", "clarity.ms",
+    "hotjar", "crazyegg", "onetrust", "cookielaw", "segment.io", "segment.com",
+    "mixpanel", "amplitude", "newrelic", "nr-data", "sentry.io", "sentry-cdn",
+    "optimizely", "adsrvr", "adnxs", "criteo", "linkedin", "licdn", "twitter",
+    "t.co", "pinterest", "cloudflareinsights", "hubspot", "intercom", "zendesk",
+    "zdassets", "jsdelivr", "unpkg", "recaptcha",
 )
 
 
@@ -4578,14 +4760,63 @@ def _is_third_party(host, keep_hosts):
 
 
 def _looks_like_tracker(host):
-    h = (host or "").lower()
-    return any(t in h for t in TRACKER_HINTS)
+    h = (host or "").lower().rstrip(".")
+    if not h:
+        return False
+    brand = _reg_domain(h).split(".")[0]
+    for t in TRACKER_HINTS:
+        if "." in t:
+            if h == t or h.endswith("." + t):
+                return True
+        elif brand == t:
+            return True
+    return False
+
+
+# Endings under which each name belongs to someone different, so the site is
+# one label further in. Taking the last two labels of shop.example.co.uk gives
+# "co.uk", and every .co.uk host in the recording - trackers included - would
+# pass as the system under test. The hosting platforms are the same trap:
+# app-a.herokuapp.com and app-b.herokuapp.com are two customers, not one site.
+# Not the whole Public Suffix List, which is ~10k lines; the endings that
+# actually turn up in recordings.
+MULTI_PART_SUFFIXES = frozenset("""
+co.uk org.uk ac.uk gov.uk net.uk ltd.uk plc.uk me.uk nhs.uk
+com.au net.au org.au edu.au gov.au
+co.in net.in org.in gov.in ac.in firm.in gen.in ind.in
+co.nz net.nz org.nz govt.nz ac.nz
+co.jp ne.jp or.jp ac.jp go.jp
+co.kr or.kr ac.kr go.kr
+com.br net.br org.br gov.br
+com.mx org.mx gob.mx
+com.ar com.co com.pe com.uy com.ve com.ec com.bo com.py
+co.za org.za gov.za
+com.sg edu.sg gov.sg
+com.cn net.cn org.cn gov.cn
+com.hk org.hk com.tw org.tw
+com.my com.ph com.vn co.id or.id co.th in.th com.pk com.bd com.np com.lk
+com.tr com.sa com.eg com.ng co.ke co.il org.il ac.il com.qa com.kw com.om
+co.ae com.ua com.pl
+herokuapp.com azurewebsites.net cloudapp.net cloudfront.net amazonaws.com
+elasticbeanstalk.com appspot.com web.app firebaseapp.com github.io gitlab.io
+vercel.app netlify.app pages.dev workers.dev onrender.com fly.dev
+azurestaticapps.net blob.core.windows.net ngrok.io ngrok-free.app
+""".split())
+_SUFFIX_LABELS = max(x.count(".") + 1 for x in MULTI_PART_SUFFIXES)
 
 
 def _reg_domain(host):
-    """Rough registrable domain: last two labels (good enough for grouping)."""
-    parts = (host or "").split(".")
-    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+    """The site a host belongs to: example.com for api.example.com, and
+    example.co.uk for shop.example.co.uk. Good enough for grouping."""
+    parts = (host or "").lower().rstrip(".").split(".")
+    # an IP address is a site on its own: grouping 127.0.0.1 as "0.1" would
+    # take in every address that happens to end the same way
+    if len(parts) < 2 or ":" in host or all(p.isdigit() for p in parts):
+        return host
+    for k in range(_SUFFIX_LABELS, 1, -1):     # the longest listed ending wins
+        if len(parts) > k and ".".join(parts[-k:]) in MULTI_PART_SUFFIXES:
+            return ".".join(parts[-(k + 1):])
+    return ".".join(parts[-2:])
 
 
 def _var(name):
