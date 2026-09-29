@@ -50,7 +50,8 @@ async function authLookup(token) {
   if (!j || !j.username || !j.apiToken) {
     throw new Error("the TestMu AI account service answered without a username and API token");
   }
-  return { user: String(j.username), key: String(j.apiToken) };
+  return { user: String(j.username), key: String(j.apiToken),
+           email: j.email ? String(j.email) : "" };
 }
 
 /* The pair for an API call. Throws when signed out, so callers need no check
@@ -58,6 +59,13 @@ async function authLookup(token) {
 function authCreds() {
   if (!AUTH_ACCOUNT) throw new Error("sign in to TestMu AI first");
   return { user: AUTH_ACCOUNT.user, key: AUTH_ACCOUNT.key };
+}
+
+/* The signed-in account's email, for feedback to be attributed to. Empty when
+   signed out or when the account service did not send one; nothing depends on
+   it. Like the pair above it is only ever in memory. */
+function authEmail() {
+  return (AUTH_ACCOUNT && AUTH_ACCOUNT.email) || "";
 }
 
 /* ---- the gate ----------------------------------------------------------- */
@@ -228,4 +236,4 @@ function authReady() {
   });
 }
 
-window.AUTH = { ready: authReady, creds: authCreds };
+window.AUTH = { ready: authReady, creds: authCreds, email: authEmail };

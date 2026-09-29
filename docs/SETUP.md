@@ -455,6 +455,11 @@ TestMu AI account service and the HyperExecute API, as the account you are
 signed in to. There is no analytics, no telemetry
 and no third-party endpoint of any kind.
 
+The one outbound call you can make on purpose is **Feedback** in the page bar:
+a rating out of five, whatever you type in the box, and the email of the
+account you are signed in to. Nothing else is attached - no plan, no recording,
+no log - and nothing is sent unless you press Send.
+
 **Why does it need debugger permission? That sounds serious.**
 It is the only Chrome API that exposes response bodies, and correlation cannot
 work without them: finding a token in one response and wiring it into the next

@@ -44,6 +44,9 @@ The engine runs locally in WebAssembly; there is no server in the middle.
 - No analytics and no third-party endpoints. The only outbound calls are to the site
   you are recording, to the TestMu AI account service to look up the signed-in account,
   and, if you use it, to the HyperExecute API as that account. No access key is stored.
+- Feedback is opt-in: pressing **Feedback** and then **Send** submits a 1-5 rating,
+  the comment typed in the box, and the signed-in account's email address. Nothing is
+  sent otherwise.
 - The exported HAR is written to the user's own Downloads folder.
 
 ## Assets needed for the listing

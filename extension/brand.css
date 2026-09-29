@@ -187,3 +187,33 @@
 .tm-account:focus-visible { outline:none; box-shadow:var(--ring) }
 .tm-account[hidden] { display:none }
 .tm-account:not([hidden]) + .tm-controls { margin-left:0 }
+
+/* ---- feedback ------------------------------------------------------------
+   The bar button sits between the account chip and the window controls, and
+   opens the same kind of card the sign-in gate uses. Hidden while signed out,
+   because the gate is covering the page anyway. */
+.tm-feedback { margin-left:auto; margin-right:10px; font:11.5px var(--sans); color:var(--text-dim);
+               background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+               padding:3px 8px; cursor:pointer; white-space:nowrap }
+.tm-feedback:hover { background:var(--sunk); color:var(--text) }
+.tm-feedback:focus-visible { outline:none; box-shadow:var(--ring) }
+.tm-account:not([hidden]) + .tm-feedback { margin-left:0 }
+.tm-feedback + .tm-controls { margin-left:0 }
+body.signed-out .tm-feedback { display:none }
+
+.fbcard { max-width:420px }
+.fbstars { display:flex; gap:6px; margin:4px 0 16px }
+.fbstar { font-size:26px; line-height:1; color:var(--line); background:none; border:none;
+          padding:2px 4px; cursor:pointer; border-radius:var(--r) }
+.fbstar.on { color:#bf8700 }                       /* the dashboard's rating amber */
+.fbstar:hover { color:#bf8700 }
+.fbstar:focus-visible { outline:none; box-shadow:var(--ring) }
+.fblabel { display:block; font:12.5px var(--sans); color:var(--text-dim); margin:0 0 6px }
+.fbcard textarea { width:100%; box-sizing:border-box; resize:vertical; min-height:74px;
+                   font:13px var(--sans); color:var(--text); background:var(--surface);
+                   border:1px solid var(--line); border-radius:var(--r); padding:8px 10px }
+.fbcard textarea:focus-visible { outline:none; box-shadow:var(--ring); border-color:var(--brand) }
+.fbcard textarea:disabled { background:var(--sunk); color:var(--text-mute) }
+.fbrow { margin:14px 0 0 }
+.authnote.ok { color:var(--brand) }
+.authnote.warn { color:var(--warn) }

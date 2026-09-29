@@ -24,7 +24,7 @@ FILES=(
     popup.html popup.css popup.js
     run.html run.css run.js
     author.html author.css author.js
-    engine.js hx.js lt.js auth.js jmxcheck.js jmxcheck-worker.js replay.js jmxgen.py vendor
+    engine.js hx.js lt.js auth.js feedback.js jmxcheck.js jmxcheck-worker.js replay.js jmxgen.py vendor
     icons
 )
 
