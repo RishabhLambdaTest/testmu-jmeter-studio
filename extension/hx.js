@@ -110,6 +110,12 @@ async function hxError(action, response) {
         : `Check the username is the LambdaTest username rather than the ` +
           `sign-in email; both are on accounts.lambdatest.com/detail/profile.`));
   }
+  if (response.status === 429) {
+    const ra = response.headers.get("Retry-After");
+    return new Error(`${action}: HyperExecute is rate limiting this account (429)` +
+                     (ra ? ` - it asks for ${ra}s before retrying` : "") +
+                     ". Wait and try again; nothing was uploaded twice.");
+  }
   if (response.status >= 500) {
     return new Error(`${action}: HyperExecute returned HTTP ${response.status} — ` +
                      `a server-side error, worth retrying. ${reason}`);

@@ -99,6 +99,21 @@ async function ltFetch(url, headers, range, tries) {
       if (r.status === 401) throw new Error("the credentials were refused (401)");
       if (r.status === 403) throw new Error("those credentials cannot read this session (403)");
       if (r.ok || r.status === 206) return r;
+      if (r.status === 429) {
+        // rate limited: the server says how long to wait, and guessing is how
+        // a retry storm starts. Retry-After is seconds, or an HTTP date.
+        const ra = r.headers.get("Retry-After");
+        let waitMs = 0;
+        if (ra) {
+          const secs = parseInt(ra, 10);
+          waitMs = Number.isFinite(secs) && String(secs) === ra.trim()
+            ? secs * 1000 : Math.max(0, Date.parse(ra) - Date.now());
+        }
+        if (!waitMs || waitMs > 30000) waitMs = 2000 * (i + 1);
+        last = new Error("rate limited by the session log API (429)");
+        await new Promise(function (ok) { setTimeout(ok, waitMs); });
+        continue;
+      }
       last = new Error("HTTP " + r.status + " from the session log API");
     } catch (e) {
       if (/\b(401|403)\b/.test(e.message)) throw e;

@@ -188,3 +188,10 @@ textarea[rows="1"] { min-height: 0; height: 38px; resize: none;
 .recnum { color:var(--text-dim); font-size:12px }
 .recnum[hidden] { display:none }
 #recStart[hidden], #recLive[hidden], #recDone[hidden] { display:none }
+
+/* Someone who has asked the system for less movement has asked this page too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important;
+                           animation-iteration-count: 1 !important;
+                           transition-duration: .001ms !important; }
+}

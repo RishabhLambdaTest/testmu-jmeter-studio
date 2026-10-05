@@ -94,3 +94,10 @@ header h1 { letter-spacing:-.02em }
   .regionrow { grid-template-columns:minmax(0,1fr) 76px 30px }
   .regionrow .users { grid-column:1 / -1 }
 }
+
+/* Someone who has asked the system for less movement has asked this page too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important;
+                           animation-iteration-count: 1 !important;
+                           transition-duration: .001ms !important; }
+}
