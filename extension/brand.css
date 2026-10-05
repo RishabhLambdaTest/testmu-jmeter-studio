@@ -160,6 +160,12 @@
 .authgate { position:fixed; inset:0; z-index:1000; display:grid; place-items:center;
             padding:16px; background:rgba(246, 248, 250, .92) }
 .authgate[hidden] { display:none }
+
+/* The page bar stays reachable while the gate is up. Back, close and minimise
+   move you around; none of them touch what signing in protects, and a prompt
+   you cannot navigate away from is a trap - you would have to hunt down the
+   window to close it. */
+body.signed-out .pagebar { position:relative; z-index:1001 }
 .authcard { max-width:380px; width:100%; background:var(--surface);
             border:1px solid var(--line); border-radius:var(--r-lg);
             box-shadow:var(--shadow); padding:22px 22px 18px; text-align:left }
@@ -170,6 +176,14 @@
                       border:1px solid transparent; border-radius:var(--r);
                       padding:7px 14px; font:600 13px var(--sans); cursor:pointer }
 .authcard button.go:hover { background:var(--brand-hi) }
+
+/* Back to authoring. The run page is a step of the studio, not a window of its
+   own, so the way back belongs in the bar beside the account. */
+.tm-back { background:none; border:1px solid var(--line); border-radius:var(--r);
+           color:var(--text-dim); font:500 12px var(--sans); padding:5px 10px;
+           cursor:pointer; margin-left:auto }
+.tm-back:hover { color:var(--text); border-color:var(--line-strong, var(--line)) }
+.tm-back:focus-visible { outline:none; box-shadow:var(--ring) }
 .authcard button.go:focus-visible { outline:none; box-shadow:var(--ring) }
 .authcard button.go:disabled { background:var(--line); color:var(--text-mute); cursor:default }
 .authcard button[hidden] { display:none }

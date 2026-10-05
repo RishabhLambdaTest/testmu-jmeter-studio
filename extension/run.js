@@ -11,9 +11,10 @@ const KEYS = ["project", "projectId", "regions",
 const CHECKS = ["splitcsv"];
 
 /* The plan is handed over in session storage rather than by a server session:
-   the authoring page built it in-process, so there is no id to look up. */
-const HANDOFF = new URLSearchParams(location.search).get("handoff") || null;
+   the authoring page built it in-process, so there is no id to look up. One
+   key, read but never consumed on arrival - see pages.js. */
 let PLAN = null;          // {jmx, name, load} from the authoring page
+let SUBMITTING = false;   // an upload or trigger is in flight
 // the authoring page passes the name already chosen there, so it is not retyped
 const WANTED_NAME = new URLSearchParams(location.search).get("name") || "";
 let EXTRA = [];
@@ -519,15 +520,19 @@ async function prefillLoad() {
 
 /* Pick up the plan the authoring page put in session storage. */
 async function takeHandoff() {
-  if (!HANDOFF) return;
-  const got = await chrome.storage.session.get(HANDOFF);
-  PLAN = got[HANDOFF] || null;
-  if (PLAN) {
-    await chrome.storage.session.remove(HANDOFF);   // one-shot
-    if (PLAN.name) $("planName").value = PLAN.name;
-  }
+  PLAN = await Pages.readPlan();
+  if (PLAN && PLAN.name) $("planName").value = PLAN.name;
   // only now is it known whether a plan was handed over at all
   INCLUDE_GEN = !!PLAN;
+}
+
+/* Back to authoring, in this tab: the run page is a step of the studio, not a
+   window of its own. The plan is kept, so this costs nothing - except in the
+   middle of an upload, which is worth one question. */
+function goBackToAuthoring() {
+  if (SUBMITTING &&
+      !confirm("An upload is in progress. Leave this page and stop watching it?")) return;
+  Pages.goTo("author.html", "?back=1");
 }
 
 // add to what is already queued rather than replacing it
@@ -602,6 +607,7 @@ async function submit(trigger) {
 
   if (trigger) planCautions().forEach((c) => addLog("warn", c));
 
+  SUBMITTING = true;
   $("go").disabled = $("uploadOnly").disabled = true;
   show($("msg"), trigger ? "creating project, uploading and triggering…" : "uploading…", "info");
   try {
@@ -677,6 +683,7 @@ async function submit(trigger) {
       show($("msg"), `${created ? "created" : "using"} project ${projectId} · ` +
                      `uploaded ${files.length} file(s) · not triggered`, "ok");
       link(`${HX.HX_UI}/projects`, "open the project");
+      await Pages.clearPlan();
       return;
     }
 
@@ -698,10 +705,12 @@ async function submit(trigger) {
     const jobUrl = HX.hxJobUrl(jobId);
     link(jobUrl, "open the job");
     addLog("ok", "job dashboard: " + jobUrl);
+    await Pages.clearPlan();
   } catch (e) {
     addLog("error", String(e.message || e));
     show($("msg"), String(e.message || e), "err");
   } finally {
+    SUBMITTING = false;
     $("go").disabled = $("uploadOnly").disabled = false;
   }
 }
@@ -788,6 +797,8 @@ $("uploadOnly").onclick = () => submit(false);
   if (PLAN) addLog("info", `plan received: ${planName()} (${Math.round(PLAN.jmx.length / 1024)} KB)`);
   showRoute();
 })();
+
+if ($("back")) $("back").onclick = goBackToAuthoring;
 
 /* Page chrome. In the studio's own window these minimise and maximise that
    window; in an ordinary tab there is nothing to minimise, so they do the

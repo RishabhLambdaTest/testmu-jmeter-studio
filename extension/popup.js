@@ -211,17 +211,7 @@ async function saveRecordingOptions() {
    means to most people: a thing that can be minimised, maximised and closed
    from its own title bar, and that survives switching browser tabs. */
 async function openAuthor(search, asWindow) {
-  const base = chrome.runtime.getURL("author.html");
-  const url = base + (search || "");
-  const open = await chrome.tabs.query({ url: base + "*" });
-  if (open.length) {
-    await chrome.tabs.update(open[0].id, { active: true, ...(search ? { url } : {}) });
-    await chrome.windows.update(open[0].windowId, { focused: true }).catch(() => {});
-  } else if (asWindow) {
-    await chrome.windows.create({ url, type: "popup", width: 1180, height: 900 });
-  } else {
-    await chrome.tabs.create({ url, active: true });
-  }
+  await Pages.openStudio("author.html", { search, asWindow });
   window.close();
 }
 

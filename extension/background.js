@@ -6,7 +6,7 @@
  * along in `_jmxgen` fields, which the HAR spec allows and other tools ignore.
  */
 
-importScripts("db.js");
+importScripts("db.js", "pages.js");
 
 /* ---- signing in ---------------------------------------------------------
    Recording is gated as well as authoring. The check lives here rather than
@@ -714,24 +714,16 @@ async function harHandoff(options) {
 
   const q = new URLSearchParams({ mode: "har", from: "recording", go: "1" });
   if (options && options.open === "hyperexecute") q.set("then", "hx");
-  const base = chrome.runtime.getURL("author.html");
-  const url = base + "?" + q.toString();
   // one authoring tab, reused: building three plans should not leave three
   // identical tabs behind, and the newest is the one being looked at
-  const open = await chrome.tabs.query({ url: base + "*" });
-  if (open.length) {
-    await chrome.tabs.update(open[0].id, { url, active: true });
-    await chrome.windows.update(open[0].windowId, { focused: true }).catch(() => {});
-  } else {
-    await chrome.tabs.create({ url, active: true });
-  }
+  await Pages.openStudio("author.html", { search: "?" + q.toString() });
   return { count: state.count };
 }
 
 // Run on HyperExecute without a recording - straight to the form, where the user
 // can add a .jmx they already have.
 async function openHyperExecute() {
-  await chrome.tabs.create({url: chrome.runtime.getURL("run.html"), active: true});
+  await Pages.openStudio("run.html");
   return {opened: true};
 }
 

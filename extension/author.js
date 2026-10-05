@@ -273,8 +273,36 @@ async function reportScale(data, nreq) {
 
 /* ---- generate ---------------------------------------------------------- */
 
+/* What this is about to cost, before it costs it.
+ *
+ * A plan carries a sampler per request. Measured: 20,000 requests build a
+ * 51 MB plan in about nine seconds, and HyperExecute refuses a .jmx over 50 MB
+ * - so the wait produces a file that cannot be used. The size is knowable from
+ * the recording before the engine starts, and a question asked first is worth
+ * more than a warning printed afterwards. */
+async function scaleOkBeforeBuilding() {
+  if (!FROM_RECORDING) return true;           // only the recorder knows its size up front
+  let n = 0;
+  try { n = await CaptureRead.count(); } catch (e) { return true; }
+  if (n <= SAMPLER_BUDGET) return true;
+  const mb = (n * 2.6 / 1024).toFixed(1);     // ~2.6 KB of plan per request, measured
+  const go = confirm(
+    `This recording holds ${n} requests, so the plan will have about that many ` +
+    `samplers (roughly ${mb} MB).\n\n` +
+    `Past about ${SAMPLER_BUDGET} the plan tree itself becomes the memory cost on ` +
+    `every thread, and HyperExecute refuses a .jmx over 50 MB.\n\n` +
+    `Narrow it first with Traffic filters or by picking fewer transactions, or ` +
+    `press OK to build it anyway.`);
+  if (!go) {
+    say("not built - narrow the traffic, then Generate again", "info");
+    addLog("info", `build cancelled at ${n} requests`);
+  }
+  return go;
+}
+
 $("go").onclick = async () => {
   const mode = $("mode").value;
+  if (!(await scaleOkBeforeBuilding())) return;
   const opts = {
     traffic: $("traffic").value,
     methods: $("methods").value.trim(),
@@ -1035,25 +1063,22 @@ $("k6dl").onclick = async () => {
 };
 
 $("ship").onclick = async () => {
-  if (!STATE) return;
+  // nothing to ship, and saying so beats a button that looks live and does
+  // nothing when pressed
+  if (!STATE) return say("generate a plan first", "err");
   if (!gateOrExplain(STATE.jmx, "the plan")) return;
-  // hand the plan over in session storage: it was built in this page, so there
-  // is no server session for the run page to look up
-  const keyName = "handoff-" + Date.now().toString(36);
   try {
-    await chrome.storage.session.set({
-      [keyName]: { jmx: STATE.jmx, name: stem() + ".jmx", load: STATE.load || {} },
-    });
+    // the plan the run page uploads, and everything this page is showing, so
+    // that Back comes back to the plan rather than to an empty form
+    await Pages.putPlan({ jmx: STATE.jmx, name: stem() + ".jmx", load: STATE.load || {} });
+    await Pages.putAuthored({ state: STATE, planName: $("planName").value, mode: $("mode").value });
   } catch (e) {
-    // session storage is ten megabytes, and a plan that large is unusual but
-    // possible from a long recording kept in web mode
-    return say("the plan is too large to hand over - download the .jmx and " +
-               "attach it on the run page instead", "err");
+    return say("the plan could not be carried over: " + (e.message || e) +
+               " - download the .jmx and attach it on the run page instead", "err");
   }
-  chrome.tabs.create({
-    url: chrome.runtime.getURL("run.html") + "?handoff=" + encodeURIComponent(keyName),
-    active: true,
-  });
+  // the next step of this page, in this tab and this window. Opening a second
+  // page used to strand this one in a window of its own with no way back.
+  Pages.goTo("run.html");
 };
 
 /* ---- a recording handed over by the popup ------------------------------
@@ -1087,6 +1112,28 @@ async function streamRecordingToEngine() {
 /* The transactions you named while recording, with what each one holds. This
    is how a two-hour session becomes a plan someone would run: tick Login,
    Search and Checkout, leave the forty minutes of reading behind. */
+/* What the recording holds, re-read rather than remembered.
+ *
+ * This line used to be written once, when the page opened, while the recorder
+ * banner above it went on counting live. Recording for another minute left two
+ * numbers on the same screen disagreeing - "217 captured" over "128 on disk" -
+ * with nothing to say that the lower one was simply old. */
+let SUMMARY_AT = 0;
+async function refreshRecordingSummary() {
+  if (!FROM_RECORDING) return;
+  SUMMARY_AT = Date.now();
+  const n = await CaptureRead.count();
+  const txs = await showSegments();
+  /* Only invite someone to untick something when there is a list to untick.
+     A single transaction renders no rows, so the instruction pointed at empty
+     space and read like a control that had failed to load. */
+  $("segSummary").textContent = txs.length > 1
+    ? `${n} request(s) on disk across ${txs.length} transaction(s). ` +
+      `Untick what this plan should leave out.`
+    : `${n} request(s) on disk, in one unnamed group. Set a Transaction in ` +
+      `the panel while recording to split the next one into named steps.`;
+}
+
 async function showSegments() {
   const txs = await CaptureRead.transactions();
   const list = $("segList");
@@ -1182,7 +1229,12 @@ function wireRecCard() {
   };
   // the background tells every open page when the session changes
   chrome.runtime.onMessage.addListener((m) => {
-    if (m && m.type === "status") renderRec(m.status);
+    if (!m || m.type !== "status") return;
+    renderRec(m.status);
+    // the recorder broadcasts per request; the disk count costs a cursor walk,
+    // so it is re-read about once a second, and always once recording stops
+    const stopped = !(m.status && m.status.recording);
+    if (stopped || Date.now() - SUMMARY_AT > 1000) refreshRecordingSummary();
   });
   recStatus();
 }
@@ -1207,17 +1259,26 @@ async function useRecordingOnDisk() {
   $("mode").value = "har";
   syncInputs();
   $("segments").hidden = false;
-  const txs = await showSegments();
-  /* Only invite someone to untick something when there is a list to untick.
-     A single transaction renders no rows, so the instruction pointed at empty
-     space and read like a control that had failed to load. */
-  $("segSummary").textContent = txs.length > 1
-    ? `${n} request(s) on disk across ${txs.length} transaction(s). ` +
-      `Untick what this plan should leave out.`
-    : `${n} request(s) on disk, in one unnamed group. Set a Transaction in ` +
-      `the panel while recording to split the next one into named steps.`;
+  await refreshRecordingSummary();
   say(`recording loaded - ${n} request(s) on disk`, "ok");
   addLog("ok", `recording found - ${n} request(s)`);
+  return true;
+}
+
+/* Coming back from the run page. The plan is not rebuilt - it is the one that
+   was carried over - so Back costs nothing and loses nothing. */
+async function restoreAuthored() {
+  let snap = null;
+  try { snap = await Pages.readAuthored(); } catch (e) { snap = null; }
+  if (!snap || !snap.state) {
+    say("the plan from before could not be restored - generate it again", "warn");
+    return false;
+  }
+  STATE = snap.state;
+  if (snap.mode) { $("mode").value = snap.mode; syncInputs(); }
+  if (snap.planName) $("planName").value = snap.planName;
+  render();
+  addLog("ok", "back from the run page - showing the plan you built");
   return true;
 }
 
@@ -1226,6 +1287,15 @@ async function useRecordingOnDisk() {
 (async () => {
   await load();
   await loadModes();
+
+  /* Back from the run page shows the plan FIRST: before the engine, and before
+     the sign-in gate, which does not resolve at all until someone signs in.
+     Behind that await, Back was a blank authoring form - the plan was still
+     there, nothing on screen said so. */
+  const q = new URLSearchParams(location.search);
+  const backing = q.get("back") === "1";
+  if (backing) await restoreAuthored();
+
   await AUTH.ready();    // the gate covers the page until someone is signed in
   // Boot the engine up front so the first Generate is not the slow one.
   try {
@@ -1238,8 +1308,9 @@ async function useRecordingOnDisk() {
   engineStatus();
 
   // only now can anything be generated: the engine is up
-  const q = new URLSearchParams(location.search);
   wireRecCard();
+  if (backing) return;          // the plan is already on screen
+
   const handed = await takeRecording();
   if (handed && q.get("go") === "1") {
     await $("go").onclick();

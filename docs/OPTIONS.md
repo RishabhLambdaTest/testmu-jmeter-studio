@@ -612,6 +612,20 @@ Reached with *Run on HyperExecute…*, from either the popup or the authoring
 page. [SETUP.md](SETUP.md#5-running-it-on-hyperexecute) walks the five steps it
 performs in order; this is what each control is for.
 
+**This is a step of the studio, not a window of its own.** *Run on
+HyperExecute…* navigates the page you are already looking at, so the studio
+stays one page, in the tab and window you launched it in. **← Authoring** in
+the top bar goes back and shows the plan you built, without rebuilding it.
+
+Before, Run opened a second page. If the studio had been maximised into a
+window of its own that page could not go there at all - a Chrome popup window
+holds no tabs - so it landed in another window, leaving the authoring page live
+somewhere behind it with nothing to connect the two and no way back.
+
+Every field here is saved as you type, and the plan survives a reload or a trip
+back to authoring. Both are kept in IndexedDB rather than session storage, so a
+large plan is carried whole instead of being refused at ten megabytes.
+
 ## Account
 
 There are no credential fields, and no access key to find. The page uses the
