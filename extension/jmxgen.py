@@ -447,6 +447,90 @@ def build_chrome_config(cfg, proxy=None):
 # --------------------------------------------------------------------------
 
 
+def _is_navigation(entry, rtype, mime, method):
+    """Is this the browser opening a page, rather than a call from one?
+
+    Sec-Fetch-Dest is the browser's own answer and is believed first. The
+    Accept header is not used: jQuery sends "text/html, */*" on ordinary XHRs,
+    and reading that as a navigation renames steps after whatever widget
+    happened to poll."""
+    for h in (entry.get("request") or {}).get("headers") or []:
+        if (h.get("name") or "").lower() == "sec-fetch-dest":
+            return (h.get("value") or "").strip().lower() == "document"
+    if rtype in ("document", "navigation"):
+        return True
+    return method == "GET" and "text/html" in (mime or "").lower()
+
+
+def _step_label_from_url(url):
+    """A step name someone would recognise: the page, not the whole URL."""
+    try:
+        path = urllib.parse.urlsplit(url).path or "/"
+    except Exception:
+        path = "/"
+    path = path.rstrip("/") or "/"
+    if path == "/":
+        return "Open home"
+    return "Open " + path[-60:]
+
+
+def _assert_extraction(step, ex, where="body", src_body=""):
+    """Make a response that stopped carrying a value fail THE STEP THAT SERVED IT.
+
+    A JMeter extractor that finds nothing does not fail its sampler: it quietly
+    writes its default and the test carries on. Measured against a service that
+    had started answering 200 with an empty error body, that is exactly what
+    happened - the broken endpoint reported PASS, and the run failed three steps
+    later at the first request that used the missing value. The report then
+    pointed at a healthy service.
+
+    An extractor is a statement that a value is required, so the assertion says
+    the same thing where the value should have been. These never fire on a
+    response that still carries what was recorded, which is why they can be on
+    by default: anything they catch is a real change in the response.
+    """
+    kind = (ex.get("type") or "json").lower()
+    var = ex.get("var", "value")
+
+    # Assert where the value actually lives. A value taken from a redirect's
+    # Location header is not in the body - that response has no body at all -
+    # and asserting on the body there fails every run of a healthy server.
+    # Measured: three such assertions failed 100% of the time against the
+    # mock they were generated from.
+    field = "headers" if where == "headers" else "body"
+    if field == "body" and not (src_body or "").strip():
+        return
+    if kind == "json":
+        # a JSON path assertion on a body that is not JSON fails on a server
+        # that is behaving perfectly
+        try:
+            json.loads(src_body)
+        except Exception:
+            return
+
+    asserts = step.setdefault("assert", [])
+
+    def already(pred):
+        return any(pred(a) for a in asserts)
+
+    if kind == "json" and ex.get("query"):
+        if already(lambda a: a.get("query") == ex["query"]):
+            return
+        asserts.append({"type": "json", "query": ex["query"],
+                        "name": "Assert %s is present" % var})
+    elif kind in ("regex", "boundary"):
+        # the left boundary, or the regex itself, has to still be in the body
+        pattern = ex.get("left") if kind == "boundary" else ex.get("query")
+        if not pattern or len(pattern) < 3:
+            return
+        if kind == "boundary":
+            pattern = re.escape(pattern)
+        if already(lambda a: a.get("pattern") == pattern):
+            return
+        asserts.append({"field": field, "match": "contains", "pattern": pattern,
+                        "name": "Assert %s is present" % var})
+
+
 def build_extractor(ex):
     kind = (ex.get("type") or "json").lower()
     var = ex["var"]
@@ -3146,6 +3230,7 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
             var = ex["var"]
 
             src_step.setdefault("extract", []).append(ex)
+            _assert_extraction(src_step, ex, where, src_body)
             made[value] = var
             found.append({
                 "var": var,
@@ -3324,6 +3409,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
     in_root = {h: n for h, n in hosts.items()
                if h == keep_root or (keep_root and h.endswith("." + keep_root))}
     doc_host = ""
+    derived_tx = None       # the page the journey is on, until it opens another
     for e in entries:
         mime = ((e.get("response") or {}).get("content") or {}).get("mimeType", "")
         h_ = urllib.parse.urlsplit(e.get("request", {}).get("url", "")).hostname
@@ -3382,7 +3468,8 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
                 kept_targets.add(turl)
                 no_follow.add(pidx)
 
-    skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0}
+    skipped = {"static": 0, "third_party": 0, "filtered": 0, "preflight": 0,
+               "streaming": 0, "binary_body": 0}
     kept_by_host = {}
 
     for idx, e in enumerate(entries):
@@ -3414,6 +3501,15 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         # doubles the apparent request count of every cross-origin API.
         if method_ == "OPTIONS" and _is_cors_preflight(req):
             skipped["preflight"] += 1
+            continue
+
+        # A stream is not a request that finishes, and JMeter has no idea that
+        # it should not wait. An event-stream sampler sits there until the
+        # response timeout, holding its thread and adding that timeout to every
+        # percentile; a WebSocket upgrade needs a plugin JMeter does not ship
+        # and fails at 101. Neither measures anything, so neither is a sampler.
+        if rtype in ("eventsource", "websocket") or "event-stream" in mime.lower():
+            skipped["streaming"] += 1
             continue
 
         if mode == "api":
@@ -3463,7 +3559,11 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
                     "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user",
                     "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "upgrade-insecure-requests"):
                 continue
-            hdrs[n] = h.get("value", "")
+            # a header sent twice is one header with both values, not the
+            # last one seen (RFC 9110); browsers rarely do this, but silently
+            # dropping half of what was recorded is never right
+            v = h.get("value", "")
+            hdrs[n] = (hdrs[n] + ", " + v) if n in hdrs else v
         if hdrs:
             step["headers"] = hdrs
 
@@ -3489,6 +3589,15 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
 
         # steps authored by hand in the jmxgen Chrome recorder ride along in the
         # HAR as `_jmxgen` fields; the spec allows custom underscore keys
+        # A journey recorded without transaction names used to arrive as one
+        # unnamed group: a flat list of samplers, which is JMeter's own "do not
+        # group samplers" mode and makes a report impossible to read against
+        # the actions a user took. The navigations are boundaries the browser
+        # already recorded, so a page open starts a transaction named after it.
+        # A name typed in the recorder panel still wins over this.
+        if _is_navigation(e, rtype, mime, method_):
+            derived_tx = _step_label_from_url(url)
+
         ann = e.get("_jmxgen") or {}
         if ann.get("skip"):
             skipped["filtered"] += 1
@@ -3509,7 +3618,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         else:
             gname = (ann.get("transaction")
                      or page_titles.get(e.get("pageref"))
-                     or e.get("pageref") or "Recorded")
+                     or e.get("pageref") or derived_tx or "Recorded")
         gname = re.sub(r"\s+", " ", str(gname))[:70]
         if gname not in groups:
             groups[gname] = []
@@ -4452,7 +4561,81 @@ def verify(path, deep=False, quiet=False):
         for e in errors:
             print("  X  %s" % e)
         print("  %s" % ("VALID - ready to run" if not errors else "INVALID - fix the X lines above"))
+    warnings += _literal_credentials(root)
+    warnings += _binary_bodies(root)
+
     return errors, warnings
+
+
+# A credential written into the plan is two problems at once. The file is
+# uploaded to a runner and often shared or committed, so the secret travels
+# with it; and a token expires, so the plan starts failing some time later for
+# a reason nobody connects to the recording. Correlation handles tokens the
+# recording watched being issued - it cannot handle one that was already in the
+# browser when recording began, which is the ordinary case.
+CREDENTIAL_HEADERS = re.compile(
+    r"^(authorization|proxy-authorization|x-api-key|api-key|apikey|"
+    r"x-auth-token|auth-token|x-access-token|x-csrf-token|x-session-token)$", re.I)
+
+# a JWT, or any long opaque blob - the shape of an issued credential
+_JWTISH = re.compile(r"^[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+$")
+
+
+def _literal_credentials(root):
+    out = []
+    seen = set()
+    for hm in root.iter("HeaderManager"):
+        for el in hm.iter("elementProp"):
+            name = value = None
+            for sp in el.findall("stringProp"):
+                if sp.get("name") == "Header.name":
+                    name = (sp.text or "").strip()
+                elif sp.get("name") == "Header.value":
+                    value = (sp.text or "").strip()
+            if not name or not value:
+                continue
+            if "${" in value:                 # already a variable: nothing baked in
+                continue
+            if not CREDENTIAL_HEADERS.match(name):
+                continue
+            # "Bearer <token>" and bare tokens both count; a scheme word alone
+            # (a stale "Basic" with nothing after it) does not
+            tail = value.split(None, 1)[1] if " " in value else value
+            if len(tail) < 12 and not _JWTISH.match(tail):
+                continue
+            if name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            out.append(
+                "%s is written into the plan as a literal credential. It will be "
+                "uploaded with the .jmx and will expire. Replace the value with "
+                "${TOKEN} and add TOKEN to User Defined Variables, or record the "
+                "login so it can be correlated." % name)
+    return out
+
+
+def _binary_bodies(root):
+    """A HAR carries a request body as text and has no encoding field for it,
+    so a PNG or a zip comes back mangled. The upload replays, the server
+    rejects it, and nothing about the plan looks wrong."""
+    out = []
+    for s_ in root.iter("HTTPSamplerProxy"):
+        name = s_.get("testname") or "a request"
+        for sp in s_.iter("stringProp"):
+            if sp.get("name") != "Argument.value" or not sp.text:
+                continue
+            body = sp.text
+            if len(body) < 64:
+                continue
+            odd = sum(1 for c in body[:2000] if ord(c) < 9 or 13 < ord(c) < 32 or ord(c) == 127)
+            if odd > 4:
+                out.append(
+                    "%s carries what looks like a binary body. A HAR stores request "
+                    "bodies as text, so those bytes are already mangled and the "
+                    "upload will not replay - attach the file to the run instead."
+                    % name)
+                break
+    return out
 
 
 REPLAY_COLLECTOR = """<ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="jmxgen replay" enabled="true">
