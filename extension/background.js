@@ -259,12 +259,18 @@ function iso(ms) {
    from being dropped - and with the recording on disk, nothing before it is
    lost either. */
 
-/* The page a request belongs to, not the request's own host.
+/* Where the tab itself went - not where its requests went.
  *
- * A third-party script or image carries the page's documentURL, so this stays
- * quiet through all the ordinary cross-host traffic a site makes, and speaks
- * only when the tab itself is somewhere new - a login hop, a payment provider,
- * or a tab taken off to read mail halfway through a recording.
+ * This counted every request's documentURL to begin with, which was wrong in a
+ * way only a real page shows: an app built from iframes, Gmail being the one
+ * that caught it, reports a different documentURL for each frame, and the panel
+ * filled with twenty Google hosts while the person had been on exactly one
+ * site. The question is not which hosts a page talks to - a page talks to many,
+ * and the host picker on the authoring page already deals with that. It is
+ * which sites this recording has been taken to.
+ *
+ * So it follows the tab's own address, from the one event that means the tab
+ * moved. One site visited is one line, however many hosts it fetches from.
  *
  * It does not stop the capture. Stopping it would break the SSO and payment
  * redirects this recorder exists to catch, and those are the journeys worth
@@ -307,7 +313,6 @@ function onEvent(source, method, params) {
   if (method === "Network.requestWillBeSent") {
     const r = params.request || {};
     if (!/^https?:/i.test(r.url || "")) return;
-    noteOrigin(params.documentURL || r.url);
     if (params.redirectResponse) {
       // same requestId as the hop being redirected - finish it or it is lost,
       // which would silently drop every step of an SSO / auth redirect chain
@@ -687,6 +692,12 @@ async function start(tabId) {
   await enableCapture(tabId);
   await beginCapture();
   state = freshState(tabId);
+  // the tab is already on a page, and onUpdated will not fire for one that has
+  // already loaded, so the site being recorded is seeded here
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.url) noteOrigin(tab.url);
+  } catch (e) { /* the tab's url is a convenience, never a reason to fail */ }
   await persist();
   broadcast();
   return statusPayload();
@@ -967,6 +978,16 @@ async function attachExtra(tabId) {
   await persist();
   return true;
 }
+
+/* The tab moved: `status` fires on the committed top-level navigation, which
+   is exactly the moment the recording is somewhere new. */
+chrome.tabs.onUpdated.addListener(async (tabId, change) => {
+  if (!change.url) return;
+  await restore();
+  if (!state || state.stopped) return;
+  if (!(state.tabIds || [state.tabId]).includes(tabId)) return;
+  noteOrigin(change.url);
+});
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   await restore();

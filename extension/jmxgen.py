@@ -646,7 +646,11 @@ def build_assertion(a):
         return build_size_assertion(a)
     field = _ASSERT_FIELD[(a.get("field") or "body").lower()]
     ttype = _ASSERT_TYPE[(a.get("match") or "contains").lower()]
-    patterns = a.get("patterns") or [a["pattern"]]
+    patterns = a.get("patterns") or ([a["pattern"]] if "pattern" in a else [])
+    if not patterns:
+        # an assertion with nothing to match is not worth a traceback that
+        # costs the plan: it asserts nothing, so it is left out
+        return []
     body = ['<collectionProp name="Asserion.test_strings">']
     for p in patterns:
         body.append("  " + sp(str(abs(hash(p)) % 10**9), p))
@@ -1866,9 +1870,14 @@ def apply_edit(spec, edit):
         ms = int(edit.get("value") or 1000)
         steps.insert(i + 1, {"pause": ms})
     elif op == "assert":
+        # Assert 200 sends no value, and {"code": 200} was not an assertion any
+        # builder could read - it has no pattern, so the next build died with
+        # KeyError: 'pattern' and went on dying, because the edit is replayed
+        # every time. It is spelled the way every other code assertion is.
         node.setdefault("assert", []).append(
-            {"field": "body", "match": "contains", "pattern": str(edit.get("value") or "")}
-            if edit.get("value") else {"code": 200})
+            {"field": "body", "match": "contains", "pattern": str(edit["value"])}
+            if edit.get("value")
+            else {"field": "code", "match": "equals", "pattern": "200"})
     elif op == "extract":
         var = str(edit.get("var") or "VALUE").strip().upper().replace(" ", "_")
         node.setdefault("extract", []).append(
