@@ -286,18 +286,16 @@ async function scaleOkBeforeBuilding() {
   try { n = await CaptureRead.count(); } catch (e) { return true; }
   if (n <= SAMPLER_BUDGET) return true;
   const mb = (n * 2.6 / 1024).toFixed(1);     // ~2.6 KB of plan per request, measured
-  const go = confirm(
-    `This recording holds ${n} requests, so the plan will have about that many ` +
-    `samplers (roughly ${mb} MB).\n\n` +
-    `Past about ${SAMPLER_BUDGET} the plan tree itself becomes the memory cost on ` +
-    `every thread, and HyperExecute refuses a .jmx over 50 MB.\n\n` +
-    `Narrow it first with Traffic filters or by picking fewer transactions, or ` +
-    `press OK to build it anyway.`);
-  if (!go) {
-    say("not built - narrow the traffic, then Generate again", "info");
-    addLog("info", `build cancelled at ${n} requests`);
-  }
-  return go;
+  /* Said, not asked. A modal in front of the build was the wrong trade: it
+     stopped the common case (a long recording someone meant to build) to warn
+     about the rare one, and a native confirm() cannot be styled to look like
+     the rest of the studio. The number is still worth knowing, so it goes to
+     the log, where it does not stand between anyone and their plan. */
+  addLog("warn",
+    `${n} requests - about ${mb} MB of plan. Past ~${SAMPLER_BUDGET} samplers the ` +
+    `tree itself costs memory on every thread, and HyperExecute refuses a .jmx ` +
+    `over 50 MB. Traffic filters or fewer transactions will narrow it.`);
+  return true;
 }
 
 $("go").onclick = async () => {

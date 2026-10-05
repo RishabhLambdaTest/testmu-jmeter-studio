@@ -3147,8 +3147,53 @@ def _extractor_from_headers(value, headers_text, label):
 CORRELATION_HORIZON = 300
 
 
+
+def _request_text(entry):
+    """Everything the client sent: the url, the header values, and the body."""
+    req = entry.get("request") or {}
+    parts = [req.get("url") or ""]
+    for h in req.get("headers") or []:
+        parts.append(h.get("value") or "")
+    pd = req.get("postData") or {}
+    parts.append(pd.get("text") or "")
+    return "\n".join(parts)
+
+
+def _server_issued(value, here, sources, req_texts):
+    """True when a response carried this value before any request ever did.
+
+    The shape heuristics below ask what a value looks like, and a server-issued
+    id that happens to be readable - "cart-9912", "ord-1042", a plain row id -
+    looks exactly like a constant. On a session of ordinary sequential ids they
+    find nothing at all, and the plan is built with every user replaying one
+    recorded id.
+
+    This asks a different question, the one LoadRunner calls recording-based
+    correlation and NeoLoad calls searching for generic dynamic parameters: who
+    said it first. A client cannot send a value the server has not yet given it,
+    so a value that appears in a response and only afterwards in a request is
+    dynamic by construction, whatever it looks like.
+
+    The ordering is also what keeps constants out. A locale, an api version or a
+    page size is sent by the client from the first request, before any response
+    could have carried it, so it never qualifies however often it recurs.
+    """
+    if len(value) < 4:
+        return False
+    for p in range(here - 1, -1, -1):
+        j, body, headers = sources[p]
+        if (body and value in body) or (headers and value in headers):
+            # the response that first carried it - now make sure the client was
+            # not already sending it before that
+            for q in range(0, p + 1):
+                if value in req_texts[q]:
+                    return False
+            return True
+    return False
+
+
 def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
-               horizon=CORRELATION_HORIZON):
+               horizon=CORRELATION_HORIZON, stats=None):
     """Wire values a later request sends back to the response that produced them.
 
     Returns provenance for every correlation so the result is reviewable rather
@@ -3156,22 +3201,31 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
     kept requests; 0 or None searches the whole session."""
     rules = rules if rules is not None else CORRELATION_RULES
     sources = []
+    req_texts = []
     for idx in kept:
         entry = entries[idx]
         content = (entry.get("response") or {}).get("content") or {}
         sources.append((idx, content.get("text") or "", _response_headers(entry)))
+        req_texts.append(_request_text(entry))
 
     # position within `sources`, so the search can start at the nearest
     # preceding response rather than walking from the beginning of the session
     pos_of = {src[0]: p for p, src in enumerate(sources)}
 
     found, made, taken = [], {}, set()
+    capped = 0
     for idx in kept:
         step = steps_by_entry.get(idx)
         if step is None:
             continue
         for label, value in _candidate_values(entries[idx].get("request") or {}):
-            if value in made or len(found) >= limit:
+            if value in made:
+                continue
+            if len(found) >= limit:
+                # the cap exists so a pathological session cannot produce a
+                # plan that is mostly extractors; passing it silently used to
+                # mean a long session was quietly half-correlated
+                capped += 1
                 continue
             rule = _match_rule(label, rules)
             # A value short enough to occur by accident is not an id worth
@@ -3180,7 +3234,11 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
             from_path = (label.endswith("_id") and len(value) >= 4
                          and value in (entries[idx].get("request")
                                        or {}).get("url", ""))
-            if not rule and not _is_dynamic(value, label) and not from_path:
+            # what it looks like, then - failing that - who said it first
+            issued = (not rule and not _is_dynamic(value, label) and not from_path
+                      and _server_issued(value, pos_of.get(idx, len(sources)),
+                                         sources, req_texts))
+            if not rule and not _is_dynamic(value, label) and not from_path and not issued:
                 continue
             if rule and not _is_dynamic(value, label) and len(value) < 4:
                 continue
@@ -3243,6 +3301,11 @@ def _correlate(entries, kept, steps_by_entry, limit=60, rules=None,
                 "source_step": src_step.get("name", "?"),
                 "used_in": step.get("name", "?"),
             })
+
+    # the overflow goes to the caller, never into `found`: that list is the
+    # correlation table the page draws and the count it reports
+    if stats is not None:
+        stats["capped"] = capped
 
     if made:
         def substitute(node_):
@@ -3653,7 +3716,9 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             if isinstance(t, (int, float)) and t > 0:
                 st_["think_time"] = {"min": int(t * 0.5), "max": int(t * 1.5)}
 
-    correlated = (_correlate(entries, kept, steps_by_entry, rules=rules)
+    corr_stats = {}
+    correlated = (_correlate(entries, kept, steps_by_entry, rules=rules,
+                             stats=corr_stats)
                   if correlate else [])
     plan_ann = (log.get("_jmxgen") or {}) if isinstance(log.get("_jmxgen"), dict) else {}
 
@@ -3728,6 +3793,7 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
 
     return spec, {"kept": len(kept), "total": len(entries), "skipped": skipped,
                   "correlated": correlated, "pages": len(order),
+                  "correlations_capped": corr_stats.get("capped", 0),
                   "actions": len(recorded), "bodies_missing": bodies_missing,
                   "no_response_bodies": no_response_bodies,
                   # every host the recording touched, so the page can offer the
@@ -6653,11 +6719,13 @@ def doctor():
     return 0
 
 
-def _report_correlations(found, report_path=None):
+def _report_correlations(found, report_path=None, capped=0):
     """Print what was correlated and why - a silent rewrite is not reviewable."""
     if not found:
         print("  no dynamic values correlated "
               "(nothing a later request sent came from an earlier response)")
+        print("  if this journey signs in or carries a cart, that is a warning, "
+              "not a clean bill: every user will replay the recorded values")
         return
     print("  correlated %d value(s):" % len(found))
     for c in found:
@@ -6668,6 +6736,10 @@ def _report_correlations(found, report_path=None):
     if weak:
         print("  %d of those matched no rule - review them before a long run"
               % len(weak))
+    if capped:
+        print("  %d more dynamic value(s) were found and NOT wired - the plan "
+              "stops at %d. Narrow the recording, or raise the limit."
+              % (capped, len(found)))
     if report_path:
         with open(report_path, "w", encoding="utf-8") as fh:
             json.dump(found, fh, indent=2)
@@ -7068,7 +7140,7 @@ def main():
               % (info["kept"], info["total"], info["pages"],
                  sk["static"], sk["third_party"], sk["filtered"],
                  ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
-        _report_correlations(info["correlated"], getattr(a, "correlation_report", None))
+        _report_correlations(info["correlated"], getattr(a, "correlation_report", None), info.get("correlations_capped", 0))
         if not info["kept"]:
             sys.exit("nothing left after filtering - loosen --include/--exclude "
                      "or pass --keep-third-party/--keep-static")
@@ -7109,7 +7181,7 @@ def main():
               % (info["kept"], info["total"], info["pages"],
                  sk["static"], sk["third_party"], sk["filtered"],
                  ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
-        _report_correlations(info["correlated"], getattr(a, "correlation_report", None))
+        _report_correlations(info["correlated"], getattr(a, "correlation_report", None), info.get("correlations_capped", 0))
         if not info["kept"]:
             sys.exit("nothing was captured that looks like application traffic")
         rc = _emit(spec, a.out, a.spec, a.deep)
@@ -7132,7 +7204,7 @@ def main():
         print("kept %d of %d captured requests (dropped %d static, %d third-party, %d filtered%s)"
               % (info["kept"], info["total"], sk["static"], sk["third_party"], sk["filtered"],
                  ", %d CORS preflight" % sk["preflight"] if sk.get("preflight") else ""))
-        _report_correlations(info["correlated"], a.correlation_report)
+        _report_correlations(info["correlated"], a.correlation_report, info.get("correlations_capped", 0))
         if not info["kept"]:
             sys.exit("nothing captured looked like application traffic")
         return _emit(spec, a.out, a.spec, a.deep)

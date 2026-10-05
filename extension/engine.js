@@ -80,14 +80,21 @@ async function boot() {
  * the close has something to say. */
 async function openInput(name) {
   const { path } = await call("open", [], { name });
+  /* Counted here rather than asked of the worker. The caller wants the size the
+     moment it closes, for a log line; a round trip to fetch a number the page
+     already knows would make that line wait on the write queue. */
+  let bytes = 0;
   return {
     path,
-    write(chunk) { worker.postMessage({ kind: "write", chunk }); },
+    write(chunk) {
+      bytes += typeof chunk === "string" ? new Blob([chunk]).size : (chunk.byteLength || 0);
+      worker.postMessage({ kind: "write", chunk });
+    },
     close() {
       // the caller expects the path straight away; the bytes follow when the
       // worker has finished writing them
       call("close").catch((e) => emit("error", "closing the input failed: " + e.message));
-      return { path };
+      return { path, bytes };
     },
   };
 }
