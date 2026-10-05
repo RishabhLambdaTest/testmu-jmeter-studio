@@ -1,533 +1,131 @@
-/* The jmxgen engine, running inside the extension.
+/* The page's handle on the engine.
  *
- * jmxgen.py is loaded verbatim - the same file the CLI runs - on a Python
- * compiled to WebAssembly. There is deliberately no second implementation: a
- * JavaScript port would be a few thousand lines that drift out of step with
- * the Python the moment either side is fixed, which is exactly the trap that
- * bit us when a wire-format fix had to land in one place and be mirrored in
- * another.
+ * The engine itself is engine-worker.js, on a worker thread. This file is the
+ * part that stays with the page: it starts that worker, forwards its log lines
+ * into the extension's log, and exposes the same `JmxgenEngine` the pages have
+ * always called, so nothing above it had to change.
  *
- * Two things Python-in-WASM cannot do, and how they are handled:
- *   - sockets      -> HTTP goes out through the page's fetch (see pyFetch)
- *   - subprocesses -> nothing that needs one (running JMeter) is offered in
- *                     the extension, so everything works with nothing installed.
- *
- * Every line Python prints is forwarded to the UI, so a failure is read in the
- * extension rather than hunted for in a terminal nobody opened.
+ * Why the split exists: Pyodide used to run here, on the page's own thread.
+ * Authoring 20,000 requests blocked it for 7.2 seconds out of 9.5 and rendered
+ * three frames in that time. Nothing animated, no control answered, and the
+ * browser was within its rights to offer to kill the tab. A worker gives that
+ * time back to the page, and is what makes a progress line or a cancel button
+ * possible at all - on one thread there was nothing left to draw them with.
  */
 
-const VENDOR = chrome.runtime.getURL("vendor/pyodide/");
-let pyodide = null;
-let booting = null;
+let worker = null;
+let nextId = 1;
+const pending = new Map();      // id -> {resolve, reject}
+let ready = false;
 
 /* ---- log plumbing -----------------------------------------------------
-   Python's stdout/stderr, our own progress lines, and any exception all go
-   down the same channel and land in the page's Log panel. */
+   Python's stdout and stderr, the engine's own progress lines and any
+   exception all arrive as messages and go down the same channel the pages
+   already listen on. */
 function emit(level, text) {
   chrome.runtime.sendMessage({ type: "engine-log", level, text, at: Date.now() })
     .catch(() => {});   // nobody listening is fine - the log is a convenience
 }
-const log = (t) => emit("info", t);
-const warn = (t) => emit("warn", t);
-const fail = (t) => emit("error", t);
 
-/* ---- boot -------------------------------------------------------------- */
+function startWorker() {
+  if (worker) return worker;
+  worker = new Worker(chrome.runtime.getURL("engine-worker.js"));
+  worker.onmessage = (ev) => {
+    const m = ev.data || {};
+    if (m.kind === "log") return emit(m.level, m.text);
+    if (m.kind !== "reply") return;
+    const waiting = pending.get(m.id);
+    if (!waiting) return;
+    pending.delete(m.id);
+    if (m.ok) waiting.resolve(m.data);
+    else waiting.reject(new Error(m.error || "the engine failed"));
+  };
+  worker.onerror = (e) => {
+    const detail = e.message || "the engine worker stopped";
+    emit("error", detail);
+    // nothing will answer the calls in flight, so fail them rather than hang
+    for (const [, w] of pending) w.reject(new Error(detail));
+    pending.clear();
+    worker = null;
+    ready = false;
+  };
+  // the worker has no chrome.runtime, so the paths it needs come from here
+  call("init", [], {
+    vendor: chrome.runtime.getURL("vendor/pyodide/"),
+    jmxgen: chrome.runtime.getURL("jmxgen.py"),
+  });
+  return worker;
+}
+
+function call(kind, args, extra) {
+  startWorker();
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker.postMessage(Object.assign({ kind, id, args: args || [] }, extra || {}));
+  });
+}
 
 async function boot() {
-  if (pyodide) return pyodide;
-  if (booting) return booting;                 // concurrent callers share one boot
-  booting = (async () => {
-    const t0 = performance.now();
-    log("starting the engine…");
-
-    // The engine lives in the authoring page, not the offscreen document: that
-    // document is closed after every HAR download, which would throw away a
-    // booted interpreter each time.
-    if (typeof loadPyodide !== "function") {
-      await new Promise((ok, no) => {
-        const s = document.createElement("script");
-        s.src = VENDOR + "pyodide.js";
-        s.onload = ok; s.onerror = () => no(new Error("could not load pyodide.js"));
-        document.head.appendChild(s);
-      });
-    }
-
-    pyodide = await loadPyodide({
-      indexURL: VENDOR,
-      stdout: (line) => emit("py", line),
-      stderr: (line) => emit("pyerr", line),
-    });
-    log(`python ready in ${Math.round(performance.now() - t0)}ms`);
-
-    // loadPackage takes wheel URLs directly, so micropip (and its own
-    // dependency chain) never has to be shipped
-    await pyodide.loadPackage(
-      ["PyYAML-6.0.1-cp312-cp312-pyodide_2024_0_wasm32.whl",
-       "et_xmlfile-2.0.0-py3-none-any.whl",
-       "openpyxl-3.1.5-py2.py3-none-any.whl"].map((w) => VENDOR + w),
-      { messageCallback: () => {} });
-    log("yaml and spreadsheet support loaded");
-
-    const src = await (await fetch(chrome.runtime.getURL("jmxgen.py"))).text();
-    pyodide.FS.writeFile("/jmxgen.py", src);
-
-    // Python's HTTP is served from a cache the page fills in first. A JS fetch
-    // returns a Promise, and jmxgen's fetch sites are ordinary synchronous
-    // calls - there is nowhere to await. So anything the engine is about to
-    // need is fetched here, then handed over.
-    pyodide.registerJsModule("jsbridge", { get: (url) => PREFETCH.get(url) });
-
-    await pyodide.runPythonAsync(`
-import sys, io, json
-sys.path.insert(0, "/")
-
-import jsbridge
-import jmxgen
-
-# _fetch is the single place jmxgen reaches the network (an OpenAPI spec given
-# as a URL, and each page a probe walks). Point it at the prefetched cache
-# rather than at sockets, which WASM does not have.
-def _cached_fetch(url, timeout=20, user_agent=None):
-    got = jsbridge.get(url)
-    if got is None:
-        raise ValueError(
-            "%s was not fetched before the engine ran. The browser has to "
-            "collect a URL up front - list it as a source rather than having "
-            "the plan discover it." % url)
-    return got.text, got.contentType
-
-jmxgen._fetch = _cached_fetch
-print("jmxgen %s loaded" % getattr(jmxgen, "__version__", ""))
-`);
-    log(`engine ready in ${Math.round(performance.now() - t0)}ms`);
-    return pyodide;
-  })();
-  try {
-    return await booting;
-  } catch (e) {
-    booting = null;                            // let a later call try again
-    fail("engine failed to start: " + (e.message || e));
-    throw e;
-  }
+  await call("boot");
+  ready = true;
+  return true;
 }
 
-/* ---- prefetch ---------------------------------------------------------- */
-
-const PREFETCH = new Map();
-
-/* Which URLs will this payload make the engine ask for? Only two sources reach
-   the network, and both name their URLs up front. */
-function urlsNeededBy(payload) {
-  const mode = payload.mode;
-  const text = (payload.text || "").trim();
-  if (mode === "openapi" && /^https?:\/\//i.test(text)) return [text];
-  if (mode === "urls") {
-    return text.split(/\n+/).map((u) => u.trim()).filter(Boolean)
-               .map((u) => (/^https?:\/\//i.test(u) ? u : "https://" + u));
-  }
-  return [];
-}
-
-async function prefetch(payload) {
-  for (const url of urlsNeededBy(payload)) {
-    if (PREFETCH.has(url)) continue;
-    log("GET " + url);
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      PREFETCH.set(url, {
-        text: await r.text(),
-        contentType: r.headers.get("content-type") || "",
-      });
-    } catch (e) {
-      throw new Error(`could not fetch ${url}: ${e.message || e}`);
-    }
-  }
-}
-
-/* ---- authoring --------------------------------------------------------
-   One call in, one JSON result out: the report, the plan, its checks and
-   the spec it was built from. */
-
-/* Writing an input file straight onto Pyodide's filesystem.
+/* Writing an input file straight onto the engine's filesystem.
  *
- * The alternative - and what this replaces - was to base64 the recording, put
- * that inside a JSON payload, and hand the payload to Python, which decoded it
- * back. Measured on a 12,000-request session that path grew the tab's heap by
- * 722 MB, because the recording existed as text, as base64 and again inside
- * the payload. Here the caller pushes chunks and only one entry is in memory
- * at a time; what lands is a file Python opens by name.
- */
+ * The caller pushes chunks and only one entry is in memory at a time; what
+ * lands is a file Python opens by name. Writes are posted without waiting -
+ * postMessage keeps their order - and only the close is answered, because only
+ * the close has something to say. */
 async function openInput(name) {
-  const py = await boot();
-  try { py.FS.mkdir("/input"); } catch (e) { /* already there */ }
-  const path = "/input/" + (name || "input").replace(/[^\w.\-]/g, "_");
-  try { py.FS.unlink(path); } catch (e) { /* nothing to replace */ }
-  const stream = py.FS.open(path, "w");
-  const encoder = new TextEncoder();
-  let bytes = 0;
+  const { path } = await call("open", [], { name });
   return {
     path,
-    write(chunk) {
-      const buf = encoder.encode(chunk);
-      py.FS.write(stream, buf, 0, buf.length, bytes);
-      bytes += buf.length;
-    },
+    write(chunk) { worker.postMessage({ kind: "write", chunk }); },
     close() {
-      py.FS.close(stream);
-      return { path, bytes };
+      // the caller expects the path straight away; the bytes follow when the
+      // worker has finished writing them
+      call("close").catch((e) => emit("error", "closing the input failed: " + e.message));
+      return { path };
     },
   };
 }
 
-/* A Python traceback is what the engine raises, and the whole of it belongs in
-   the log. What the page shows is its last line - "ValueError: upload a HAR"
-   reads as "upload a HAR" - because the reader is looking at their own input,
-   not at our stack. */
-async function runPy(py, code) {
-  try {
-    return await py.runPythonAsync(code);
-  } catch (e) {
-    const full = String((e && e.message) || e);
-    log(full);
-    const m = full.trim().split("\n").filter(Boolean).pop() || "";
-    const clean = m.replace(/^[\w.]*(Error|Exception):\s*/, "").trim();
-    const err = new Error(clean || full);
-    err.detail = full;
-    throw err;
-  }
-}
+window.JmxgenEngine = {
+  boot,
+  openInput,
+  author: (payload) => call("author", [payload]),
+  rebuild: (specJson, changes, edits) => call("rebuild", [specJson, changes, edits]),
+  rebuildYaml: (yamlText) => call("rebuildYaml", [yamlText]),
+  lint: (xml) => call("lint", [xml]),
+  suggestExtractor: (body, headers, value, label) =>
+    call("suggestExtractor", [body, headers, value, label]),
+  traceValue: (value, label) => call("traceValue", [value, label]),
+  k6Yaml: (specJson, settings) => call("k6Yaml", [specJson, settings]),
+  isReady: () => ready,
+};
 
-let LAST_INPUT = null;        // the source the last plan was built from
-
-async function author(payload) {
-  const py = await boot();
-  await prefetch(payload);
-  LAST_INPUT = null;
-  py.globals.set("_payload", JSON.stringify(payload));
-  const out = await runPy(py, `
-import base64, json, os, tempfile, traceback
-import jmxgen
-
-payload = json.loads(_payload)
-mode = payload.get("mode", "openapi")
-opts = payload.get("options") or {}
-text = (payload.get("text") or "").strip()
-upload = payload.get("file") or {}
-
-path = None
-if upload.get("path"):
-    # written straight onto this filesystem by openInput, so there is nothing
-    # to decode and no second copy of the recording
-    path = upload["path"]
-elif upload.get("content"):
-    d = tempfile.mkdtemp()
-    path = os.path.join(d, os.path.basename(upload.get("name") or "input"))
-    with open(path, "wb") as fh:
-        fh.write(base64.b64decode(upload["content"]))
-
-try:
-    _rules = jmxgen.load_rules_text(opts.get("rules_text") or "")
-except Exception as exc:
-    raise ValueError("correlation rules: %s" % exc)
-
-report = {"mode": mode}
-if mode == "openapi":
-    src = path or text
-    if not src:
-        raise ValueError("give an OpenAPI file or a spec URL")
-    spec, n = jmxgen.openapi_to_spec(
-        src, auth=opts.get("auth") or None, server=opts.get("server") or None,
-        include=opts.get("include") or None, exclude=opts.get("exclude") or None)
-    report["operations"] = n
-elif mode == "postman":
-    if not path:
-        raise ValueError("upload a Postman collection")
-    spec, n = jmxgen.postman_to_spec(path); report["requests"] = n
-elif mode == "curl":
-    if not text:
-        raise ValueError("paste at least one curl command")
-    spec, n = jmxgen.curl_to_spec(text); report["requests"] = n
-elif mode == "excel":
-    if not path:
-        raise ValueError("upload a spreadsheet")
-    spec = jmxgen.sheet_to_spec(path)
-elif mode == "urls":
-    urls = [u.strip() for u in text.splitlines() if u.strip()]
-    if not urls:
-        raise ValueError("give at least one URL")
-    spec, st = jmxgen.probe_to_spec(urls, assets=not opts.get("no_assets"),
-                                    keep_static=not opts.get("no_static"))
-    report.update({"pages": st["pages"], "assets": st["assets"]})
-elif mode == "jmx":
-    if not path:
-        raise ValueError("upload a .jmx")
-    spec, counts = jmxgen.jmx_to_spec(path); report.update(counts)
-elif mode == "har":
-    if not path:
-        raise ValueError("upload a HAR")
-    spec, info = jmxgen.har_to_spec(
-        path, include=opts.get("include") or None, exclude=opts.get("exclude") or None,
-        keep_static=bool(opts.get("keep_static")), pages=not opts.get("no_pages"),
-        drop_third_party=not opts.get("keep_third_party"),
-        correlate=not opts.get("no_correlate"), mode=opts.get("traffic", "auto"),
-        methods=opts.get("methods") or None,
-        real_think_time=bool(opts.get("real_think_time")),
-        randomize_think=bool(opts.get("randomize_think")),
-        embedded_resources=bool(opts.get("embedded_resources")),
-        parallel_downloads=int(opts.get("parallel_downloads") or 0),
-        keep_cookies=bool(opts.get("keep_cookies")),
-        rules=_rules)
-    report.update({"kept": info["kept"], "total": info["total"],
-                   "pages": info["pages"], "correlated": info["correlated"],
-                   "hosts": info.get("hosts", []),
-                   "bodies_missing": info.get("bodies_missing", 0),
-                   "no_response_bodies": info.get("no_response_bodies", False)})
-else:
-    raise ValueError("unknown mode: %s" % mode)
-
-# options that apply whatever the source was
-if opts.get("login_path"):
-    p = opts["login_path"].strip()
-    method, _, rest = p.partition(" ") if " " in p else ("POST", "", p)
-    login = {"var": "AUTH_TOKEN",
-             "login": {"method": (method or "POST").upper(), "path": rest or p,
-                       "extract": {"type": "json",
-                                   "query": opts.get("login_token") or "$.access_token"}}}
-    if opts.get("login_body"):
-        try:
-            login["login"]["body"] = json.loads(opts["login_body"])
-            login["login"]["headers"] = {"Content-Type": "application/json"}
-        except ValueError:
-            login["login"]["body"] = opts["login_body"]
-    spec["auth"] = login
-if opts.get("csv_file"):
-    spec["csv"] = (spec.get("csv") or []) + [{
-        "file": opts["csv_file"],
-        "variables": [c.strip() for c in (opts.get("csv_columns") or "").split(",") if c.strip()]}]
-for key in ("threads", "ramp_up", "duration"):
-    if opts.get(key):
-        for tg in spec.get("thread_groups", []):
-            tg[key] = int(opts[key])
-            if key == "duration":
-                tg.pop("loops", None)
-# A browser test runs the recorded clicks in Chrome instead of the requests.
-# A blank Chrome path means the runner's own Chrome and its chromedriver.
-if opts.get("test_type") == "browser":
-    spec["webdriver"] = {"binary_path": opts["chrome_path"]} if opts.get("chrome_path") else {}
-
-xml = jmxgen.build_plan(spec)
-out = tempfile.mkdtemp()
-jmx_path = os.path.join(out, "plan.jmx")
-open(jmx_path, "w", encoding="utf-8").write(xml)
-errors, warnings = jmxgen.verify(jmx_path, quiet=True)
-
-json.dumps({
-  "report": report,
-  "input_path": path,
-  "steps": jmxgen._flatten(spec) if hasattr(jmxgen, "_flatten") else [],
-  "verify": {"errors": errors, "warnings": warnings},
-  "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
-  "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
-  "correlations": report.get("correlated") or [],
-  "load": jmxgen._plan_load(spec) if hasattr(jmxgen, "_plan_load") else {},
-  "jmx": xml,
-  "has_browser_steps": jmxgen.spec_has_browser_steps(spec),
-  "browser_groups": jmxgen.browser_groups(spec),
-  "playwright": jmxgen.spec_to_playwright(spec, "browser_test.py")
-                if jmxgen.spec_has_browser_steps(spec) else "",
-  # the same plan for the other engine: rendered every time, because it costs
-  # a few milliseconds and the page cannot know which one is wanted
-  "k6": jmxgen.spec_to_k6(spec, "load_test.js"),
-  "k6_yaml": jmxgen.spec_to_hyperexecute_yaml(spec, "load_test.js"),
-  "spec_json": json.dumps(spec),
-})
-`);
-  const data = JSON.parse(out);
-  // the source stays on the engine's filesystem for this session, which is how
-  // the replay can ask where a value came from
-  LAST_INPUT = data.input_path || null;
-  return data;
-}
-
-/* Where did a value come from in the recording? The replay asks, because its
-   own responses carry fresh values and cannot answer it. */
-async function traceValue(value, label) {
-  if (!LAST_INPUT) return null;
-  const py = await boot();
-  py.globals.set("_path", LAST_INPUT);
-  py.globals.set("_value", value || "");
-  py.globals.set("_label", label || "VALUE");
-  const out = await runPy(py, `
-import json, jmxgen
-try:
-    _r = jmxgen.trace_value(_path, _value, _label)
-except Exception:
-    _r = None
-json.dumps(_r)
-`);
-  return JSON.parse(out);
-}
-
-/* What would pull this value out of that response? The replay asks, because it
-   finds dynamic values by running the plan, not by reading the recording. */
-async function suggestExtractor(body, headers, value, label) {
-  const py = await boot();
-  py.globals.set("_body", body || "");
-  py.globals.set("_heads", headers || "");
-  py.globals.set("_value", value || "");
-  py.globals.set("_label", label || "VALUE");
-  const out = await runPy(py, `
-import json, jmxgen
-json.dumps(jmxgen.suggest_extractor(_body, _heads, _value, _label))
-`);
-  return JSON.parse(out);
-}
-
-/* The k6 job, sized by the run form rather than by the plan.
-
-   HyperExecute splits discovered test cases across machines, so the shard list
-   and the machine count have to be written together; the engine owns that
-   arithmetic because the .jmx side owns the equivalent. */
-async function k6Yaml(specJson, settings) {
-  const c = settings || {};
-  const py = await boot();
-  py.globals.set("_spec", specJson);
-  py.globals.set("_cfg", JSON.stringify({
-    users: Number(c.users) || 0,
-    machines: Number(c.machines) || 1,
-    ramp: c.ramp || "", duration: c.duration || "", base: c.base || "",
-    max_failed: c.maxFailed || "", max_p95: c.maxP95 || "",
-  }));
-  return await runPy(py, `
-import json, jmxgen
-_c = json.loads(_cfg)
-jmxgen.spec_to_hyperexecute_yaml(json.loads(_spec), "load_test.js",
-                                 users=_c["users"] or None, machines=_c["machines"],
-                                 ramp=_c["ramp"], duration=_c["duration"],
-                                 base=_c["base"], max_failed=_c["max_failed"],
-                                 max_p95=_c["max_p95"])
-`);
-}
-
-/* Re-emit from an edited spec, so the pages can drop steps or reject
-   correlations without re-reading the source. */
-/* The spec editor's counterpart. A YAML parse failure has to arrive as a
-   readable message rather than a Python traceback, because the person who
-   typed it is looking at their own file, not at ours. */
-async function rebuildYaml(yamlText) {
-  const py = await boot();
-  py.globals.set("_yaml", yamlText);
-  const out = await runPy(py, `
-import json, os, tempfile
-import jmxgen
-d = tempfile.mkdtemp(); sp = os.path.join(d, "spec.yaml")
-open(sp, "w", encoding="utf-8").write(_yaml)
-try:
-    spec = jmxgen.load_spec(sp)
-except Exception as exc:
-    raise ValueError("the spec could not be read: %s" % exc)
-xml = jmxgen.build_plan(spec)
-p = os.path.join(d, "plan.jmx")
-open(p, "w", encoding="utf-8").write(xml)
-errors, warnings = jmxgen.verify(p, quiet=True)
-json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
-            "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
-            "steps": jmxgen._flatten(spec),
-            "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
-            "browser_groups": jmxgen.browser_groups(spec),
-            "spec_json": json.dumps(spec)})
-`);
-  return JSON.parse(out);
-}
-
-
-/* The scale checklist, run on a finished plan.
- *
- * jmxgen.validate() prints its findings and returns a status, which is right
- * for a console and useless to a page, so its output is captured here. It
- * matters most for a converted session: nobody hand-reviews one, and a plan
- * with thousands of samplers is an out-of-memory failure rather than a test. */
-async function lint(xml) {
-  const py = await boot();
-  py.globals.set("_xml", xml);
-  const out = await runPy(py, `
-import contextlib, io, json, os, tempfile
-import jmxgen
-d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
-open(p, "w", encoding="utf-8").write(_xml)
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf):
-    jmxgen.validate(p)
-issues, notes = [], []
-for line in buf.getvalue().splitlines():
-    line = line.strip()
-    if line.startswith("!"):
-        issues.append(line.lstrip("! ").strip())
-    elif line.startswith("."):
-        notes.append(line.lstrip(". ").strip())
-json.dumps({"issues": issues, "notes": notes})
-`);
-  return JSON.parse(out);
-}
-
-async function rebuild(specJson, changes, edits) {
-  const py = await boot();
-  py.globals.set("_spec", specJson);
-  py.globals.set("_changes", JSON.stringify(changes || {}));
-  py.globals.set("_edits", JSON.stringify(edits || []));
-  const out = await runPy(py, `
-import json, os, tempfile
-import jmxgen
-spec = json.loads(_spec); changes = json.loads(_changes)
-for key in ("threads", "ramp_up", "duration"):
-    if changes.get(key):
-        for tg in spec.get("thread_groups", []):
-            tg[key] = int(changes[key])
-_notes = []
-for _e in json.loads(_edits):
-    _n = jmxgen.apply_edit(spec, _e)
-    if _n:
-        _notes.append(_n)
-xml = jmxgen.build_plan(spec)
-d = tempfile.mkdtemp(); p = os.path.join(d, "plan.jmx")
-open(p, "w", encoding="utf-8").write(xml)
-errors, warnings = jmxgen.verify(p, quiet=True)
-json.dumps({"jmx": xml, "verify": {"errors": errors, "warnings": warnings},
-            "size_kb": round(len(xml.encode("utf-8")) / 1024.0, 1),
-            "steps": jmxgen._flatten(spec), "notes": _notes,
-            "spec_yaml": jmxgen.dump_spec(spec, "x.yaml"),
-            "browser_groups": jmxgen.browser_groups(spec),
-            "spec_json": json.dumps(spec)})
-`);
-  return JSON.parse(out);
-}
-
-/* ---- message routing --------------------------------------------------- */
-
-// Called directly by the page that hosts it; the message listener below is for
-// anything else in the extension that wants a plan built.
-window.JmxgenEngine = { boot, author, rebuild, rebuildYaml, openInput, lint, suggestExtractor, traceValue,
-                        k6Yaml,
-                        isReady: () => !!pyodide };
-
+/* Anything else in the extension that wants a plan built asks through here,
+   because the worker belongs to this page. */
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.target !== "engine") return;
   (async () => {
     try {
       if (msg.type === "engine-boot") return sendResponse({ ok: true, data: (await boot(), true) });
-      if (msg.type === "engine-author") return sendResponse({ ok: true, data: await author(msg.payload) });
+      if (msg.type === "engine-author")
+        return sendResponse({ ok: true, data: await window.JmxgenEngine.author(msg.payload) });
       if (msg.type === "engine-rebuild")
-        return sendResponse({ ok: true, data: await rebuild(msg.spec, msg.changes, msg.edits) });
+        return sendResponse({ ok: true,
+                              data: await window.JmxgenEngine.rebuild(msg.spec, msg.changes, msg.edits) });
       sendResponse({ ok: false, error: "unknown engine call: " + msg.type });
     } catch (e) {
-      // a Python traceback is the most useful thing we have; keep all of it
       const detail = String(e && e.message ? e.message : e);
-      fail(detail);
+      emit("error", detail);
       sendResponse({ ok: false, error: detail });
     }
   })();
   return true;
 });
 
-log("engine host loaded");
+emit("info", "engine host loaded");

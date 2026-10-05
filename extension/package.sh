@@ -18,13 +18,13 @@ SHARE="$OUTDIR/testmu-jmeter-studio-${VERSION}-share.zip"
 FILES=(
     manifest.json background.js offscreen.html offscreen.js
     brand.css
-    db.js
+    db.js pages.js
     xmlgate.js
     locator.js overlay.js overlay.css
     popup.html popup.css popup.js
     run.html run.css run.js
     author.html author.css author.js
-    engine.js hx.js lt.js auth.js feedback.js jmxcheck.js jmxcheck-worker.js replay.js jmxgen.py vendor
+    engine.js engine-worker.js hx.js lt.js auth.js feedback.js jmxcheck.js jmxcheck-worker.js replay.js jmxgen.py vendor
     icons
 )
 
