@@ -63,6 +63,7 @@
           <button class="jg-b" id="jg-tx-set">Set</button>
         </div>
         <div class="jg-last" id="jg-last">nothing captured yet</div>
+        <div class="jg-last jg-sites" id="jg-sites" hidden></div>
         <div class="jg-grid">
           <button class="jg-b" id="jg-assert-200">Assert 200</button>
           <button class="jg-b" id="jg-assert-text">Assert text…</button>
@@ -420,6 +421,18 @@
     else if (last) last.textContent = status.lastUrl
       ? "last: " + shortUrl(status.lastUrl)
       : "nothing captured yet";
+    /* Which sites this recording has been through. A toast says it once, at a
+       moment nobody may be looking; this keeps saying it, so a capture that
+       has wandered somewhere personal cannot be shared in ignorance. */
+    const sites = root.querySelector("#jg-sites");
+    const origins = status.origins || [];
+    if (sites) {
+      sites.hidden = origins.length < 2;
+      if (origins.length > 1) {
+        sites.textContent = "recording " + origins.length + " sites: " +
+          origins.map((o) => o.replace(/^https?:\/\//, "")).join(", ");
+      }
+    }
   }
 
   /* Enough of the URL to recognise the request, from the end that varies. */

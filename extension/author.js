@@ -1104,7 +1104,37 @@ async function streamRecordingToEngine() {
                `${stats.written} sent to the engine` +
                (notes.length ? ` (${notes.join(", ")})` : "") +
                `, ${(bytes / 1e6).toFixed(1)} MB`);
+  spaNote(stats);
   return { path, stats };
+}
+
+/* A single-page app records almost nothing a plan can use, and says so only by
+ * being small.
+ *
+ * Clicking through five screens of a React or Docusaurus site produces one page
+ * load and then a pile of javascript chunks: the browser never asks the server
+ * for the next page, it fetches a bundle and redraws. The capture is right, the
+ * plan is right, and the person who just recorded five steps and got one
+ * sampler has every reason to think the tool is broken.
+ *
+ * So when the shape of the recording says single-page app - plenty fetched,
+ * almost nothing navigated - it is named, along with the thing actually worth
+ * replaying, which is whatever the app calls while it redraws. */
+function spaNote(stats) {
+  if (typeof stats.documents !== "number") return;
+  if (stats.documents > 1 || stats.total < 10) return;
+  const api = stats.total - stats.assets - stats.documents;
+  const loads = stats.documents === 0
+    ? "no page loads at all"
+    : "only " + stats.documents + " page load";
+  addLog("warn",
+    `${stats.total} requests but ${loads} - this ` +
+    `looks like a single-page app. Clicking through it does not ask the server ` +
+    `for new pages, so there is little for a protocol test to replay. ` +
+    (api > 0
+      ? `The ${api} API call(s) it made are the part worth testing.`
+      : `Record a journey that makes API calls, or build a Browser test to ` +
+        `drive the clicks in real Chrome.`));
 }
 
 /* The transactions you named while recording, with what each one holds. This

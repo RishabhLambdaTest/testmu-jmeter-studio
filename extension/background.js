@@ -87,11 +87,21 @@ function freshState(tabId, transaction) {
     startedAt: Date.now(),
     transaction: tx,
     paused: false,
-    /* Browser steps are off until asked for, and the answer belongs to the
+    /* Browser steps are captured from the start, and the answer belongs to the
        session rather than to the page: the panel is rebuilt on every
        navigation and on every transaction, and a flag living in the content
-       script came back on each time it was. */
-    gui: false,
+       script came back on each time it was.
+
+       They used to be off until asked for, which put the decision in the wrong
+       place. Whether a recording becomes an API test or a browser test is
+       chosen afterwards, on the authoring page; whether it *could* become a
+       browser test was decided here, before anyone knew. Choosing Browser after
+       recording with this off fails - "this plan has no browser steps" - and
+       the only way back is to record the whole journey again. A journey that
+       was hard to reach, or a bug that took a while to reproduce, is simply
+       lost. Keeping them costs a few hundred bytes for a long session; the
+       checkbox is still there for anyone who wants them off. */
+    gui: true,
     transactions: [tx],
     pending: {},         // requestId -> partial entry, in memory only
     actions: [],         // recorded browser steps, in order
@@ -100,6 +110,12 @@ function freshState(tabId, transaction) {
     bytes: 0,            // response text held on disk, for the popup
     lastSeq: -1,
     lastUrl: "",
+    /* Every origin whose page this recording has captured. The recorder
+       follows a tab, not a site - which is what makes an SSO hop or a payment
+       redirect record correctly - but it also means a tab taken somewhere
+       personal goes into the capture with nothing said. So the set is kept,
+       and a new one announces itself. */
+    origins: [],
     exported: false,     // false as soon as anything new is captured
   };
 }
@@ -242,6 +258,38 @@ function iso(ms) {
    before the event is handled is what stops the first request after a restart
    from being dropped - and with the recording on disk, nothing before it is
    lost either. */
+
+/* The page a request belongs to, not the request's own host.
+ *
+ * A third-party script or image carries the page's documentURL, so this stays
+ * quiet through all the ordinary cross-host traffic a site makes, and speaks
+ * only when the tab itself is somewhere new - a login hop, a payment provider,
+ * or a tab taken off to read mail halfway through a recording.
+ *
+ * It does not stop the capture. Stopping it would break the SSO and payment
+ * redirects this recorder exists to catch, and those are the journeys worth
+ * recording. What it does is make the wandering visible at the moment it
+ * happens, so nobody discovers afterwards that a session they are about to
+ * share went somewhere private. */
+function noteOrigin(url) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch (e) {
+    return;
+  }
+  if (!/^https?:/i.test(origin)) return;
+  if (!state.origins) state.origins = [];
+  if (state.origins.includes(origin)) return;
+  state.origins.push(origin);
+  // the first one is the site the recording was started on, which is not news
+  if (state.origins.length > 1) {
+    notify("also recording " + origin.replace(/^https?:\/\//, ""));
+    broadcast();
+  }
+  persist();
+}
+
 function onEvent(source, method, params) {
   if (!state) {
     restore().then((st) => {
@@ -259,6 +307,7 @@ function onEvent(source, method, params) {
   if (method === "Network.requestWillBeSent") {
     const r = params.request || {};
     if (!/^https?:/i.test(r.url || "")) return;
+    noteOrigin(params.documentURL || r.url);
     if (params.redirectResponse) {
       // same requestId as the hop being redirected - finish it or it is lost,
       // which would silently drop every step of an SSO / auth redirect chain
@@ -502,6 +551,7 @@ function statusPayload() {
         transaction: state.transaction,
         transactions: state.transactions,
         lastUrl: state.lastUrl || "",
+        origins: state.origins || [],
         // shown live in the popup, so a long recording is visible while it
         // grows rather than at the moment something breaks
         bytes: state.bytes || 0,

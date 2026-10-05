@@ -331,7 +331,11 @@ function repeatKey(rec) {
 async function streamHar(write, opts) {
   const o = opts || {};
   const head = harHeader(await getMeta());
-  const stats = { total: 0, written: 0, assets: 0, skipped: 0, repeats: 0 };
+  const stats = { total: 0, written: 0, assets: 0, skipped: 0, repeats: 0,
+                  // page loads, as opposed to everything a page then fetches:
+                  // the one number that tells a classic site from a single-page
+                  // app after the fact
+                  documents: 0 };
   const only = o.only && o.only.length ? new Set(o.only) : null;
   const seen = o.collapse ? new Map() : null;
 
@@ -343,6 +347,7 @@ async function streamHar(write, opts) {
   let first = true;
   await eachEntryWithBody((rec, body) => {
     stats.total++;
+    if ((rec.type || "").toLowerCase() === "document") stats.documents++;
     if (rec._jmxgen && rec._jmxgen.skip) { stats.skipped++; return; }
     const asset = rec.hasBody === false && !(rec.request && rec.request.headers);
     if (asset) stats.assets++;
