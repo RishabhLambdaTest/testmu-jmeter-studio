@@ -93,14 +93,31 @@ function authGateEl() {
     </div>`;
   document.body.appendChild(g);
   g.querySelector("#authSignIn").onclick = async () => {
-    const t = await chrome.tabs.create({ url: AUTH_ACCOUNTS + "/login" });
-    AUTH_LOGIN_TAB = t.id;
+    AUTH_LOGIN_TAB = await authOpenLogin(AUTH_ACCOUNTS + "/login");
   };
   g.querySelector("#authSwitch").onclick = async () => {
-    const t = await chrome.tabs.create({ url: AUTH_LOGOUT });
-    AUTH_LOGIN_TAB = t.id;   // logging out lands on login, so the same applies
+    // logging out lands on login, so the same applies
+    AUTH_LOGIN_TAB = await authOpenLogin(AUTH_LOGOUT);
   };
   return g;
+}
+
+/* One login tab, not a pile of them.
+ *
+ * Pressing the button twice, or logging out and then back in, used to leave a
+ * login tab open behind each attempt - and only the last was remembered, so the
+ * earlier ones were never cleaned up afterwards. */
+async function authOpenLogin(url) {
+  try {
+    const open = await chrome.tabs.query({ url: AUTH_ACCOUNTS + "/*" });
+    if (open && open.length) {
+      await chrome.tabs.update(open[0].id, { url, active: true });
+      await chrome.windows.update(open[0].windowId, { focused: true }).catch(() => {});
+      return open[0].id;
+    }
+  } catch (e) { /* fall through and open a new one */ }
+  const t = await chrome.tabs.create({ url });
+  return t.id;
 }
 
 function authRender(state, detail) {
@@ -223,13 +240,52 @@ function authReady() {
     const chip = document.getElementById("account");
     if (chip) chip.onclick = () => { if (AUTH_ACCOUNT) authRender("manage"); };
 
+    /* Noticing that someone has signed in.
+     *
+     * Logging in happens on another page, so this one has to find out on its
+     * own. It used to have two ways: a cookie change on lambdatest.com, and the
+     * page being looked at again. Both can miss. The account service spans
+     * three domains - the list above says so - but only one of them was
+     * watched, and `visibilitychange` never fires for a studio in a window of
+     * its own, because that window is on screen the whole time. Miss both and
+     * the gate stays up over a page whose user is, in fact, signed in: you log
+     * in, the new tab lands on the dashboard, and the studio behind it has
+     * noticed nothing.
+     *
+     * So: every domain the account service uses, focus as well as visibility,
+     * and - because an event that has to fire is a thing that can fail to - a
+     * poll underneath them all. It runs only while the gate is up and stops the
+     * moment someone is in, so the cost is a request every couple of seconds
+     * during the seconds a person is logging in. */
     chrome.cookies.onChanged.addListener(({ cookie }) => {
-      if (cookie.name === AUTH_COOKIE && /(^|\.)lambdatest\.com$/.test(cookie.domain)) run();
+      if (cookie.name === AUTH_COOKIE && AUTH_OURS.test(cookie.domain || "")) run();
     });
     // a tab left open overnight is re-checked when it is looked at again
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") run();
     });
+    // a studio in its own window is never hidden, so it is focus that changes
+    window.addEventListener("focus", () => run());
+
+    /* Two speeds, because the question changes once someone is in.
+     *
+     * While the gate is up the answer is wanted the second it changes - that is
+     * a person standing in front of a locked page waiting for it to open - so
+     * it asks every couple of seconds, for the few seconds a login takes.
+     * Afterwards the question is the opposite one, "is this session still
+     * good", which nothing is waiting on; a signing-out noticed within the
+     * minute is soon enough, and a request a minute is not worth optimising
+     * away. Dropping the poll entirely once signed in was wrong: logging out
+     * elsewhere then left the studio open over an account that no longer
+     * existed. */
+    let pollAt = 0;
+    setInterval(() => {
+      const every = AUTH_ACCOUNT ? 60000 : 2000;
+      const now = Date.now();
+      if (now - pollAt < every) return;
+      pollAt = now;
+      run();
+    }, 1000);
 
     authRender("checking");
     run();
