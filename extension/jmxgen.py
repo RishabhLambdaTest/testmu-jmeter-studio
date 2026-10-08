@@ -3177,9 +3177,8 @@ def _server_issued(value, here, sources, req_texts):
     find nothing at all, and the plan is built with every user replaying one
     recorded id.
 
-    This asks a different question, the one LoadRunner calls recording-based
-    correlation and NeoLoad calls searching for generic dynamic parameters: who
-    said it first. A client cannot send a value the server has not yet given it,
+    This asks a different question, the one the established load tools answer
+    by recording a journey twice and diffing it: who said the value first. A client cannot send a value the server has not yet given it,
     so a value that appears in a response and only afterwards in a request is
     dynamic by construction, whatever it looks like.
 

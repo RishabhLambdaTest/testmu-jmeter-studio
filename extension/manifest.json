@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "TestMu AI — JMeter Studio (Beta)",
-  "version": "1.8.22",
+  "name": "TestMu AI — Thunder (Beta)",
+  "version": "1.9.0",
   "description": "Record a journey or bring a cURL, OpenAPI, Postman or HAR source, and get a ready-to-run JMeter .jmx. No install.",
   "permissions": [
     "debugger",
@@ -20,7 +20,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "TestMu AI — JMeter Studio (Beta)",
+    "default_title": "TestMu AI — Thunder (Beta)",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -50,7 +50,7 @@
         "default": "Ctrl+Shift+9",
         "mac": "Command+Shift+9"
       },
-      "description": "Open TestMu JMeter Studio"
+      "description": "Open TestMu Thunder"
     },
     "toggle-recording": {
       "suggested_key": {

@@ -230,8 +230,8 @@ async function captureQuota() {
  * The fields the engine ignores are reconstructed here rather than stored:
  * queryString comes back out of the URL, timings and cache are the zeros a HAR
  * requires, sizes are -1 for "unknown", which is what DevTools itself writes
- * when it does not know. The file that comes out is a valid HAR that DevTools,
- * Charles and BlazeMeter all read.
+ * when it does not know. The file that comes out is a valid HAR, which is the
+ * point: DevTools, a proxy, or any other tool that reads HAR will take it.
  */
 function harEntryOf(rec, body) {
   const req = rec.request || {};

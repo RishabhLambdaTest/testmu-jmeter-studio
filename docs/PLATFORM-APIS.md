@@ -1,6 +1,6 @@
 # Platform APIs this extension depends on
 
-JMeter Studio is a Chrome extension that authors a JMeter plan or a k6 script
+Thunder is a Chrome extension that authors a JMeter plan or a k6 script
 in the browser and runs it on HyperExecute. It has no backend of its own: every
 call below goes straight from the extension to a LambdaTest host, with the
 signed-in user's own credentials.

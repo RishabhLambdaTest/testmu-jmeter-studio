@@ -1,4 +1,4 @@
-/* TestMu AI — JMeter Studio - service worker.
+/* TestMu AI — Thunder - service worker.
  *
  * Attaches the DevTools protocol to the recorded tab, collects every
  * request/response (bodies included), merges in the steps the user authors by
@@ -526,7 +526,7 @@ function badge() {
   const title = st.recording
     ? `${st.paused ? "paused" : "recording"} - ${st.count || 0} request(s) captured`
     : st.unsaved ? `${st.count || 0} request(s) waiting to be built into a plan`
-    : "TestMu AI \u2014 JMeter Studio (Beta)";
+    : "TestMu AI \u2014 Thunder (Beta)";
   chrome.action.setBadgeText({ text }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ color: colour }).catch(() => {});
   chrome.action.setTitle({ title }).catch(() => {});
@@ -589,7 +589,7 @@ async function assertRecordable(tabId) {
 
 
 /* ---- recording options -------------------------------------------------
-   BlazeMeter exposes these on its recorder and they change what the capture is
+   Recorders of this kind expose these, and they change what the capture is
    worth: emulating a phone gets you the mobile variant of the site, and a warm
    cache means the second run records nothing at all for half the assets. All of
    them are CDP settings applied right after Network.enable, so they cost one

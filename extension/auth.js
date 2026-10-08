@@ -81,8 +81,8 @@ function authGateEl() {
   g.setAttribute("aria-labelledby", "authGateTitle");
   g.innerHTML = `
     <div class="authcard">
-      <h2 id="authGateTitle">Sign in to use JMeter Studio</h2>
-      <p id="authGateText">JMeter Studio uses your TestMu AI account. Log in the
+      <h2 id="authGateTitle">Sign in to use Thunder</h2>
+      <p id="authGateText">Thunder uses your TestMu AI account. Log in the
         way you always do - Google, GitHub, SSO or a password. The login tab
         closes itself and you land back here, signed in. There is no access key
         to copy.</p>
@@ -144,8 +144,8 @@ function authRender(state, detail) {
       + "also how you come back as a different account. This page locks until "
       + "you do, and unlocks again by itself.";
   } else {
-    title.textContent = "Sign in to use JMeter Studio";
-    text.textContent = "JMeter Studio uses your TestMu AI account. Log in the "
+    title.textContent = "Sign in to use Thunder";
+    text.textContent = "Thunder uses your TestMu AI account. Log in the "
       + "way you always do - Google, GitHub, SSO or a password. The login tab "
       + "closes itself and you land back here, signed in. There is no access "
       + "key to copy.";

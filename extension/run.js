@@ -116,9 +116,10 @@ function renderFiles() {
 }
 
 /* ---- browser tests -------------------------------------------------------
-   A browser test runs a real Chrome per user, and an engine holds 4 of them
-   (benchmarked, and the same limit BlazeMeter sets). HyperExecute knows
-   nothing about what is inside the .jmx, so the cap is this page's to hold. */
+   A browser test runs a real Chrome per user, and an engine holds 4 of them -
+   benchmarked here, and the figure the tools that do this converge on.
+   HyperExecute knows nothing about what is inside the .jmx, so the cap is this
+   page's to hold. */
 const BROWSER_CAP = 4;
 let BROWSER_PLAN = false;
 let CAP_SET_HERE = false;     // so an API plan picked next gets its own default back

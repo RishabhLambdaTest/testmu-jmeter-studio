@@ -33,7 +33,7 @@ function fbCardEl() {
   g.setAttribute("aria-labelledby", "fbTitle");
   g.innerHTML = `
     <div class="authcard fbcard">
-      <h2 id="fbTitle">How is JMeter Studio working for you?</h2>
+      <h2 id="fbTitle">How is Thunder working for you?</h2>
       <div class="fbstars" id="fbStars" role="radiogroup" aria-label="Rating, 1 to 5">
         ${[1, 2, 3, 4, 5].map((n) => `
         <button type="button" class="fbstar" data-n="${n}" role="radio"

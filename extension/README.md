@@ -1,4 +1,4 @@
-# TestMu AI — JMeter Studio (Chrome extension)
+# TestMu AI — Thunder (Chrome extension)
 
 The whole product. Record a journey in your **own** Chrome — your profile, your
 logins, your VPN — or bring a cURL command, an OpenAPI spec, a Postman

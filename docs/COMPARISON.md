@@ -17,7 +17,7 @@ Nothing in the chain is proprietary. The output is a file JMeter has been able t
 run for twenty years, and it runs on your laptop, in your CI, on HyperExecute or,
 if you want, on BlazeMeter.
 
-| | BlazeMeter | JMeter Studio + HyperExecute |
+| | BlazeMeter | Thunder + HyperExecute |
 |---|---|---|
 | Where the recording goes | uploaded to the vendor | stays in your browser |
 | What you end up owning | a test inside the platform | a `.jmx` file |
@@ -32,7 +32,7 @@ The method, the inputs and the scoring script are described at the end so the
 numbers can be disputed or reproduced.
 
 **What was compared.** BlazeMeter's HAR converter (`converter.blazemeter.com`,
-which its own log names `HARJMXConverter`) against JMeter Studio, on the same
+which its own log names `HARJMXConverter`) against Thunder, on the same
 input, three times over. This is their free converter, which is what a HAR from
 a browser goes through. Their paid Proxy Recorder applies SmartJMX templates
 during recording and was not part of these runs; treat the correlation numbers
@@ -53,7 +53,7 @@ the plan defines that variable, and the extractor's expression really finds the
 value when run against the recorded response. Claims in the plan are ignored;
 the XML is read.
 
-| | JMeter Studio | BlazeMeter converter |
+| | Thunder | BlazeMeter converter |
 |---|---|---|
 | Correlated | **8 of 8** | 0 of 8 |
 | Cookie left to the cookie manager | yes | yes |
@@ -72,7 +72,7 @@ as recorded, and once against a "drift" build where the login form gained an
 attribute and an order status string changed - the kind of release that breaks
 brittle extractors.
 
-| | JMeter Studio | BlazeMeter converter |
+| | Thunder | BlazeMeter converter |
 |---|---|---|
 | As recorded | **15 of 15 samples passed** | 1 of 8 passed |
 | After the app drifted | **15 of 15 passed** | 1 of 8 passed |
@@ -84,7 +84,7 @@ Session `74fa7fd2`, fetched as `network.har`: 157 entries across 19 hosts, and -
 this is the important part - **no request or response bodies at all**, because
 that is what the session log carries.
 
-| | JMeter Studio | BlazeMeter converter |
+| | Thunder | BlazeMeter converter |
 |---|---|---|
 | Plan size | 83 KB | 844 KB |
 | Samplers | 21 | 157 |
@@ -142,7 +142,7 @@ These are the real evaluation criteria. Everything else is packaging.
 
 ### Recording
 
-| | BlazeMeter | JMeter Studio |
+| | BlazeMeter | Thunder |
 |---|---|---|
 | Chrome recorder, your own profile, SSO and VPN | yes | yes |
 | Response bodies captured | yes | yes, through `chrome.debugger`, the only API that can |
@@ -156,7 +156,7 @@ These are the real evaluation criteria. Everything else is packaging.
 
 ### Authoring
 
-| | BlazeMeter | JMeter Studio |
+| | BlazeMeter | Thunder |
 |---|---|---|
 | From a recording | yes | yes |
 | From cURL, OpenAPI, Postman, Excel or a URL list | no | yes |
@@ -353,7 +353,7 @@ have JMeter assertions and a CI exit code.
 *The surrounding platform.* Mock services, test-data generation, API monitoring,
 scheduled runs, APM integrations.
 
-*Multi-engine support.* Gatling and Locust natively. JMeter Studio authors
+*Multi-engine support.* Gatling and Locust natively. Thunder authors
 JMeter and k6 from one plan, and nothing else.
 
 *A recorder that has met the whole internet.* Theirs has been in the store for
@@ -372,7 +372,7 @@ week. Everything else on this list can wait behind it.
 ## The pitch, in three sentences
 
 Recording a load test should not mean uploading your logged-in session to a
-vendor, and the thing you get back should be a file you own. JMeter Studio
+vendor, and the thing you get back should be a file you own. Thunder
 authors a real JMeter plan, from a recording or from the curl command, OpenAPI
 spec, Postman collection or spreadsheet you already have, entirely inside Chrome,
 with dynamic tokens correlated and shown, and checked before you spend a run. HyperExecute then runs it across as many machines and regions as you

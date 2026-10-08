@@ -1,8 +1,8 @@
-**Summary:** Public APIs for the internal endpoints JMeter Studio calls
+**Summary:** Public APIs for the internal endpoints Thunder calls
 
 ## Context
 
-JMeter Studio is a Chrome extension that builds a JMeter plan or k6 script in
+Thunder is a Chrome extension that builds a JMeter plan or k6 script in
 the browser and runs it on HyperExecute. It has no backend — every call goes
 from the extension directly to a LambdaTest host using the signed-in user's own
 credentials (Basic `username:apiToken`).

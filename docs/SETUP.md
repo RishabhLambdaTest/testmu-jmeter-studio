@@ -115,7 +115,7 @@ The toggle sits at the top right. Three buttons appear on the left once it is on
 Select the `testmu-jmeter-studio` folder itself, the one that directly contains
 `manifest.json`. Not the zip, and not the folder above it.
 
-A card appears with the TestMu mark, the name TestMu AI — JMeter Studio, and a
+A card appears with the TestMu mark, the name TestMu AI — Thunder, and a
 version number. That is the whole installation.
 
 ### Pin it
@@ -421,7 +421,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | "the trigger failed: HTTP 403" | Not your credentials, whatever an older build's wording said. HyperExecute refuses a request carrying `Origin: chrome-extension://…`, while accepting the identical request with the dashboard's own origin, and `Origin` and `Referer` are two headers a browser will not let a script set. Fixed in 1.3.3, which sets them through `declarativeNetRequest`. Verified both ways against the live API: with the rule the job triggers, and a build with the rule disabled reproduces the 403 exactly. If you are on 1.3.2 or earlier, update |
 | A 403 *before* anything uploaded | This one really is the account. See the 401 row |
 | "A project named X already exists" | Open it on the Projects dashboard, copy its id into *existing project ID*, and leave the name blank. Or choose a different name |
-| "Sign in to use JMeter Studio" covers the page | You are not logged in to TestMu AI in this browser. Press **Log in to TestMu AI**, log in however you normally do, and the page unlocks by itself |
+| "Sign in to use Thunder" covers the page | You are not logged in to TestMu AI in this browser. Press **Log in to TestMu AI**, log in however you normally do, and the page unlocks by itself |
 | "Your TestMu AI session has ended" | The login expired, or the account was logged out in another tab. Log in again |
 | You want a different account | Click the account button at the top right, then **Log out of TestMu AI**. You land on the login page; the studio picks up whoever logs in next |
 | "Could not check your sign-in" | The account service could not be reached. Check the network and reload |

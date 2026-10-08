@@ -265,9 +265,9 @@ async function replayPlan(spec, opts = {}) {
 
 /* ---- what the failures have in common ----------------------------------
    A literal in a failing request that an earlier response handed out is a
-   dynamic value that was never correlated. That is the same conclusion
-   BlazeMeter's wizard reaches by comparing a replay with its recording; here
-   the replay itself is the evidence. */
+   dynamic value that was never correlated. Correlation wizards reach the same
+   conclusion by comparing a replay with its recording; here the replay itself
+   is the evidence. */
 function rpLiterals(step) {
   const out = [];
   const add = (label, v) => {

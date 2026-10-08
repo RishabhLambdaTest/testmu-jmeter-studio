@@ -1,4 +1,4 @@
-# TestMu AI — JMeter Studio
+# TestMu AI — Thunder
 
 A Chrome extension that turns what you already have into a ready-to-run JMeter
 test plan. Record a journey through your app, or hand it a curl command, an
