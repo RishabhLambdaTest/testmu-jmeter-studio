@@ -4296,13 +4296,23 @@ def sheet_to_spec(path, name=None):
         if "//" in url:
             u = urllib.parse.urlsplit(url)
             step["path"] = (u.path or "/") + (("?" + u.query) if u.query else "")
+            # The first row with a full URL sets the defaults every later row is
+            # read against. It used to adopt the host and the scheme but not the
+            # port, so a sheet of http://host:8799 rows produced defaults on the
+            # default port: the first row carried its own port and worked, every
+            # row after it inherited port 80 and could not connect. Adopt it
+            # first, then only record what a row does differently.
+            if not domain:
+                domain, protocol = u.hostname, u.scheme
+                if u.port:
+                    port = str(u.port)
             if u.hostname and u.hostname != domain:
                 step["domain"] = u.hostname
                 step["protocol"] = u.scheme
                 if u.port:
                     step["port"] = str(u.port)
-            if not domain:
-                domain, protocol = u.hostname, u.scheme
+            elif u.port and str(u.port) != str(port or ""):
+                step["port"] = str(u.port)
         else:
             step["path"] = url if url.startswith("/") or url.startswith("$") else "/" + url
 
@@ -5474,6 +5484,33 @@ def postman_to_spec(path, name=None, think_time=500):
 
     top = max(domains, key=domains.get) if domains else ""
 
+    # The scheme and port the top host is actually reached on.
+    #
+    # These used to be assumed: the defaults said https on the default port
+    # whatever the collection said, and strip() then threw away each step's real
+    # scheme and port as long as its host was the common one. A collection
+    # pointing at http://host:8799 produced a plan pointing at https://host:443,
+    # which fails to connect on the first sampler - and the collection it came
+    # from is the one place the right answer was written down.
+    def survey(nodes, out):
+        for n in nodes:
+            if "transaction" in n:
+                survey(n["steps"], out)
+                continue
+            if n.get("_host") == top:
+                out.setdefault("scheme", {})
+                out.setdefault("port", {})
+                sch = n.get("_scheme") or "https"
+                prt = n.get("_port") or ""
+                out["scheme"][sch] = out["scheme"].get(sch, 0) + 1
+                out["port"][prt] = out["port"].get(prt, 0) + 1
+    seen = {}
+    survey(steps, seen)
+    top_scheme = (max(seen["scheme"], key=seen["scheme"].get)
+                  if seen.get("scheme") else "https")
+    top_port = (max(seen["port"], key=seen["port"].get)
+                if seen.get("port") else "")
+
     def strip(nodes):
         for n in nodes:
             if "transaction" in n:
@@ -5482,9 +5519,15 @@ def postman_to_spec(path, name=None, think_time=500):
             host = n.pop("_host", "")
             scheme = n.pop("_scheme", "https")
             port = n.pop("_port", "")
+            # keep whatever differs from the defaults, drop only what repeats
             if host and host != top:
                 n["domain"], n["protocol"] = host, scheme
                 if port:
+                    n["port"] = port
+            else:
+                if scheme != top_scheme:
+                    n["protocol"] = scheme
+                if port != top_port:
                     n["port"] = port
     strip(steps)
 
@@ -5493,7 +5536,7 @@ def postman_to_spec(path, name=None, think_time=500):
         "platform": "local",
         "comments": "Authored by jmxgen from %s (%d request(s))" % (os.path.basename(str(path)), count[0]),
         "variables": variables,
-        "defaults": {"protocol": "https", "domain": top, "port": "",
+        "defaults": {"protocol": top_scheme, "domain": top, "port": top_port,
                      "connect_timeout": 5000, "response_timeout": 30000},
         "headers": {"Accept": "*/*"},
         "cookies": True,
