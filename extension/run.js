@@ -31,9 +31,11 @@ async function load() {
   KEYS.forEach((k) => { if (saved[k] !== undefined) $(k).value = saved[k]; });
   CHECKS.forEach((k) => { if (saved[k] !== undefined) $(k).checked = saved[k]; });
   renderRegions();
-  // the dashboard's own starting point. Max users is left to prefillLoad,
-  // which runs later and prefers what the plan itself asks for.
-  if (!$("maxVusers").value) $("maxVusers").value = "2000";
+  // The per-engine cap is seeded in prefillLoad, not here. It used to be set
+  // to the dashboard's 2000 at this point, before the total was known, and the
+  // total is filled in later as 100 - so the page opened saying 100 users at
+  // most 2000 per engine, a cap twenty times the run it applies to. The two
+  // numbers came from different places and nobody had read them together.
   if (!$("timeout").value) $("timeout").value = "90";
   if (WANTED_NAME) $("planName").value = WANTED_NAME;
   // INCLUDE_GEN is decided in takeHandoff(), which runs after this: at this
@@ -188,7 +190,8 @@ async function detectBrowser() {
     addLog("info", `${$("primary").value || "this plan"} is a browser test - each user is a ` +
                    `Chrome, so an engine runs at most ${BROWSER_CAP}`);
   } else if (CAP_SET_HERE) {
-    cap.value = "2000";
+    cap.value = String(Math.min(HX_MAX_PER_ENGINE,
+                                 Number($("vusers").value) || HX_MAX_PER_ENGINE));
     CAP_SET_HERE = false;
   }
   vmCalc();
@@ -483,12 +486,13 @@ function vmCalc() {
   // HyperExecute takes no machine count - it divides total VU by the per-engine
   // cap, so show what that works out to rather than leaving it implicit
   const vu = parseInt($("vusers").value.trim(), 10);
-  const per = parseInt($("maxVusers").value.trim(), 10) || (BROWSER_PLAN ? BROWSER_CAP : 2000);
+  const per = parseInt($("maxVusers").value.trim(), 10) || (BROWSER_PLAN ? BROWSER_CAP : HX_MAX_PER_ENGINE);
   const el = $("vmCalc");
   if (!vu || vu < 1) { el.textContent = ""; return; }
   const vms = Math.ceil(vu / per);
   el.textContent = vu + " users / " + per + " per engine = " + vms +
                    " engine" + (vms === 1 ? "" : "s") +
+                   (per > vu ? " · the per-engine cap is above the whole run, so it does nothing" : "") +
                    (BROWSER_PLAN ? ` · browser test: at most ${BROWSER_CAP} Chromes per engine` : "");
 }
 ["vusers", "maxVusers"].forEach((k) => $(k).addEventListener("input", vmCalc));
@@ -501,20 +505,40 @@ function vmCalc() {
    they are yours to change. A plan asking for something different is said in
    the log rather than written into the field, because a number that changes
    itself is worse than one you have to read. */
-const HX_DEFAULT_USERS = 100;
+/* The dashboard's own ceiling for users on one engine. */
+const HX_MAX_PER_ENGINE = 2000;
 
 async function prefillLoad() {
   const load = (PLAN && PLAN.load) || {};
-  // a browser test starts at one engine's worth of Chromes, not 100 of them
-  if (!$("vusers").value) $("vusers").value = BROWSER_PLAN ? BROWSER_CAP : HX_DEFAULT_USERS;
+  /* The total comes from the plan.
+   *
+   * It used to start at a flat 100, which was a number this page invented. The
+   * plan's own figure was read, compared, and then written to the log instead
+   * of the field - so a plan authored for 10 users opened a page set to run
+   * 100, with a line explaining the discrepancy that nobody had to read before
+   * pressing the button. A hundred users against a service sized for ten is not
+   * a load test, it is an outage, and it was one keystroke away.
+   *
+   * So the field starts at what the plan asks for. When the plan says nothing
+   * it stays empty, and the placeholder says where the number would come from;
+   * an empty field means the .jmx decides, which is the honest answer. */
+  const asked = Number(load.threads) || 0;
+  if (!$("vusers").value) {
+    if (BROWSER_PLAN) $("vusers").value = String(BROWSER_CAP);
+    else if (asked > 0) $("vusers").value = String(asked);
+  }
+  /* The per-engine cap, now that there is a total for it to mean something
+     against. A cap above the total is not wrong so much as empty - it says
+     "split this run across engines of at most N", where N is more than the
+     whole run, so there is exactly one engine either way. */
+  if (!$("maxVusers").value) {
+    const total = Number($("vusers").value) || 0;
+    $("maxVusers").value = String(
+      BROWSER_PLAN ? BROWSER_CAP
+                   : (total ? Math.min(HX_MAX_PER_ENGINE, total) : HX_MAX_PER_ENGINE));
+  }
   if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
   if (load.duration && !$("duration").value) $("duration").value = load.duration;
-  const asked = Number(load.threads) || 0;
-  const set = Number($("vusers").value) || 0;
-  if (asked > 1 && asked !== set) {
-    addLog("info", `the plan was authored for ${asked} user(s); this run is set to `
-      + `${set}. What is in the field is what runs - change it if you want the plan's own`);
-  }
   vmCalc();
   planNote();
 }
