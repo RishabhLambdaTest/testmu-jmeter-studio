@@ -308,7 +308,7 @@ when you are staging files for a scheduled one.
 | Add: Files or A folder | Anything else the run needs: a CSV of test data, a plugin jar the log asked for, a `system.properties`. *A folder* uploads a whole suite with its folder paths. A `.jmx` can be at most 50 MB; a larger set is sent in several requests of at most 200 MB and 20 files |
 | Which .jmx should the job run | Pick one, when more than one was uploaded |
 | Regions and traffic | East US by default. **+ Add region** for a multi-region run; each region takes its % share of *Max users* |
-| Max users (total VU) | Total virtual users across the whole job |
+| Total Users | Total virtual users across the whole job. Blank takes the plan's own figure |
 | Max users per engine | How many each machine carries. Total divided by this is how many machines start |
 | Ramp-up, Duration | Seconds. Both override whatever the `.jmx` says |
 | Global timeout | Minutes, optional. A hard stop for the whole job |
@@ -408,7 +408,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | 0 correlated, on a source that is not a recording | Expected. Correlation needs real responses, and only a recording carries them. The Correlations tab says as much |
 | "needs jmeter-plugins-casutg on the runner" | The plan uses arrival-rate thread groups. Upload that jar with the plan, or install it into JMeter's `lib/ext` |
 | "needs jmeter-plugins-webdriver on the runner" | Expected on a browser test. The runner needs the WebDriver plugin (4.13.0.2) and a chromedriver that matches its Chrome. If the job fails to start a browser, upload the jar with the plan |
-| "a browser test needs browser steps, and this plan has none" | The recording was made with *record browser steps* off. Record again with it on, or build an API test |
+| "a browser test needs browser steps, and this plan has none" | The recording was made with *record browser steps* switched off - it is on by default. Record again with it on, or build an API test |
 | "a browser test runs at most 4 users per engine" | Each browser user is a Chrome, and an engine holds 4. Set Max users per engine to 4 or less; add users to get more engines |
 | The errors count is above zero | Open the Checks tab. A plan with errors is never shipped silently |
 | Validate .jmx says "a reference to a character XML 1.0 does not allow" | The plan carries control characters, usually a recorded binary or gzip request body. JMeter may still open it, but HyperExecute's parser will not. Remove or re-record that request body |
@@ -433,7 +433,7 @@ Every error the extension can produce, what it actually means, and what to do.
 | An HTTP 5xx from HyperExecute | A server-side error, worth retrying. The message says so |
 | "this account's plan does not cover the run" | Not from the platform: the page read the account's plan and the run is over its user ceiling, its job length, or its monthly VUH. The message names which. Lower the numbers, or upload without triggering |
 | "Your plan does not support the specified region config(s)" | The job asked for a region your organisation is not entitled to. The server does not say which one; the run page marks them **(not in your plan)** before you trigger. Most accounts have East US only. If the region genuinely should be allowed, the account service may simply have been unreachable when the job was submitted, which degrades to East US silently, so check for `Failed to fetch orgPreferences for orgID=` in the reception logs before treating it as a plan problem |
-| The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Max users (total VU)* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
+| The dashboard shows fewer users than you set | First check you are looking at the right job: a failed trigger creates none, so the newest job on the dashboard may be an older run. If it is the right one, *Total Users* was empty, which means "whatever the `.jmx` says". When it is filled in, the count reaches JMeter itself: a run sent as 1 user starts the thread group with `threads=1`, overriding the plan's own default |
 | The job runs but the report is empty, and JMeter logged `Error generating the report: NullPointerException` | Zero samplers ran, so there is no data to report and HyperExecute still marks the job passed. Before 1.3.5 a recording with browser steps put a Chrome driver config at plan level, which runs for every thread in every group: with no chromedriver on the runner it killed the protocol samplers too. From 1.3.5 the `.jmx` is protocol-only and the journey ships as the Playwright script instead. Re-author the recording on 1.3.5 |
 | The job runs but the report is empty | The plan ran and every request failed. Check the target is reachable from HyperExecute's regions, and run a short job at a few users first |
 

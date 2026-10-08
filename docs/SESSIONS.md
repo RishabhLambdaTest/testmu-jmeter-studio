@@ -61,7 +61,7 @@ Transactions named after the steps the test took, not the requests it made:
 | `Open checkout/cart` | the basket |
 | `Click account/login` | the login POST |
 
-This is the shape both JMeter's own recorder and BlazeMeter produce: a
+This is the shape a recorder worth using produces, JMeter's own included: a
 transaction controller per user action, named after the action. It is what makes
 a HyperExecute report readable, because *"Add to cart is slow at 500 users"* is a
 sentence somebody can act on.

@@ -55,8 +55,9 @@ the HyperExecute job that shards it across machines.
 worked example for each. Reference rather than reading: the defaults are right
 most of the time.
 
-[**Comparison**](docs/COMPARISON.md) sets this against BlazeMeter, including the
-places BlazeMeter is ahead.
+[**Comparison**](docs/COMPARISON.md) sets this against a comparable converter,
+including the places it is ahead. Internal: it names the vendor, so it is not
+for publication.
 
 ## What it does
 

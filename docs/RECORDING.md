@@ -20,8 +20,8 @@ the panel collapsed and the popup shut: red while recording, amber while
 paused, and green afterwards for a recording that has not been built into a
 plan yet.
 
-This is the path BlazeMeter's Chrome recorder covers, and the one people ask for
-first: don't make me write a test, let me click through the app and get one.
+This is the path people ask for first: don't make me write a test, let me click
+through the app and get one.
 
 You record in your own Chrome, with your profile, your SSO session, your VPN and
 your feature flags. Nothing is proxied, nothing is uploaded, and the plan is
@@ -148,11 +148,17 @@ tools still read.
 
 ## Two artifacts from one session
 
-The *record browser steps* checkbox in the panel is **off by default**: a
-recording is an API test unless you ask for the clicks. Tick it and its counter
-climbs as you click, and the setting belongs to the recording, so it survives
-navigations and transactions until you change it again. With it on, one session
-gives you two things.
+The *record browser steps* checkbox in the panel is **on by default**, and its
+counter climbs as you click. The setting belongs to the recording, so it
+survives navigations and transactions until you change it again.
+
+It used to be off, which put the decision in the wrong place: whether a
+recording becomes an API test or a browser test is chosen afterwards, on the
+authoring page, but whether it *could* become a browser test was decided here,
+before anyone knew which they wanted. Choosing Browser afterwards then failed
+and the only way back was to record the whole journey again. The steps cost a
+few hundred bytes for a long session, so they are kept unless you say
+otherwise. One session gives you two things.
 
 The protocol plan, a `.jmx` of HTTP samplers with no browser involved, is what
 scales to thousands of users on a handful of machines. The browser test is the
@@ -186,11 +192,12 @@ the authoring page, in Load profile:
 
 A plan is one or the other, never both. A run-time user count applies to every
 thread group, so a plan carrying both would run as many browsers as protocol
-users. BlazeMeter, OctoPerf and k6 keep the two apart for the same reason, and
-BlazeMeter caps browser users at the same 4 per engine.
+users. Tools that offer both keep them apart for the same reason, and converge
+on the same handful of browsers per engine.
 
-A browser test needs the clicks, so tick *record browser steps* before you
-start clicking; it is off unless you ask for it. Built from a recording without them, it stops and says so.
+A browser test needs the clicks, and *record browser steps* is on by default,
+so an ordinary recording already carries them. Built from a recording made with
+it switched off, it stops and says so.
 
 **Chrome path.** Blank means the runner's own Chrome 141 and its chromedriver,
 which is what HyperExecute's Linux runners carry. A chromedriver only drives the
@@ -247,6 +254,50 @@ The recording is written to IndexedDB as it happens, which means:
 A realistic hour on an API-heavy application is roughly 3,000 service calls and
 70 MB. The browser grants gigabytes, and the popup shows the headroom.
 
+## Single-page apps record almost nothing
+
+Click through five screens of a React, Vue or Docusaurus site and the recording
+holds one page load and a pile of javascript. The browser never asked the server
+for the next page: it fetched a bundle and redrew. Nothing was lost and nothing
+is broken - there simply is no second page request to record, so there is no
+second sampler to build.
+
+The authoring log says so when it sees the shape of it, plenty fetched and
+almost nothing navigated:
+
+```
+16 requests but no page loads at all - this looks like a single-page app.
+Clicking through it does not ask the server for new pages, so there is little
+for a protocol test to replay. The 12 API call(s) it made are the part worth
+testing.
+```
+
+That last sentence is the useful one. What an app of this kind actually asks
+the server for, while it redraws, is its API, and that is what a protocol test
+should carry. If the journey matters as *clicks* rather than as calls, build it
+as a browser test instead, where the steps are the point.
+
+## Which sites a recording has been to
+
+The recorder follows a **tab**, not a site. That is deliberate, and it is what
+makes an SSO hop or a payment redirect record properly: the journey leaves your
+application, comes back, and the whole exchange is captured.
+
+It also means a tab taken somewhere else mid-session is captured too. Open your
+mail in the recorded tab and your mail is in the recording.
+
+So the panel lists every site a recording has been through, and says so the
+moment a new one appears:
+
+```
+recording 2 sites: shop.example.com, accounts.example.com
+```
+
+The capture is not stopped - stopping it would break the redirect journeys
+worth recording. The point is that it is no longer silent, so a session is never
+shared without its author knowing where it has been. Nothing leaves the browser
+either way; see **Where the recording lives** in [SETUP.md](SETUP.md).
+
 ## What gets thrown away
 
 A raw browser session is mostly not a load test. From the sample recording:
@@ -276,9 +327,11 @@ endings are read as part of the name: the site for `shop.example.co.uk` is
 `example.co.uk`, not `co.uk`, and `myapp.herokuapp.com` is its own site. The
 **Hosts in this recording** panel on the result page lists every host with its
 request count; tick one there when your system also runs on another domain, such
-as a login or payment service, and rebuild. A long list gets a filter box. k6
-Studio (*Allowed hosts*) and NeoLoad (*Exclude servers*) offer the same choice;
-BlazeMeter's converter keeps every host.
+as a login or payment service, and rebuild. A long list gets a filter box.
+
+Deciding which hosts belong in a plan is a choice the better tools all offer in
+some form, and a converter that simply keeps every host hands you a plan that
+load-tests somebody else's analytics along with your application.
 
 *Keep: web* keeps the assets, for when the page load is the thing you are
 measuring. It is the same recording either way, because the decision is made at
@@ -300,6 +353,45 @@ ${ACCESSTOKEN}   bearer-token   high   from body
 
 This is what separates a recording from a test. Replay a recording as it stands
 and it fails the moment the token expires, which is to say almost immediately.
+
+**Two questions, not one.** The first is what a value looks like: a rule
+recognises a ViewState or an OAuth code by name, and failing that a value long
+and random enough to be an id rather than a constant. That misses an entire
+class of them. A server-issued id that happens to be readable - `cart-9912`,
+`ord-1042`, a plain row id - looks exactly like a constant, and on a session
+built from those the scan found nothing at all while the plan still reported no
+problems. Every virtual user then replayed one recorded id.
+
+So when the first question comes up empty there is a second: **who said it
+first**. A client cannot send a value the server has not yet given it, so a
+value carried by a response and only afterwards by a request is dynamic by
+construction, whatever it looks like.
+
+The ordering is also what keeps constants out, and that matters more than the
+catching does. A locale, an api version, a page size is sent by the client from
+the first request, before any response could have carried it, so it never
+qualifies however often it recurs.
+
+**An extractor also asserts.** A JMeter extractor that finds nothing does not
+fail its sampler - it writes its default and the test carries on, and the run
+fails several steps later at the first request that used the missing value, with
+the report pointing at a healthy service. So every correlation adds an assertion
+to the response that should have carried the value. These never fire on a
+response that still carries what was recorded, which is why they are on by
+default: anything they catch is a real change.
+
+**A cap, and it says so.** At most 60 values are wired in one plan, so a
+pathological session cannot produce a plan that is mostly extractors. Anything
+past that is reported rather than dropped in silence:
+
+```
+60 correlated, 251 more dynamic value(s) were found and NOT wired -
+the plan stops at 60. Narrow the recording, or raise the limit.
+```
+
+**And when nothing correlates**, that is said too, because on a journey that
+signs in or carries a cart it is the single most useful thing to know before
+spending a run.
 
 ## Recording without the extension
 

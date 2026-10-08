@@ -422,9 +422,8 @@ value everywhere it appears. Then replay again.
 The results and the suggestions share one scrolling box, so the suggestions sit
 below the requests: scroll inside it to reach them.
 
-That is the same conclusion BlazeMeter's correlation wizard reaches by replaying
-in JMeter and comparing; this runs in the browser, so there is nothing to
-install.
+A correlation wizard reaches the same conclusion by replaying in JMeter and
+comparing the two; this runs in the browser, so there is nothing to install.
 
 **What it does not do.** It is not a load test and it is not JMeter: JSR223,
 JDBC and WebDriver steps are skipped and counted as skipped, never as passed.
@@ -770,10 +769,15 @@ the account service must not stop a run.
 | Control | What it does | When to use it |
 |---|---|---|
 | Regions and traffic | one row per region, from the regions the HyperExecute dashboard offers, each with its share of the users. **+ Add region** adds a row at 0% | one region normally; several to test from where your users are |
-| Max users (total VU) | total virtual users across the job | whenever you want a number other than the plan's |
+| Total Users | total virtual users across the job | whenever you want a number other than the plan's. Blank takes the plan's own figure |
 | Max users per engine | how many each machine carries | to control engine count: total ÷ this = machines. The line underneath does the arithmetic as you type. A browser test is set to 4 and refused above it: each user is a Chrome. The line under *Which .jmx should the job run?* says which the page decided the plan is, and why |
-| Ramp-up (s) | seconds to reach full load | a ramp long enough that autoscaling behaves as it would in life |
-| Duration (s) | how long to hold | a soak needs minutes; a smoke test needs one |
+| Ramp-up Time (min) | minutes to reach full load | a ramp long enough that autoscaling behaves as it would in life |
+| Duration (min) | how long to hold | a soak needs minutes; a smoke test needs one |
+
+These two are **minutes on this page**, matching the HyperExecute dashboard's own
+JMeter form, and are sent as seconds. The authoring page's load profile is in
+seconds, because that is what a `.jmx` carries. Fractions are allowed here: a
+plan that ramps over thirty seconds shows `0.5` rather than being rounded up.
 | Global timeout (min) | hard stop for the whole job | when a hung run would otherwise burn the budget |
 | Job label | shows on the dashboard | to find this run again among fifty |
 | Split CSV rows across engines | each machine gets its own slice | whenever the data must be unique per user, such as one login per row |
@@ -946,7 +950,7 @@ at it. Each control applies to the request that was just captured.
 | Rename… | the sampler label | `POST /api/v2/x7` becomes `Add to cart` |
 | Skip last | drops that request | the analytics beacon that slipped through |
 | + Manual request… | a request you type in | the webhook the browser never sends, but the test needs |
-| record browser steps | keeps clicks and typing alongside the traffic | off by default; tick it for the Playwright test and for a browser test to replay. It stays as you set it for the rest of the recording |
+| record browser steps | keeps clicks and typing alongside the traffic | on by default, so a recording can become either an API test or a browser test without being made again. Untick it to record traffic only. It stays as you set it for the rest of the recording |
 
 **Finish → build the plan** ends the session and opens the authoring page with
 the recording loaded. **Export HAR instead** saves the raw file.
