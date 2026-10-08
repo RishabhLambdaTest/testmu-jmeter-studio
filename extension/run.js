@@ -285,8 +285,8 @@ function planBreaches() {
   }
   const out = [];
   const users = parseInt($("vusers").value.trim(), 10);
-  const dur = parseInt($("duration").value.trim(), 10);
-  const ramp = parseInt($("rampup").value.trim(), 10) || 0;
+  const dur = minToSec($("duration").value);
+  const ramp = minToSec($("rampup").value);
   if (HX_PLAN.maxVUsers !== null && users > HX_PLAN.maxVUsers) {
     out.push(`${users.toLocaleString()} users is over the ${HX_PLAN.maxVUsers.toLocaleString()} `
       + `this account may run`);
@@ -343,8 +343,8 @@ function planNote() {
       : HX_PLAN.vuhMonth.toLocaleString() + " VUH a month",
   ];
   const vuh = hxEstimateVuh(parseInt($("vusers").value.trim(), 10),
-                            parseInt($("duration").value.trim(), 10),
-                            parseInt($("rampup").value.trim(), 10) || 0, false);
+                            minToSec($("duration").value),
+                            minToSec($("rampup").value), false);
   if (vuh !== null) bits.push("this run is about " + vuh.toLocaleString() + " VUH");
   const cautions = planCautions();
   el.textContent = bits.join(" \u00b7 ") + (cautions.length ? ". " + cautions.join(". ") + "." : "");
@@ -505,6 +505,30 @@ function vmCalc() {
    they are yours to change. A plan asking for something different is said in
    the log rather than written into the field, because a number that changes
    itself is worse than one you have to read. */
+/* Minutes on screen, seconds on the wire.
+ *
+ * The HyperExecute dashboard's JMeter form asks for "Duration (min)" and
+ * "Ramp-up Time (min)" and multiplies by sixty on the way out. This page asked
+ * for seconds and sent them unchanged - the same request either way, but a
+ * person who sets 5 on the dashboard and 5 here means five minutes once and
+ * five seconds the other time, and nothing on either screen says so. A test
+ * sixty times shorter than intended still passes, which is the worst way for
+ * this to be wrong.
+ *
+ * The dashboard rounds anything under a minute up to one. This does not: a plan
+ * that ramps over thirty seconds shows 0.5 and sends 30, because the number
+ * came from the plan and changing it would be this page overruling it. */
+const secToMin = (sec) => {
+  const n = Number(sec) || 0;
+  if (!n) return "";
+  const m = n / 60;
+  return String(Number.isInteger(m) ? m : Math.round(m * 100) / 100);
+};
+const minToSec = (min) => {
+  const n = Number(String(min).trim());
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 60) : 0;
+};
+
 /* The dashboard's own ceiling for users on one engine. */
 const HX_MAX_PER_ENGINE = 2000;
 
@@ -537,8 +561,8 @@ async function prefillLoad() {
       BROWSER_PLAN ? BROWSER_CAP
                    : (total ? Math.min(HX_MAX_PER_ENGINE, total) : HX_MAX_PER_ENGINE));
   }
-  if (load.ramp_up && !$("rampup").value) $("rampup").value = load.ramp_up;
-  if (load.duration && !$("duration").value) $("duration").value = load.duration;
+  if (load.ramp_up && !$("rampup").value) $("rampup").value = secToMin(load.ramp_up);
+  if (load.duration && !$("duration").value) $("duration").value = secToMin(load.duration);
   vmCalc();
   planNote();
 }
@@ -718,7 +742,7 @@ async function submit(trigger) {
     const jobId = await HX.hxTrigger(user, key, projectId, {
       regions, jmx: primary,
       args: ["-e", "-o", "report"], reportDir: "report",
-      duration: num("duration"), rampup: num("rampup"),
+      duration: minToSec($("duration").value), rampup: minToSec($("rampup").value),
       maxVusersPerVm: num("maxVusers"), globalTimeout: num("timeout"),
       splitcsv: $("splitcsv").checked,
       jobLabel: $("label").value.trim() || null,
