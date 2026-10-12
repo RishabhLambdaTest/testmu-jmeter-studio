@@ -715,6 +715,15 @@ async function startAtUrl(rawUrl, transaction) {
   // open a blank tab, attach, and only THEN navigate - otherwise the first
   // request of the page load (and any auth redirect) is already gone
   const tab = await chrome.tabs.create({ url: "about:blank", active: true });
+  /* And bring its window forward.
+   *
+   * `tabs.create` puts the tab in the current window, and a studio maximised
+   * into a window of its own is a popup, which cannot hold tabs - so Chrome
+   * puts it in whatever normal window was last used, and focuses neither. You
+   * press Go, nothing appears to happen, and the page you asked to record is
+   * behind a window you have to go and find. Recording is about to need that
+   * page in front of you, so it is put there. */
+  await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
   for (let i = 0; ; i++) {
     try {
       await chrome.debugger.attach({ tabId: tab.id }, PROTOCOL);

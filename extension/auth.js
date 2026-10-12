@@ -173,25 +173,62 @@ function authRender(state, detail) {
    reason to hold up a page that is now signed in. */
 const AUTH_OURS = /(^|\.)(lambdatest\.com|testmuai\.com|testmu\.ai)$/;
 
+const authHost = (url) => { try { return new URL(url || "").hostname; } catch (e) { return ""; } };
+
+/* Everything that login opened: the tab we sent them to, and whatever it
+   opened in turn.
+ *
+ * Logging in through Google does not stay in one tab. The provider can open
+ * its own, and the redirect back can land the dashboard somewhere other than
+ * where it started, so closing only the tab we created left the dashboard in
+ * front of a studio that had quietly unlocked behind it. Only tabs descended
+ * from ours are considered, and only while they are still on one of the
+ * account domains, so nothing the person opened themselves is ever touched. */
+async function authLoginTabs(rootId) {
+  const all = await chrome.tabs.query({}).catch(() => []);
+  const ours = new Set([rootId]);
+  // openers can be a chain, so walk until it stops growing
+  for (let i = 0; i < 4; i++) {
+    const before = ours.size;
+    for (const t of all) {
+      if (t.openerTabId != null && ours.has(t.openerTabId)) ours.add(t.id);
+    }
+    if (ours.size === before) break;
+  }
+  return all.filter((t) => ours.has(t.id) && AUTH_OURS.test(authHost(t.url)));
+}
+
+/* Bring this page back, and keep bringing it back for a moment.
+ *
+ * Doing it once was not enough: the dashboard is still loading when the cookie
+ * lands, and a page that finishes loading takes the focus straight back, so
+ * the studio came forward and was immediately buried again. Four tries over
+ * three seconds outlasts that without fighting anyone who deliberately clicks
+ * away - a person who has chosen another tab keeps it, because a later attempt
+ * only reasserts the window, and the tab they picked stays active in it. */
+async function authBringForward() {
+  let self = null;
+  try { self = await chrome.tabs.getCurrent(); } catch (e) { /* not in a tab */ }
+  if (!self) return;
+  for (const wait of [0, 400, 1200, 3000]) {
+    await new Promise((r) => setTimeout(r, wait));
+    try {
+      await chrome.tabs.update(self.id, { active: true });
+      await chrome.windows.update(self.windowId, { focused: true });
+    } catch (e) { return; }   // the page went away; nothing left to focus
+  }
+}
+
 async function authFinishLogin() {
   const id = AUTH_LOGIN_TAB;
   AUTH_LOGIN_TAB = null;
   if (id == null) return;
   try {
-    const tab = await chrome.tabs.get(id);
-    let host = "";
-    try { host = new URL(tab.url || "").hostname; } catch (e) { host = ""; }
-    // only ever close what is still one of theirs: a tab navigated somewhere
-    // else in the meantime is no longer ours to close
-    if (AUTH_OURS.test(host)) await chrome.tabs.remove(id);
-  } catch (e) { /* already closed, or no url to read */ }
-  try {
-    const self = await chrome.tabs.getCurrent();
-    if (self) {
-      await chrome.tabs.update(self.id, { active: true });
-      await chrome.windows.update(self.windowId, { focused: true });
+    for (const t of await authLoginTabs(id)) {
+      await chrome.tabs.remove(t.id).catch(() => {});
     }
-  } catch (e) { /* not fatal: the page is unlocked either way */ }
+  } catch (e) { /* already closed, or no url to read */ }
+  authBringForward().catch(() => {});   // never block the page on a focus call
 }
 
 /* Resolves once someone is signed in, and keeps the page in step with the
