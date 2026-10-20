@@ -620,10 +620,16 @@ function planSteps() {
     const groups = new Set(STATE.browser_groups);
     return steps.filter((s) => groups.has((s.at || [])[0]));
   }
-  // a pause is a timer, not a request: counting it made "12 requests" mean
-  // twelve rows rather than twelve things sent, and adding one to a plan
-  // appeared to add a request
-  return steps.filter((s) => s.method !== "webdriver" && s.pause == null);
+  /* A pause is a timer, not a request. Counting it made "12 requests" mean
+     twelve rows rather than twelve things sent, and adding one to a plan
+     appeared to add a request.
+
+     Filtering on a `pause` field was the obvious fix and the wrong one: by the
+     time a pause comes back from the engine it is a named step with an empty
+     method - {name: "pause 1000ms", method: ""} - and carries no `pause` field
+     at all. A method is what makes a step a request, so that is what is
+     asked. */
+  return steps.filter((s) => s.method && s.method !== "webdriver");
 }
 
 /* A think time is either a number of milliseconds or, once randomised, the
