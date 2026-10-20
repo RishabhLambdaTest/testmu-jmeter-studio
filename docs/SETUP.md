@@ -30,13 +30,13 @@ question, that is a gap here, so tell us and it gets fixed on this page.
 whether the files sit inside a folder.
 
 ```
-testmu-jmeter-studio-1.8.17-share.zip          ←  the one you want
+testmu-jmeter-studio-<version>+<commit>-share.zip   ←  the one you want
   └── testmu-jmeter-studio/
         manifest.json
         background.js
         popup.html …
 
-testmu-jmeter-studio-1.8.17.zip                ←  only for a Chrome Web Store submission
+testmu-jmeter-studio-<version>+<commit>.zip         ←  only for a Chrome Web Store submission
   ├── manifest.json
   ├── background.js
   ├── popup.html …
@@ -64,8 +64,12 @@ git clone https://github.com/RishabhLambdaTest/testmu-jmeter-studio.git
 open testmu-jmeter-studio/dist        # both zips are here, prebuilt
 ```
 
-Or from GitHub in the browser: open `dist/`, click
-`testmu-jmeter-studio-1.8.17-share.zip`, then **Download raw file** at the top right.
+Every build carries the version and the commit it was built from, so two zips
+can never claim to be the same build and be different code. Take the highest
+version number in `dist/`.
+
+Or from GitHub in the browser: open `dist/`, click the newest
+`...-share.zip`, then **Download raw file** at the top right.
 GitHub cannot preview a zip, so that button is the only thing on the page. Note
 that the `raw.githubusercontent.com` address does not work on its own while the
 repository is private, which is why pasting that link to a colleague looks broken.
