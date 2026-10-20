@@ -6,7 +6,8 @@ scripts. They are here so the claims can be checked, and disputed.
 ```bash
 python3 make_har.py                 # synthetic.har + answers.json
 # author synthetic.har in the extension, download it as ours.jmx
-# put the same file through converter.blazemeter.com, save it as bzm.jmx
+# put the same file through the converter you are comparing against,
+# and save its output as bzm.jmx
 python3 score.py .                  # scores both against the answer key
 
 python3 mock_shop.py 8111           # the live server, as recorded

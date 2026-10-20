@@ -178,7 +178,7 @@ def score(path, label):
             "extractors": [f"{x['tag']}:{ext_var(x)}" for x in extractors], "cases": rows}
 
 out = {"ours": score(f"{HERE}/ours.jmx", "JMeter Studio"),
-       "bzm": score(f"{HERE}/bzm.jmx", "BlazeMeter converter")}
+       "bzm": score(f"{HERE}/bzm.jmx", "the other converter")}
 json.dump(out, open(f"{HERE}/score.json", "w"), indent=1)
 for k in ("ours", "bzm"):
     o = out[k]
