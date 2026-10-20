@@ -3831,8 +3831,32 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
         # The recorder attaches to a tab that is already open, or opens one and
         # navigates it itself, so the first page load is not a recorded action.
         # Without it the browser test starts on a blank page and clicks nothing.
-        first_url = next((entries[i].get("request", {}).get("url") for i in kept
-                          if entries[i].get("request", {}).get("url")), None)
+        # From the recording, not from what survived the traffic filter.
+        #
+        # `kept` is the protocol test's business: on Traffic = api the page
+        # loads are filtered out of it, so the first kept entry is an API call
+        # and the browser test opened on a JSON endpoint instead of the page
+        # the journey actually started on. The filter is a choice about which
+        # requests to replay; it says nothing about where the browser went
+        # first. So the page is looked for among all the entries, newest rule
+        # first - a real navigation, then simply the first request recorded.
+        def _first_page_url():
+            for e_ in entries:
+                req_ = e_.get("request") or {}
+                url_ = req_.get("url")
+                if not url_:
+                    continue
+                rtype_ = (e_.get("_resourceType") or e_.get("_type") or "").lower()
+                mime_ = ((e_.get("response") or {}).get("content") or {}).get("mimeType", "")
+                if _is_navigation(e_, rtype_, mime_, (req_.get("method") or "GET").upper()):
+                    return url_
+            for e_ in entries:
+                url_ = (e_.get("request") or {}).get("url")
+                if url_:
+                    return url_
+            return None
+
+        first_url = _first_page_url()
         if first_url:
             recorded = [{"do": "navigate", "url": first_url,
                          "transaction": recorded[0].get("transaction"),

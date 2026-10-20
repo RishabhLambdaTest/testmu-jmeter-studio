@@ -14,7 +14,7 @@ stored.
 ## Get it running
 
 ```
-1. unzip dist/testmu-jmeter-studio-1.8.17-share.zip
+1. unzip the newest `dist/testmu-jmeter-studio-<version>+<commit>-share.zip`
 2. chrome://extensions  →  Developer mode  →  Load unpacked  →  pick the folder
 3. sign in to TestMu AI in the same browser
    toolbar icon  →  cURL  →  paste a request  →  Generate plan
@@ -102,8 +102,8 @@ default, or a browser test that runs the recorded clicks in real Chrome
 ## Sharing it
 
 ```
-dist/testmu-jmeter-studio-1.8.17-share.zip     6.0 MB   →  people (Load unpacked)
-dist/testmu-jmeter-studio-1.8.17.zip           6.0 MB   →  Chrome Web Store, unlisted
+dist/testmu-jmeter-studio-<v>+<commit>-share.zip   →  people (Load unpacked)
+dist/testmu-jmeter-studio-<v>+<commit>.zip         →  Chrome Web Store, unlisted
 ```
 
 Both hold the same extension. The `-share` build wraps it in a `testmu-jmeter-studio/`

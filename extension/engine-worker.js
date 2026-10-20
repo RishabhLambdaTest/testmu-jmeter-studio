@@ -317,6 +317,16 @@ for key in ("threads", "ramp_up", "duration"):
             tg[key] = int(opts[key])
             if key == "duration":
                 tg.pop("loops", None)
+# A duration left blank means "loop once", which is what the field says and
+# what it did not do. The recording carries a duration of its own - five
+# minutes - and this loop only ever overrode it when a value was typed, so
+# clearing the box changed nothing and the plan still held every user for five
+# minutes, looping. The field is sent on every build, so an empty one is a
+# choice rather than a missing key, and it is honoured as one.
+if "duration" in opts and not str(opts.get("duration") or "").strip():
+    for tg in spec.get("thread_groups", []):
+        tg.pop("duration", None)
+        tg["loops"] = 1
 # A browser test runs the recorded clicks in Chrome instead of the requests.
 # A blank Chrome path means the runner's own Chrome and its chromedriver.
 if opts.get("test_type") == "browser":

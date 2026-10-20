@@ -161,7 +161,21 @@ function syncInputs() {
   $("checkResult").hidden = true;
   if (checking) $("results").hidden = true;
 }
-$("mode").onchange = () => { syncInputs(); save(); };
+$("mode").onchange = () => {
+  /* Picking another source means that source.
+   *
+   * Arriving from the recorder set a flag that nothing ever cleared, and the
+   * build reads it before it reads the file you chose - so selecting OpenAPI,
+   * attaching a spec and pressing Generate quietly rebuilt the recording
+   * again. The plan looked plausible, because a plan from a recording always
+   * does, and nothing said the spec had been ignored. */
+  if (FROM_RECORDING && $("mode").value !== "har") {
+    FROM_RECORDING = false;
+    addLog("info", "source changed - the recording on disk is no longer being used");
+  }
+  syncInputs();
+  save();
+};
 $("testType").onchange = () => { syncInputs(); save(); };
 // the parallel count only means anything when the resources are fetched
 $("embedded").onchange = () => {
@@ -554,7 +568,11 @@ function applyRebuild(data, what) {
      one extracts a token from leaves a plan that still builds and still runs,
      and fails at load with a wall of 401s - so a new warning has to be as loud
      as an error here, or the editor becomes a way to break a plan quietly. */
-  const was = STATE.verify || {};
+  /* There may be nothing to compare against. The spec editor is reachable
+     before a plan exists - and, since a failed build now clears the last one,
+     after one too - and reading STATE.verify through a null STATE threw where
+     the answer is simply "everything here is new". */
+  const was = (STATE && STATE.verify) || {};
   const beforeW = new Set((was.warnings || []));
   const beforeE = new Set((was.errors || []));
   const now = data.verify || {};

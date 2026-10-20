@@ -229,6 +229,28 @@ async function replayPlan(spec, opts = {}) {
     // assertions, as the plan states them
     const failures = [];
     for (const a of step.assert || []) {
+      /* A plan carries two kinds of assertion and this only understood one.
+       *
+       * Every correlation adds a JSON one - {type:"json", query:"$.token"} -
+       * saying the value it extracts is still there. Those have no `pattern`,
+       * so the text branch below compared the body against undefined and
+       * failed every time: Replay reported a healthy response as a failed
+       * assertion, and the more a plan correlated the more it accused it of.
+       * The query is resolved the same way the extractors above resolve
+       * theirs. */
+      if ((a.type === "json" || a.field === "json") && a.query) {
+        let hits = [];
+        try { hits = rpJsonPath(JSON.parse(res.body), a.query) || []; } catch (e) { hits = []; }
+        const want = a.pattern == null ? null : rpSubst(a.pattern, vars);
+        const found = want == null ? hits.length > 0
+                                   : hits.some((h) => String(h) === want);
+        if (!found) {
+          failures.push(want == null
+            ? `${a.query} is not in the response`
+            : `${a.query} is not ${JSON.stringify(want)}`);
+        }
+        continue;
+      }
       const field = a.field === "code" ? String(res.code) : res.body;
       const pattern = rpSubst(a.pattern, vars);
       const hit = a.match === "equals" ? field === pattern
