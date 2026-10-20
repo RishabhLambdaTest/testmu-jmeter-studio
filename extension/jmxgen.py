@@ -382,7 +382,17 @@ def build_csv(cfg):
         sp("variableNames", ",".join(cfg["variables"]) if isinstance(cfg.get("variables"), list) else cfg.get("variables", "")),
         bp("ignoreFirstLine", cfg.get("ignore_first_line", True)),
         sp("delimiter", cfg.get("delimiter", ",")),
-        bp("quotedData", cfg.get("quoted", False)),
+        # Honour quotes unless told otherwise.
+        #
+        # This defaulted to off, which is JMeter's own default and wrong for
+        # almost every real file. A row like  "Smith, John",gold  was split at
+        # the comma inside the quotes: the name arrived as  "Smith , the plan
+        # as   John" , and the real plan, gold, was dropped off the end along
+        # with every column after it. The run stays green while every user
+        # sends mangled data, which is the worst way for test data to fail.
+        # Quoted parsing reads an unquoted file identically, so there is no
+        # case this costs anything.
+        bp("quotedData", cfg.get("quoted", True)),
         bp("recycle", cfg.get("recycle", True)),
         bp("stopThread", cfg.get("stop_thread", False)),
         sp("shareMode", cfg.get("share_mode", "shareMode.all")),
@@ -1285,6 +1295,50 @@ def _group_uses_webdriver(tg):
     return walk(tg.get("steps"))
 
 
+# A recorded body can contain ${...} that the page meant literally, and JMeter
+# reads it as a variable reference. There is no fix to apply here: escaping it
+# as \${ was tried and JMeter sends the backslash through to the server, so the
+# cure is worse than the complaint - an undefined reference is at least passed
+# along unchanged, which is what the recording intended.
+#
+# It only does harm when a variable of that name exists, which means a CSV
+# column or a correlated value colliding with recorded text. `verify` already
+# names every ${...} in a plan that nothing defines, and that warning is the
+# honest answer until JMeter offers an escape that works in a raw body.
+
+
+def _load_number(value, field, default, *, minimum=1, allow_blank=True):
+    """A load figure, or a refusal that names what was wrong with it.
+
+    These reach the plan as the defaults of JMeter properties, and JMeter does
+    not check them: a thread count of 0 starts no threads, runs no samplers and
+    exits zero, so the job is reported as passed having tested nothing, with no
+    error anywhere to say so. "abc" does the same. A test that silently does not
+    run is worse than one that fails, because nobody goes looking.
+    """
+    if value is None:
+        return default
+    text = str(value).strip()
+    if text == "":
+        if allow_blank:
+            return default
+        raise ValueError("%s cannot be empty" % field)
+    # a property placeholder is someone deliberately deferring the value
+    if text.startswith("${"):
+        return text
+    try:
+        n = int(float(text))
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a whole number, not %r" % (field, text))
+    if n < minimum:
+        raise ValueError(
+            "%s must be at least %d, not %d - a run with %d would start no "
+            "threads, send nothing, and still report success"
+            % (field, minimum, n, n) if minimum == 1 and n < 1
+            else "%s must be at least %d, not %d" % (field, minimum, n))
+    return n
+
+
 def build_thread_group(tg, defaults):
     """Emit the thread group the spec asked for.
 
@@ -1307,10 +1361,12 @@ def build_thread_group(tg, defaults):
                         % tg.get("model"))
 
     name = tg.get("name", "Thread Group")
-    threads = tg.get("threads", 1)
-    ramp = tg.get("ramp_up", 1)
+    threads = _load_number(tg.get("threads"), "users", 1, minimum=1)
+    ramp = _load_number(tg.get("ramp_up"), "ramp-up", 1, minimum=0)
     duration = tg.get("duration")
-    loops = tg.get("loops", 1)
+    if duration not in (None, ""):
+        duration = _load_number(duration, "duration", None, minimum=1)
+    loops = _load_number(tg.get("loops"), "loops", 1, minimum=1)
     scheduler = bool(duration)
 
     loop_ctrl = [
