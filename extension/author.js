@@ -23,6 +23,9 @@ let FROM_RECORDING = false;  // author from what the recorder left on disk
 /* Set when the hosts were chosen by hand: the third-party rule would otherwise
    drop the very host that was just ticked. */
 let HOSTS_CHOSEN = false;
+/* The include the host picker wrote, so a later reset can tell it from one
+   somebody typed themselves and only clear its own. */
+let HOSTS_INCLUDE = "";
 /* Every edit is a whole spec, so undo is a pointer into a list of them rather
    than an inverse for each operation. Ten deep: enough to get out of a wrong
    turn, small enough that a big plan does not sit in memory ten times over. */
@@ -161,18 +164,42 @@ function syncInputs() {
   $("checkResult").hidden = true;
   if (checking) $("results").hidden = true;
 }
-$("mode").onchange = () => {
-  /* Picking another source means that source.
-   *
-   * Arriving from the recorder set a flag that nothing ever cleared, and the
-   * build reads it before it reads the file you chose - so selecting OpenAPI,
-   * attaching a spec and pressing Generate quietly rebuilt the recording
-   * again. The plan looked plausible, because a plan from a recording always
-   * does, and nothing said the spec had been ignored. */
-  if (FROM_RECORDING && $("mode").value !== "har") {
-    FROM_RECORDING = false;
-    addLog("info", "source changed - the recording on disk is no longer being used");
+/* Everything the last source left behind.
+ *
+ * The page keeps what you chose in module state, and none of it was tied to
+ * the source it was chosen for, so it outlived the thing it was about:
+ *
+ *   the recording  - picked OpenAPI, attached a spec, and the build used the
+ *                    recording anyway, because it is read first
+ *   the file       - attached a spec as OpenAPI, switched to Postman, and the
+ *                    Postman build parsed the OpenAPI file still sitting in
+ *                    the box, which nothing had emptied
+ *   the host rule  - ticked hosts on one recording and the include it writes
+ *                    is saved, so it came back for every later build and
+ *                    filtered a different recording down to nothing
+ *
+ * None of it announced itself; each produced a plan that looked like a plan.
+ * So changing the source clears what belonged to the old one, and says which. */
+function forgetPreviousSource(why) {
+  const dropped = [];
+  if (FROM_RECORDING) { FROM_RECORDING = false; dropped.push("the recording on disk"); }
+  if (FILE) { FILE = null; dropped.push("the attached file"); }
+  try { $("file").value = ""; } catch (e) { /* some browsers refuse; FILE is what the build reads */ }
+  if (HOSTS_CHOSEN) {
+    HOSTS_CHOSEN = false;
+    // only the one the host picker wrote: an include typed by hand is the
+    // user's and stays
+    if (HOSTS_INCLUDE && $("include").value === HOSTS_INCLUDE) {
+      $("include").value = "";
+      dropped.push("the host filter from the last recording");
+    }
+    HOSTS_INCLUDE = "";
   }
+  if (dropped.length) addLog("info", why + " - no longer using " + dropped.join(", "));
+}
+
+$("mode").onchange = () => {
+  if ($("mode").value !== "har") forgetPreviousSource("source changed");
   syncInputs();
   save();
 };
@@ -927,6 +954,7 @@ $("hostsApply").onclick = async () => {
   $("include").value = "^https?://(" + want.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(/|:|$)";
   $("filters").open = true;
   HOSTS_CHOSEN = true;
+  HOSTS_INCLUDE = $("include").value;
   await save();
   await $("go").onclick();
 };
