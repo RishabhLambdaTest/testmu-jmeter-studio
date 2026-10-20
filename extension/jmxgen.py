@@ -1488,6 +1488,14 @@ SAVE_CONFIG = [
     '    <subresults>false</subresults><responseData>false</responseData>',
     '    <samplerData>false</samplerData><xml>false</xml><fieldNames>true</fieldNames>',
     '    <responseHeaders>false</responseHeaders><requestHeaders>false</requestHeaders>',
+    # Off, and it has to be: the results file is CSV (xml=false above), and
+    # JMeter only writes response bodies into XML output. Turning this on was
+    # tried and changes nothing in the file - measured on a run where every
+    # sampler returned 503, no row carried the error body either way. Getting
+    # them would mean emitting XML, which multiplies the size of a run nobody
+    # reads the successful rows of, and changes the format the platform
+    # consumes. Replay is the answer to "what did it actually say": it reruns
+    # the request in the browser and shows the response.
     '    <responseDataOnError>false</responseDataOnError>',
     '    <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>',
     '    <assertionsResultsToSave>0</assertionsResultsToSave>',

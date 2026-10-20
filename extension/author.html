@@ -155,6 +155,13 @@
     <input type="text" id="loginBody" placeholder="request body to send" />
     <label for="loginToken">Token path</label>
     <input type="text" id="loginToken" placeholder="JSONPath to the token in the response" />
+    <p class="hint">Use this only when the recording has no login of its own. It
+       logs in <strong>once</strong> and every virtual user shares that one
+       session, so per-user rate limits never trigger and per-user caches are
+       hit by all of them at once - the system will look faster than it is.
+       When the recording does contain a login, leave these blank: each user
+       then logs in for themselves and the Correlations tab shows the token
+       being carried.</p>
   </details>
 
   <details id="optData">

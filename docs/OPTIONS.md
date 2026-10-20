@@ -290,8 +290,17 @@ extracted by user 1 is invisible to users 2 through 500, so a plan built the
 obvious way works perfectly in a single-user test and returns a wall of 401s
 under load. This is the most common way a JMeter plan fails.
 
-Leave these blank if the recording already carries a login and correlation found
-the token. The Correlations tab tells you whether it did.
+**What it costs, and why it is not the default.** A property is global, so one
+login serves every thread: measured on five users over two iterations, the
+server issued **one** token and saw twenty authorised calls carrying it. That is
+one session being load-tested by five users. Per-user rate limits never trigger,
+session affinity is never exercised, and a per-user cache is hit by the whole
+run at once - which makes the system look faster than it is.
+
+Leave these blank if the recording already carries a login, and each user logs
+in for themselves: the same five users over two iterations then produced **ten**
+tokens, one per login, each used by the thread that got it. The Correlations tab
+tells you whether correlation found the token.
 
 ## Test data
 
