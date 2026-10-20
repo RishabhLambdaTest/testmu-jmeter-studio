@@ -3692,7 +3692,18 @@ def har_to_spec(har_path, include=None, exclude=None, keep_static=False, name=No
             if n.startswith(":") or n.lower() in (
                     "host", "content-length", "cookie", "connection", "accept-encoding",
                     "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user",
-                    "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "upgrade-insecure-requests"):
+                    "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "upgrade-insecure-requests",
+                    # Conditional requests belong to the browser's cache, not to
+                    # the journey. Replayed, they ask "has this changed since the
+                    # recording" and a healthy server answers 304 with no body:
+                    # measured against a server that honours ETags, every sampler
+                    # came back 304, every assertion failed, and every extractor
+                    # had nothing to read. The run then measures cache validation
+                    # rather than the application - which is why JMeter's own
+                    # recorder drops these too. The Cache Manager above is what
+                    # models caching, per thread and cleared each iteration.
+                    "if-modified-since", "if-none-match", "if-match",
+                    "if-unmodified-since", "if-range"):
                 continue
             # a header sent twice is one header with both values, not the
             # last one seen (RFC 9110); browsers rarely do this, but silently
