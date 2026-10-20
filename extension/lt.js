@@ -712,7 +712,7 @@ async function ltSessionHar(user, key, sid, opts) {
     } catch (e) {
       if (e.tooBig) throw e;
       const err = new Error("this session has neither full-har nor a readable network.har: " + e.message);
-      err.guidance = "Re-run the test with network.full.har: true in the capabilities.";
+      err.guidance = "Re-run the test with network: true and network.full.har: true in the capabilities.";
       throw err;
     }
     raw = plain.entries;

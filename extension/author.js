@@ -434,7 +434,7 @@ $("go").onclick = async () => {
       /* As loud as an error: this plan builds and runs, and still cannot log in
          or submit anything, which is the failure people find at load. */
       say(`plan built from network.har only - ${nreq} request(s), but POST bodies are ` +
-          `empty and nothing is correlated. Re-run the test with network.full.har: true ` +
+          `empty and nothing is correlated. Re-run the test with network: true and network.full.har: true ` +
           `for a plan that can send data.`, "err");
     } else {
       say("plan ready - " + nreq + " request(s), " +

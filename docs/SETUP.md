@@ -235,7 +235,7 @@ no recording is needed.
 The session is read with the TestMu AI account you are signed in to. The plan
 arrives grouped into the steps the test performed.
 
-A session whose run had `"network.full.har": true` in its capabilities gives a
+A session whose run had `"network": true, "network.full.har": true` in its capabilities gives a
 complete plan. A session without it still converts, from its `network.har`, but that log has no request or response bodies: the plan sends its POSTs empty and correlates nothing. The page says so as loudly as an error. Selenium only for now.
 
 [SESSIONS.md](SESSIONS.md) covers it fully.
@@ -372,7 +372,7 @@ Every error the extension can produce, what it actually means, and what to do.
 
 | What you see | What it means |
 |---|---|
-| "plan built from network.har only" | The run that produced this session did not capture full HAR, so the plan has the requests but no bodies. Re-run the test with `network.full.har: true` for a plan that can log in and submit |
+| "plan built from network.har only" | The run that produced this session did not capture full HAR, so the plan has the requests but no bodies. Re-run the test with `network: true, network.full.har: true` for a plan that can log in and submit |
 | "this session has neither full-har nor a readable network.har" | Nothing usable was recorded. Re-run the test with the capability on |
 | "… is N MB, over the M MB limit" | The session is larger than a tab can convert. Pick a shorter session. [SESSIONS.md](SESSIONS.md#size) lists the limits |
 | "the credentials were refused (401)" | Your TestMu AI sign-in has ended. Reload the page and sign in again |

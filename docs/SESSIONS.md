@@ -11,14 +11,17 @@ exists.
 
 ## What you need
 
-One capability on the run that produced the session:
+Two capabilities on the run that produced the session:
 
 ```
+"network": true,
 "network.full.har": true
 ```
 
-That is the whole prerequisite, and it is worth saying plainly to a customer:
-**switch it on and every automation session becomes a load test for free.**
+`network.full.har` on its own is not enough — without `network` the API answers
+*"Network full har logs are not available"* and there is nothing to convert.
+With both, it is worth saying plainly to a customer: **switch them on and every
+automation session becomes a load test for free.**
 
 Sessions without it fall back to `network.har`, which gives the requests but not
 their bodies, so the plan that comes back cannot log in or submit anything. The

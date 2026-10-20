@@ -113,7 +113,7 @@ Shown only when the source is *TestMu AI session*. The whole path is in
 
 The account is sent only to `api.lambdatest.com`, to read your own session logs.
 
-A session run with `"network.full.har": true` carries everything a plan needs.
+A session run with `"network": true, "network.full.har": true` carries everything a plan needs.
 A session without it still converts, from its `network.har`, but that log has no request or response bodies: the plan sends its POSTs empty and correlates nothing. The page says so as loudly as an error. Selenium only for now.
 
 The traffic filters and *Use the think times from the recording* below apply to
