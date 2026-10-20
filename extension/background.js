@@ -777,7 +777,15 @@ async function buildHarText(opts) {
  */
 async function harHandoff(options) {
   if (!state || !(state.count || 0)) throw new Error("nothing recorded yet");
-  await persistNow();          // everything queued is on disk before the page reads it
+  /* The button says Finish, so finish.
+   *
+   * This used to flush to disk and open the authoring page while leaving the
+   * debugger attached, so the session carried on recording behind the plan it
+   * had just produced. Everything you did next - reading the generated plan,
+   * clicking around the tab you had recorded - went into the capture, and the
+   * next build silently contained it. Stopping also makes the checkpoint
+   * current, which is what the authoring page is about to read. */
+  await stop();
   // the capture has left the recorder intact, so it no longer counts as unsaved
   state.exported = true;
   broadcast();

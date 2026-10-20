@@ -400,6 +400,17 @@ $("go").onclick = async () => {
           data.size_kb + " KB", "ok");
     }
   } catch (e) {
+    /* The plan that failed replaces the one that worked.
+     *
+     * The results table, the Download button and Run on HyperExecute used to
+     * survive a failed build untouched, still showing and still serving the
+     * previous plan. The error appeared in the log, well below them. So a
+     * mistyped cURL left you downloading - or running on HyperExecute - a plan
+     * built from something else entirely, with nothing on screen saying it was
+     * stale. Whatever is on the page has to be what the last build produced,
+     * and when the last build produced nothing, the page shows nothing. */
+    STATE = null;
+    $("results").hidden = true;
     addLog("error", String(e.message || e));
     say(String(e.message || e), "err");
   } finally {
@@ -609,7 +620,25 @@ function planSteps() {
     const groups = new Set(STATE.browser_groups);
     return steps.filter((s) => groups.has((s.at || [])[0]));
   }
-  return steps.filter((s) => s.method !== "webdriver");
+  // a pause is a timer, not a request: counting it made "12 requests" mean
+  // twelve rows rather than twelve things sent, and adding one to a plan
+  // appeared to add a request
+  return steps.filter((s) => s.method !== "webdriver" && s.pause == null);
+}
+
+/* A think time is either a number of milliseconds or, once randomised, the
+   range it varies over. Appending " ms" to the range object printed
+   "[object Object] ms" in the table while the timer written into the plan was
+   correct all along - a reader had no way to tell which of the two was wrong. */
+function thinkText(t) {
+  if (t == null) return "";
+  if (typeof t === "object") {
+    const lo = t.min, hi = t.max;
+    if (lo == null && hi == null) return "";
+    if (lo == null || hi == null) return (lo == null ? hi : lo) + " ms";
+    return lo === hi ? lo + " ms" : lo + "-" + hi + " ms";
+  }
+  return t + " ms";
 }
 
 function render() {
@@ -662,7 +691,7 @@ function showTab(which) {
        <td>${esc(s.group || "")}</td><td class="mono">${esc(s.method || "")}</td>
        <td class="mono">${esc(s.name || s.path || "")}</td>
        <td>${esc(s.asserts == null ? "" : s.asserts)}</td>
-       <td>${esc(s.think_time == null ? "" : s.think_time + " ms")}</td>
+       <td>${esc(thinkText(s.think_time))}</td>
        <td class="edit">edit</td></tr>`).join("");
     el.innerHTML = rows
       ? (isBrowserTest()

@@ -6233,17 +6233,36 @@ BOT_WALL_WEAK = re.compile(
     r"Checking your browser|Attention Required|Request unsuccessful|Bot Manager", re.I)
 
 
+def _looks_html(body):
+    """Is this a page at all, as opposed to an API answering in JSON?"""
+    head = (body or "").lstrip()[:400].lower()
+    if head.startswith(("{", "[")):
+        return False
+    return bool(re.search(r"<!doctype\s+html|<html|<head|<body|<div|<script", head))
+
+
 def _looks_blocked(html, title):
     """A WAF / bot-challenge page instead of the real one.
 
     Authoring a plan from one produces a single meaningless sampler, so it must be
     loud - but a 200 KB page that merely mentions "captcha" is a real page."""
     head = html[:20000]
+    # the strong markers are script and cookie names that only a challenge
+    # serves, so they count wherever they appear
     if BOT_WALL_STRONG.search(head):
         return True
-    if len(html) < 15000 and BOT_WALL_WEAK.search(head):
+    page = _looks_html(html)
+    # the weak ones are ordinary English. "captcha required" and "Just a
+    # moment" are things an API says in a perfectly good error body, so they
+    # only count on something that is trying to be a page
+    if page and len(html) < 15000 and BOT_WALL_WEAK.search(head):
         return True
-    return len(html) < 4000 and not title
+    # The last test is "small, and no title", which describes a challenge page
+    # and also describes every JSON response ever written: an API answering
+    # {"ok":true,"id":7} is a couple of dozen bytes and has no <title>, so a
+    # healthy endpoint was reported as a bot wall and dropped from the plan.
+    # It only means anything about a page, so it is only asked of one.
+    return page and len(html) < 4000 and not title
 
 
 def _read_url_list(source):

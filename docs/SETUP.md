@@ -470,6 +470,7 @@ shows a banner the whole time it is attached.
 | Permission | Why it is there |
 |---|---|
 | `debugger` | Response bodies. Nothing else can read them |
+| `cookies` | Reads one cookie, the TestMu AI sign-in cookie (`accessToken` on lambdatest.com), so the studio can work as the account you are already signed in to instead of asking you to paste an access key. No other cookie is read, and none is written |
 | `tabs` | To attach to the tab you chose, and follow SSO popups it opens |
 | `storage` | Checkpoints an in-progress recording, so an evicted service worker does not lose it |
 | `downloads` | Saving the plan, HAR or YAML you asked for |

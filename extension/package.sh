@@ -7,11 +7,24 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+
+# Which build this is, not just which version.
+#
+# A version number is changed by hand, so two zips can carry the same one and
+# different code - and two did: a fix landed while the version stayed 1.8.17,
+# QA tested one of them, and neither they nor anyone else could say which. The
+# commit is stamped into the zip's name so a bug report names a build. Warn
+# when the tree is dirty, because then the commit does not describe it either.
+BUILD=$(git -C .. rev-parse --short HEAD 2>/dev/null || echo nogit)
+if ! git -C .. diff --quiet 2>/dev/null; then
+    BUILD="${BUILD}-dirty"
+    echo "warning: uncommitted changes - this build is not reproducible from $BUILD" >&2
+fi
 # Write OUTSIDE the extension folder. A dist/ inside it is loaded as part of
 # the extension when you "Load unpacked", which quietly doubles its size.
 OUTDIR="../dist"
-STORE="$OUTDIR/testmu-jmeter-studio-${VERSION}.zip"
-SHARE="$OUTDIR/testmu-jmeter-studio-${VERSION}-share.zip"
+STORE="$OUTDIR/testmu-jmeter-studio-${VERSION}+${BUILD}.zip"
+SHARE="$OUTDIR/testmu-jmeter-studio-${VERSION}+${BUILD}-share.zip"
 
 # only what the extension needs at runtime - no docs, no build output. Listed
 # explicitly so a stray file in the folder never rides along into a release.
